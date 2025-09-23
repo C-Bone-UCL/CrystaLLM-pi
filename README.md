@@ -145,8 +145,10 @@ Your input data should be a [pandas DataFrame](https://pandas.pydata.org/docs/re
 - `Reduced Formula`: Standard reduced chemical formula (used in evaluation metrics) 
 - `CIF`: The crystallographic structure in CIF format
 
+**For structure recovery tasks:**
+- `Material ID`: Database identifier (like mp-390 for materials project etc.)
+
 **Optional columns:**
-- `Material ID`: Database identifier for traceability
 - `<Property Columns>`: Target properties for conditional generation (e.g., "Bandgap (eV)", "Density (g/cm^3)")
 - `condition_vector`: If we have an already standardised and compatible condition vector (like in the XRD studies), we can store a column which contains the vector string, removing the need for any additional processing
 
