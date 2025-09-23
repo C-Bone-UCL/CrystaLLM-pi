@@ -1,8 +1,8 @@
-# CrystaLLMv2
+# CrystaLLM-2.0
 
 ## Description
 
-**CrystaLLMv2** is a Transformer-based model for generating crystalline structures as Crystallographic Information Files (CIFs). This project provides a complete codebase for both conditional (property-driven) and non-conditional GPT-style training, generation, and evaluation.
+**CrystaLLM-2.0** is a Transformer-based model for generating crystalline structures as Crystallographic Information Files (CIFs). This project provides a complete codebase for both conditional (property-driven) and non-conditional GPT-style training, generation, and evaluation.
 
 The models are based on the [CrystaLLM Paper](https://www.nature.com/articles/s41467-024-54639-7)
 
@@ -13,7 +13,7 @@ It leverages a few tools:
 - **DeepSpeed**: For efficient, distributed training on multi-GPU systems.
 
 ## Table of Contents
-- [CrystaLLMv2](#crystallmv2)
+- [CrystaLLM-2.0](#crystallm-20)
   - [Description](#description)
   - [Table of Contents](#table-of-contents)
   - [Installation](#installation)
@@ -21,7 +21,6 @@ It leverages a few tools:
     - [Setup](#setup)
   - [Configuration](#configuration)
     - [API Keys](#api-keys)
-    - [Training and evaluation Parameters](#training-and-evaluation-parameters)
   - [Model Types:](#model-types)
     - [1. Unconditional CrystaLLM](#1-unconditional-crystallm)
     - [2. Conditional Models](#2-conditional-models)
@@ -30,17 +29,21 @@ It leverages a few tools:
       - [c. Slider-GPT](#c-slider-gpt)
       - [d. Raw-GPT](#d-raw-gpt)
   - [Usage](#usage)
-    - [Data Processing](#data-processing)
+    - [Data Processing Pipeline](#data-processing-pipeline)
     - [Training the Model](#training-the-model)
-    - [Crafting Prompts](#crafting-prompts)
-      - [Unconditional Prompts](#unconditional-prompts)
-      - [Conditional Prompts](#conditional-prompts)
-    - [Generating Structures](#generating-structures)
+      - [Base Model Pretraining](#base-model-pretraining)
+      - [Conditional Fine-tuning](#conditional-fine-tuning)
+    - [Generating Crystal Structures](#generating-crystal-structures)
+      - [Step 1: Create Prompts](#step-1-create-prompts)
+      - [Step 2: Generate CIFs](#step-2-generate-cifs)
+      - [Optional: Evaluate CIFs (pass non-processed CIFs)](#optional-evaluate-cifs-pass-non-processed-cifs)
+      - [Step 3: Post-process](#step-3-post-process)
   - [Evaluation](#evaluation)
-    - [Structural Metrics](#structural-metrics)
-    - [Stability (MACE E-hull)](#stability-mace-e-hull)
-    - [Automated Pipelines](#automated-pipelines)
-  - [Example uses](#example-uses)
+    - [Core Evaluation Metrics](#core-evaluation-metrics)
+      - [1. VUN Metrics (Validity, Uniqueness, Novelty)](#1-vun-metrics-validity-uniqueness-novelty)
+      - [2. Energy Above Hull (Stability)](#2-energy-above-hull-stability)
+      - [3. Other metrics](#3-other-metrics)
+  - [Studies](#studies)
   - [License](#license)
   - [Contact](#contact)
 
@@ -55,14 +58,14 @@ It leverages a few tools:
 ### Setup
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/C-Bone-UCL/CrystaLLMv2_CG.git
-    cd CrystaLLMv2_CG
+    git clone https://github.com/C-Bone-UCL/CrystaLLM-2.0.git
+    cd CrystaLLM-2.0
     ```
 
 2.  **Create a virtual environment for the main package:**
     ```bash
-    conda create -n crystallmv2_env python=3.10
-    conda activate crystallmv2_env
+    conda create -n CrystaLLM-2.0_env python=3.10
+    conda activate CrystaLLM-2.0_env
     ```
 
 3.  **Install the required packages:**
@@ -96,22 +99,9 @@ For integration with Hugging Face and Weights & Biases, create a file named `API
 }
 ```
 
-
-### Training and evaluation Parameters
-All training arguments are defined in `_args.py` and can be set in two ways:
-
-1.  **Config File**: Create a `.jsonc` file and pass it with the `--config` flag. This is the recommended method.  Can be used with `_train.py` and `generate_CIFs.py` files.
-    ```bash
-    python _train.py --config _config_files/cg_train/test.jsonc
-    ```
-2.  **Command-Line Arguments**: Override any config setting by passing arguments directly.
-    ```bash
-    python _train.py --n_layer 8 --n_embd 512 --learning_rate 5e-4
-    ```
-
 ## Model Types:
 
-CrystaLLMv2 supports one unconditional and four conditional model architectures, allowing for both standard and property-driven generation. The desired model can be selected during training using the `--activate_conditionality` flag.
+CrystaLLM-2.0 supports one unconditional and four conditional model architectures, allowing for both standard and property-driven generation. The desired model can be selected during training using the `--activate_conditionality` flag.
 
 ### 1. Unconditional CrystaLLM
 Do not set the `--activate_conditionality` flag.
@@ -123,7 +113,7 @@ This is the standard CrystaLLM/GPT-2 architecture for generative tasks. It learn
 #### a. PKV-GPT 
 (`--activate_conditionality="PKV"`)
 
-PKV (Past Key-Value) conditioning injects property information directly into the attention mechanism's past key-values. This allows the model to steer generation based on the desired properties by concatenating the conditional embeddings at each layer of the transformer in the attention mechanism. It is a 'strong' conditioning method and balances expressivity of conditioning and straightforward implementation.
+PKV (Property-Key-Value) conditioning injects property information directly into the attention mechanism's past key-values. This allows the model to steer generation based on the desired properties by concatenating the conditional embeddings at each layer of the transformer in the attention mechanism. It is a 'strong' conditioning method and balances expressivity of conditioning and straightforward implementation.
 
 #### b. Prepend-GPT 
 (`--activate_conditionality="Prepend"`)
@@ -143,239 +133,257 @@ A baseline approach where numerical condition values are simply converted to tex
 
 ## Usage
 
-### Data Processing
-Before training, raw crystallographic data must be processed to ensure quality and consistency. The preprocessing pipeline involves deduplication, cleaning, normalization, and formatting for use with Hugging Face.
+### Data Processing Pipeline
+Before training, crystallographic data needs preprocessing to ensure quality and consistency. The pipeline consists of deduplication, cleaning, optional XRD conditioning, and formatting for Hugging Face.
 
+**Step 1: Data Preparation**
 
-**1. Gathering Data**
-To gather data in the format readable by the package, you must creata a [pandas dataframe](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html) and save it to a [.parquet format](https://huggingface.co/blog/cfahlgren1/intro-to-parquet-format). This format is good for efficiently handling large databases and is how huggingface datasets are stored.
+Your input data should be a [pandas DataFrame](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html) saved as a [Parquet file](https://huggingface.co/blog/cfahlgren1/intro-to-parquet-format). This format efficiently handles large databases and integrates seamlessly with Hugging Face datasets.
 
-The dataframe **must** have the following columns:
-- `Database`: Name of database that CIF file comes from
-- `Reduced Formula`: Standard reduced formula of the material (is used in evaluation metrics)
-- `CIF`: The CIF of the material that you want the model to train on
+**Required columns:**
+- `Database`: Source database name
+- `Reduced Formula`: Standard reduced chemical formula (used in evaluation metrics) 
+- `CIF`: The crystallographic structure in CIF format
 
-*Optionally*, we can include:
-- `Material ID`: If the material has an ID in the database, it is good to track the Material ID for each structure to ensure traceability
-- `<Property Columns>`: If there is a conditional generation task, the property associated to each of the CIFs should be stored in the column of that row. (Change name to whatever the property is)
+**Optional columns:**
+- `Material ID`: Database identifier for traceability
+- `<Property Columns>`: Target properties for conditional generation (e.g., "Bandgap (eV)", "Density (g/cm^3)")
+- `condition_vector`: If we have an already standardised and compatible condition vector (like in the XRD studies), we can store a column which contains the vector string, removing the need for any additional processing
 
-**2. Deduplication and Filtering**
+**Step 2: Deduplication and Filtering**
 
-The first step is to remove duplicate entries and filter the dataset. The `_deduplicate.py` script identifies unique structures based on their chemical formula and space group, keeping the one with the lowest volume per formula unit. It can also filter out entries with missing or invalid property values.
+Remove duplicate structures and filter invalid entries using `_deduplicate.py`. This script identifies unique structures based on chemical formula and space group, keeping the one with lowest volume per formula unit.
 
 ```bash
 python _utils/_preprocessing/_deduplicate.py \
-  path/to/your/raw_data.parquet \
-  --out path/to/your/deduplicated_data.parquet \
-  ### Optionally if doing conditional generation ###
-  --property_columns "['Bandgap (eV)', 'energy_above_hull']" \
-  --filter_na_columns "['Bandgap (eV)']"
+  --input_file /path/to/raw_data.parquet \
+  --output_parquet /path/to/deduplicated_data.parquet \
+  --property_columns "['Bandgap (eV)', 'Density (g/cm^3)']" \
+  --filter_na_columns "['Bandgap (eV)']" \
+  --filter_zero_columns "['Density (g/cm^3)']" \
+  --filter_negative_columns "['Bandgap (eV)']"
 ```
-> Note: For the file paths, make sure you include a full path rather than just a file name. 
 
-**3. Cleaning and Normalization**
+**Available filters:**
+- `--filter_na_columns`: Remove entries with N/A or NaN values
+- `--filter_zero_columns`: Remove entries with zero values  
+- `--filter_negative_columns`: Remove entries with negative values
 
-Next, the CIF strings are cleaned and standardized using `_cleaning.py`. This script performs several augmentations:
-- Standardizes the CIF format for the model.
-- Adds a block with atomic properties (e.g., electronegativity).
-- Rounds numerical values to a consistent number of decimal places.
-- For conditional training, it normalizes the target property values to a [0, 1] range using methods like linear or power-log scaling.
+**Step 3: CIF Cleaning and Property Normalization**
+
+Standardize CIF format and normalize properties using `_cleaning.py`. This performs several critical transformations:
+
+- Standardizes CIF syntax and formatting
+- Adds atomic property blocks (electronegativity, radius, ionic radius)
+- Rounds numerical values to consistent precision
+- Normalizes property values to [0,1] range for stable training
 
 ```bash
 python _utils/_preprocessing/_cleaning.py \
-  path/to/your/deduplicated_data.parquet \
-  --out path/to/your/cleaned_data.parquet \
-  --workers 8
-  ### Optionally if doing conditional generation ###
-  --property_columns "['Bandgap (eV)', 'energy_above_hull']" \
+  --input_parquet /path/to/deduplicated_data.parquet \
+  --output_parquet /path/to/cleaned_data.parquet \
+  --num_workers 8 \
+  --property_columns "['Bandgap (eV)', 'Density (g/cm^3)']" \
   --property1_normaliser "power_log" \
-  --property2_normaliser "linear" \
+  --property2_normaliser "linear"
 ```
 
-**4. Saving to Hugging Face**
+**Normalization methods:**
+- `linear`: Linear scaling to [0,1]
+- `power_log`: Power transformation followed by log scaling
+- `signed_log`: Signed logarithmic transformation
+- `log10`: Base-10 logarithmic scaling
+- `None`: No normalization
 
-- `_save_dataset_to_HF.py`: Converts the final DataFrame into a `DatasetDict` (with train, validation, and test splits) and pushes it to the Hub.
-- `_save_tokenizer_to_HF.py`: Saves and uploads the custom CIF tokenizer.
+**(Optional): XRD Pattern Generation**
+
+For XRD-based conditional generation, compute powder diffraction patterns using `_calculate_XRD.py` which leverages pymatgens XRD calculator. This makes condition vectors from the top-20 diffraction peaks (from their CIFs).
+
+**Step 5: Dataset Upload to Hugging Face**
+
+Convert to Hugging Face format with train/validation/test splits:
 
 ```bash
-# Save the dataset to the Hub
 python _utils/_preprocessing/_save_dataset_to_HF.py \
-  path/to/your/cleaned_data.parquet \
-  --out "local-dataset-dir/your-dataset-name" \
-  --hf_key_path "API_keys.jsonc" \
-  --HF_username "your-hf-username" \
+  --input_parquet /path/to/processed_data.parquet \
+  --output_parquet "your-dataset-name" \
+  --test_size 0.1 \
+  --valid_size 0.1 \
+  --HF_username "your-username" \
   --save_hub \
-  ### You can optionally save locally ###
   --save_local
-
-
-#####################
-# Optional
-#####################
-# Save the tokenizer to the Hub
-# The tokenizer is already present in the repo and works as is
-# But if you make changes to it this is how you can push it to hub
-python _utils/_preprocessing/_save_tokenizer_to_HF.py \
-  --path "HF-cif-tokenizer" \
-  --hub_path "your-hf-username/cif-tokenizer" \
-  --hf_key_path "API_keys.jsonc" \
-  --push_to_hub
 ```
 
-> See the [Data Preprocessing Notebook](notebooks/A_Preprocess_data.ipynb).
+**Split options:**
+- `--duplicates`: Prevents data leakage by splitting on Material ID
+- `--test_size 0.0 --valid_size 0.0`: All data goes to training set
+- Uses existing "Split" column if present in DataFrame
 
+<!-- > See the [Data Preprocessing Notebook](notebooks/A_Preprocess_data.ipynb). -->
 
 ### Training the Model
 
-**If training on CPU or 1 GPU, use python _train.py**
+CrystaLLM-2.0 supports both single-GPU and multi-GPU training. All training parameters are configured via `.jsonc` config files. See example configs in [`_config_files/`](_config_files/).
 
-**If training on multiple GPUs, use torchrun --nproc_per_node=$N$ _train.py --config ''**
-**And make sure the deepspeed path argument is set to the deepspeed config default path**
+#### Base Model Pretraining
 
-**Standard (Non-conditional) Training:**
+You can train a model from scratch on CIFs using the `_config_files/og_train/lematerial-small.jsonc` config. Or you ca simply download the pretrained model using:
+
+!!!!!!!todo!!!!!!!!!!
+
+#### Conditional Fine-tuning
+
+Fine-tune a pretrained base model to condition on specific properties:
+
+**Single GPU:**
 ```bash
-python _train.py --config _config_files/cg_train/test.jsonc
+python _train.py --config _config_files/cg_train/ft-slme/slme_ft-PKV.jsonc
 ```
 
-**Conditional Training:**
-To train a model that conditions on properties, activate conditionality and specify the relevant columns from your dataset.
+**Multi-GPU:**
 ```bash
-python _train.py \
-  --config _config_files/cg_train/your_config.jsonc \
-  --activate_conditionality="PKV" \
-  --condition_columns="['Bandgap (eV)']" \
-  --n_prefix_tokens=2
+torchrun --nproc_per_node=2 _train.py --config _config_files/cg_train/ft-slme/slme_ft-PKV.jsonc
 ```
 
-> See the [Training Notebook](notebooks/B_Train_model.ipynb).
+To get an idea of what the arguments do and now to use them, go to the [Args Script](_args.py_)
 
-### Crafting Prompts
-You can generate prompts for both unconditional and conditional generation using the provided scripts. The output is a `.parquet` file that can be used as input for the generation scripts.
+<!-- > See the [Training Notebook](notebooks/B_Train_model.ipynb) for examples. -->
 
+### Generating Crystal Structures
 
-#### Unconditional Prompts
+Generating CIFs with a standardised format is a 3-step process here: create prompts, generate CIFs, and post-process. All outputs are `.parquet` files for easy handling.
 
-Use the `_utils/_evaluation_og/make_prompts.py` script to create prompts from a chemical formula or a Hugging Face dataset.
+#### Step 1: Create Prompts
 
-**1. From a Chemical Formula:**
+Use `_utils/_generating/make_prompts.py` to create input prompts for generation.
+
+**Manual Prompts (specify compositions and conditions):**
 ```bash
-python _utils/_evaluation_og/make_prompts.py \
-  --material_composition "Na1Cl1,K2S1" \
-  --out "prompts/unconditional_prompts.parquet"
+# For conditional generation with multiple property values
+python _utils/_generating/make_prompts.py \
+  --manual \
+  --compositions "Na1Cl1,K2S1" \
+  --condition_lists "0.2,0.5,1.0" "0.0" \
+  --output_parquet "test_prompts.parquet"
 ```
+> Here the first list is for example property 1 (bandgap) and second is property 2 (ehull stability)
+> Here we can imagine that for each composition, we will make a prompts for each of the condition list pairs. So well have 2 comps * 3 bandgaps * 1 ehull = 6 prompts for each composition-property pair
 
-**2. From a Dataset (for Benchmarking):**
-Extract prompts from a test set on Hugging Face to evaluate performance on known structures.
+**Automatic Prompts (extract from existing datasets):**
 ```bash
-python _utils/_evaluation_og/make_prompts.py \
-  --HF_dataset "your-hf-username/your-dataset" \
+# Extract prompts from HF dataset with different detail levels
+python _utils/_generating/make_prompts.py \
+  --automatic \
+  --HF_dataset "c-bone/mp_20_pxrd" \
   --split "test" \
-  --out "prompts/benchmark_prompts.parquet"
+  --level "level_2" \
+  --condition_columns "Condition Vector" \
+  --output_parquet "dataset_prompts.parquet"
 ```
-> See an example in the [Unconditional Evaluation Notebook](notebooks/C1_Evaluation_og.ipynb).
+
+**Prompt detail levels:**
+- `level_1`: Minimal (unconditional generation)
+- `level_2`: Composition only  
+- `level_3`: Composition + atomic properties
+- `level_4`: Up to space group information
 
 
-#### Conditional Prompts
-Use the `_utils/_evaluation_conditional/make_prompts.py` script to create prompts with specific property conditions. The script will generate prompts for every combination of the provided compositions and conditions.
+> In some cases like with XRD studies, we've already constructed the condition vector rather than just storing them in associated columns (because its quite large so would be inefficient to have distinct columsn for each peak and associated intensity - but that would be doable)
+
+#### Step 2: Generate CIFs
+
+Use `_utils/_generating/generate_CIFs.py` with a config file containing your model and generation settings:
+
 ```bash
-python _utils/_evaluation_conditional/make_prompts.py \
-  --material_composition "Al2O3" \
-  --bg_den_conditions "5.5, 6.0" \
-  --ehull_conditions "0.1, 0.05" \
-  --out "prompts/conditional_prompts.parquet"
+python _utils/_generating/generate_CIFs.py \
+  --config _config_files/cg_eval/your_eval_config.jsonc
 ```
-> See an example in the [Conditional Evaluation Notebook](notebooks/C2_Evaluation_CG.ipynb).
 
+**Required config settings:**
+```jsonc
+{
+  "model_ckpt_dir": "path/to/your/model/checkpoint",
+  "input_parquet": "test_prompts.parquet", 
+  "output_parquet": "generated_cifs.parquet",
+  "activate_conditionality": "PKV",  // or "Prepend", "Slider", "Raw", "None"
+  "gen_max_length": 1024, // whatever your contect length here or below
+  "do_sample": true,
+  "num_return_sequences": 1, //How much 1 GPU can handle at once
+  "num_repeats": 2 // num_return_sequences * num_repeats = total gens per prompt
+}
+```
 
-### Generating Structures
-
-**Unconditional Generation:**
+#### Optional: Evaluate CIFs (pass non-processed CIFs)
+**Evaluate** structural validity:
 ```bash
-python _utils/_evaluation_og/generate_CIFs.py \
-  --config _config_files/og_eval/your_config.jsonc \
-  --prompt="<bos>\ndata_[Na1Cl1]\n" \
-  --num_return_sequences=5
+python _utils/_generating/evaluate_CIFs.py \
+  --input_parquet "generated_cifs.parquet" \
+  --num_workers 8 \
+  --save_valid_parquet
 ```
+> `--save_valid_parquet` can be set if you want to save just the chemically cvalid outputs
+> you dont need to evaluate your output cifs, but its quick check to see if your model isnt outputting gibberish
 
-> See an example in the [Unconditional Evaluation Notebook](notebooks/C1_Evaluation_og.ipynb).
+#### Step 3: Post-process
 
-
-**Conditional Generation:**
-Provide a `condition_vector` to guide the generation towards a specific property value.
+**Post-process** generated CIFs to standard format:
 ```bash
-python _utils/_evaluation_conditional/generate_CIFs.py \
-  --model_ckpt_dir="model_ckpts/my_conditional_model" \
-  --prompt="<bos>\ndata_[Al2O3]\n" \
-  --condition_vector="5.5" \
-  --num_return_sequences=5
+python _utils/_generating/postprocess.py \
+  --input_parquet "generated_cifs.parquet" \
+  --output_parquet "processed_cifs.parquet" \
+  --num_workers 4
 ```
 
-> See an example in the [Conditional Evaluation Notebook](notebooks/C2_Evaluation_CG.ipynb).
-
+<!-- > See complete examples in the [Generation Notebook](notebooks/C_Generate_CIFs.ipynb). -->
 
 ## Evaluation
 
-### Structural Metrics
-After generation, CIFs must be evaluated for physical and chemical correctness. The `evaluate_CIFs.py` script assesses structural validity.
+CrystaLLM-2.0 provides comprehensive metrics to evaluate generated crystal structures across structural validity, property accuracy, and material stability.
 
-**A Structure is Valid if:**
-- The declared spacegroup is consistent with the generated structure
-- The generated bond lengths are reasonable, and
-- The declared atom site multiplicity is consistent with the cell composition.
+### Core Evaluation Metrics
 
-**Run Evaluation:**
+#### 1. VUN Metrics (Validity, Uniqueness, Novelty)
+Essential metrics for assessing generation quality using structural analysis.
+
 ```bash
-python _utils/_evaluation_og/evaluate_CIFs.py \
-  --gen_cifs path/to/generated.parquet \
-  --metrics_out path/to/metrics.parquet \
-  --workers 8
+python _utils/_metrics/VUN_metrics.py \
+  --gen_data generated_structures.parquet \
+  --huggingface_dataset "c-bone/mp_20" \
+  --output_csv vun_results.csv \
+  --num_workers 8
 ```
-> See an example in the [Conditional Evaluation Notebook](notebooks/C2_Evaluation_CG.ipynb).
 
-Any other postprocessing we need to postprocess files (so they are back to standard CIF files format)
+**Metrics computed:**
+- **Validity**: Structures with correct spacegroup, reasonable bond lengths, and consistent atom multiplicities
+- **Uniqueness**: Distinct structures within the generated set (using BAWL hashing)
+- **Novelty**: Structures not present in the training dataset (from Structure Matcher if same Reduced Formula)
 
-### Stability (MACE E-hull)
-A critical metric for material stability is the energy above the convex hull (E-hull). Lower values (closer to zero) indicate higher stability. We use the MACE model for fast and accurate energy predictions.
+#### 2. Energy Above Hull (Stability)
+Calculate thermodynamic stability using MACE energy predictions and Materials Project corrections.
 
-The `mace_ehull.py` script calculates the E-hull for a set of CIFs. It requires a parquet file of valid, post-processed structures.
-
-**Run Stability Calculation:**
 ```bash
-# Ensure you are in the crystallmv2_env conda environment
-python _utils/_evaluation_conditional/mace_ehull.py \
-  --post_parquet path/to/postprocessed.parquet \
-  --output_parquet path/to/stability_results.parquet \
-  --n_jobs 4
+python _utils/_metrics/mace_ehull.py \
+  --post_parquet postprocessed_structures.parquet \
+  --output_parquet stability_results.parquet \
+  --num_workers 4
 ```
-> See an example in the [Conditional Evaluation Notebook](notebooks/C2_Evaluation_CG.ipynb).
 
+Lower E-hull values indicate higher thermodynamic stability. In theory between anything below 0.1 ev/atom is metastable, here if we account for MAE of the surrogate model (See MACE-MP-0 on Matbench Discovery), we can loosen theshold to 0.157 if desired.
 
-### Automated Pipelines
-For streamlined workflows, use the provided pipeline scripts:
+#### 3. Other metrics
+XRD, Bandgap, Density, or challenge set benchmark metrics can also be calculated for further property analysis. If wanted, find the associated scripts in [the _metrics folder](_utils/_metrics/)
 
-- **Conditional Pipeline (`CG_pipeline.py`):** Automates conditional generation, property evaluation, and stability analysis.
-  ```bash
-  python _utils/_evaluation_conditional/CG_pipeline.py
-  ```
-  > See the [Conditional Metrics Notebook](notebooks/D2_Metrics_CG.ipynb).
-- **Unconditional Benchmark Pipeline (`bench_pipeline.py`):** Automates generation, post-processing, and benchmarking against standard datasets.
-  ```bash
-  python _utils/_evaluation_og/bench_pipeline.py
-  ```
-  > See the [Unconditional Evaluation Notebook](notebooks/C1_Evaluation_og.ipynb).
+> **Environment Note**: ALIGNN-based scripts require the separate `alignn_env` environment due to dependency conflicts. Use `conda run -n alignn_env` for these tools.
 
+<!-- > See examples in the [Evaluation Notebooks](notebooks/) starting with C_ and D_. -->
 
-> See the respective scripts for more details on the pipeline.
-
-## Example uses
+## Studies
 
 To have a look at how the experiments from the paper were carried out, the notebooks used to generate the results are available in the [Notebooks that start with X_](notebooks/)
-
 
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ## Contact
-
-For questions or support, please contact cyprien.bone.24@ucl.ac.uk or raise an issue on the
+For questions or support, please contact cyprien.bone.24@ucl.ac.uk or raise an issue on the gighub page

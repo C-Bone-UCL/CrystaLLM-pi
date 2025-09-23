@@ -186,12 +186,12 @@ def print_property_metrics(df, property_targets, condition_column_name, sort_met
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Calculate property metrics for CIF structures.")
-    parser.add_argument("--processed_data", required=True, help="Path to processed parquet file with VUN metrics.")
+    parser.add_argument("--post_parquet", required=True, help="Path to processed parquet file with VUN metrics.")
     parser.add_argument("--parquet_out", default=None, help="Path to save updated parquet with property metrics.")
     parser.add_argument("--metrics_out", default=None, help="Path to save property metrics CSV.")
     parser.add_argument("--sort_metrics_by", default="all", choices=["all", "Condition Vector", "both"], help="How to group results for metrics.")
     parser.add_argument("--num_workers", required=False, default=8, type=int, help="Number of parallel workers.")
-    parser.add_argument("--property_targets", type=str, default="[]", help='List of property columns, e.g., ["Bandgap (eV)"]. Default is empty list.')
+    parser.add_argument("--property_targets", type=str, default="[]", help='List of property columns (unnormalised), in the same order as in the condition vector. E.g. \'["Bandgap (eV)", "Energy Above Hull (eV)"]\'.')
     
     # Normalization parameters for up to 3 properties
     for i in range(1, 4):
@@ -206,8 +206,8 @@ def main():
     args = parse_arguments()
     
     # Load processed data
-    print(f"Loading processed data from {args.processed_data}...")
-    gen_df_proc = pd.read_parquet(args.processed_data)
+    print(f"Loading processed data from {args.post_parquet}...")
+    gen_df_proc = pd.read_parquet(args.post_parquet)
     
     # Parse property targets
     try:

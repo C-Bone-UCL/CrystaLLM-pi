@@ -244,7 +244,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_gens", default=0, type=int, help="Max generations per structure (0=all)")
     parser.add_argument("--num_workers", type=int, default=1, help="Workers for parallel processing")
     parser.add_argument("--output_parquet", required=True, type=str, help="Output path for statistics")
-    parser.add_argument("--path_to_db", default=None, type=str, help="Override true CIFs from this DB")
+    parser.add_argument("--ref_parquet", default=None, type=str, help="Override true CIFs from this DB")
 
     args = parser.parse_args()
 
@@ -260,8 +260,8 @@ if __name__ == "__main__":
     print(f"Loaded {len(id_to_gen_cifs)} materials from {args.input_parquet}")
 
     # Load true CIFs
-    if args.path_to_db:
-        df_testdb = pd.read_parquet(args.path_to_db)
+    if args.ref_parquet:
+        df_testdb = pd.read_parquet(args.ref_parquet)
         if "Split" in df_testdb.columns:
             df_testdb = df_testdb[df_testdb["Split"] == "test"]
         

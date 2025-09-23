@@ -1,0 +1,13 @@
+{
+    "gen_max_length": 1024,
+    "do_sample": true,
+    "top_k": 10,
+    "top_p": 0.95,
+    "temperature": 0.7,
+    "model_ckpt_dir": "model_ckpts/mpdb-small-base-lematerial/checkpoint-1250000",
+    "num_return_sequences": 5,
+    "parquet_in": "_artifacts/challenge_set/challenge_prompt_sg.parquet",
+    "parquet_out": "_artifacts/challenge_set/gen_sg_07T10K.parquet",
+    // "prompt": "<bos>\ndata_["
+    "num_repeats": 20
+  }

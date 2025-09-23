@@ -276,6 +276,12 @@ if __name__ == "__main__":
         columns_to_keep = ['Prompt']
         if 'condition_vector' in result_df.columns:
             columns_to_keep.append('condition_vector')
+        if 'Condition Vector' in result_df.columns:
+            columns_to_keep.append('Condition Vector')
+        if 'Material ID' in result_df.columns:
+            columns_to_keep.append('Material ID')
+        elif 'Material_ID' in result_df.columns:
+            columns_to_keep.append('Material_ID')
         result_df = result_df[columns_to_keep]
         print(f"\nRemoved reference columns, keeping only: {columns_to_keep}")
 

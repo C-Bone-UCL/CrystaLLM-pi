@@ -155,14 +155,14 @@ def parse_condition_vector(condition_vector):
     else:
         return [float(condition_vector)]
 
-def determine_material_id(row, generated_count):
+def determine_material_id(row, generated_count, global_offset=0):
     """Determine material ID from row data."""
     if "Material ID" in row:
         return row["Material ID"]
     elif "Formula" in row:
         return row["Formula"]
     else:
-        return f"Generated_{generated_count + 1}"
+        return f"Generated_{generated_count + global_offset + 1}"
 
 def init_worker(model_ckpt_dir, pretrained_tokenizer_dir, activate_conditionality):
     global global_model, global_tokenizer
@@ -208,6 +208,7 @@ def generate_on_gpu(
     model_ckpt_dir,
     activate_conditionality,
     num_repeats,
+    global_offset=0,
     max_attempts=5,
 ):
     global global_model, global_tokenizer
@@ -270,7 +271,7 @@ def generate_on_gpu(
                             output = output[: int(eos_idx[0])]
                         
                         cif_txt = tokenizer.decode(output, skip_special_tokens=True).replace("\n\n", "\n")
-                        mid = determine_material_id(row, len(generated))
+                        mid = determine_material_id(row, len(generated), global_offset)
                         
                         generated.append({
                             "Material ID": mid,
@@ -300,7 +301,7 @@ def generate_on_gpu(
                     if activate_conditionality == "Raw":
                         cif_txt = remove_conditionality(cif_txt)
                     
-                    mid = determine_material_id(row, len(generated))
+                    mid = determine_material_id(row, len(generated), global_offset)
                     
                     generated.append({
                         "Material ID": mid,
@@ -381,7 +382,9 @@ def main():
     
     # Optimize for single prompt case: duplicate prompt and halve repeats for better GPU utilization
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
+    single_prompt_optimization = False
     if len(df_prompts) == 1 and num_gpus > 1 and args.num_repeats > 1:
+        single_prompt_optimization = True
         original_repeats = args.num_repeats
         args.num_repeats = args.num_repeats // num_gpus
         # Duplicate the single prompt for each GPU
@@ -413,16 +416,22 @@ def main():
                 results.append(pool.apply_async(
                     generate_on_gpu,
                     (0, df_prompts, generation_kwargs, queue, 0, total_samples,
-                    args.model_ckpt_dir, args.activate_conditionality, args.num_repeats)
+                    args.model_ckpt_dir, args.activate_conditionality, args.num_repeats, 0)
                 ))
             else:
                 for gpu_id in range(num_gpus):
                     start = gpu_id * samples_per_gpu
                     end = (gpu_id + 1) * samples_per_gpu if gpu_id != num_gpus - 1 else total_samples
+                    # Calculate global offset for material ID generation
+                    if single_prompt_optimization:
+                        # For single prompt case, each GPU should have unique material ID ranges
+                        global_offset = gpu_id * args.num_return_sequences * args.num_repeats
+                    else:
+                        global_offset = 0
                     results.append(pool.apply_async(
                         generate_on_gpu,
                         (gpu_id, df_prompts, generation_kwargs, queue, start, end,
-                        args.model_ckpt_dir, args.activate_conditionality, args.num_repeats)
+                        args.model_ckpt_dir, args.activate_conditionality, args.num_repeats, global_offset)
                     ))
         except Exception as e:
             print(f"(Did you set the correct activate conditionality??. Generation error: {e}")
@@ -438,6 +447,12 @@ def main():
     
     # Create and save output
     df = create_output_dataframe(generated_data, args, df_prompts)
+
+    # if there is a directory in the output path, create it
+    output_dir = os.path.dirname(args.output_parquet)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        
     df.to_parquet(args.output_parquet, index=False)
     print(f"\nSaved {len(df)} generated CIFs to {args.output_parquet}")
     

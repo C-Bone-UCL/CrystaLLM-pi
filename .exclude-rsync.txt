@@ -1,4 +1,3 @@
-_utils/_evaluation_files/
 _comp_metrics/
 __logs__/
 __pycache__/
@@ -10,7 +9,14 @@ optuna_hpsearch_PKV_slme.db
 Singularity.def
 None
 HF-databases/
-_old_files/
+__old_files/
 .github
-exclude-rsync.txt
-_scripts_in_dev/
+.exclude-rsync.txt
+__scripts_in_dev/
+__old_config_files/
+_artifacts/
+__notebook_drafts/
+run-pxrd.py
+.git/
+__old_model_ckpts/
+__notebooks_drafts/

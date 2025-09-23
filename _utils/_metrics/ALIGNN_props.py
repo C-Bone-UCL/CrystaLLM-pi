@@ -218,7 +218,6 @@ def _parse_single_cif(args):
         try:
             atoms_tmp = Atoms.from_cif(from_string=cif_str, get_primitive_atoms=False, use_cif2cell=False)
         except Exception as e:
-            print(f"Error parsing CIF at index {idx}: {e}, unable to parse CIF.")
             return (idx, None)
         
     return (idx, atoms_tmp)

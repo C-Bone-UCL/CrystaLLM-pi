@@ -1,0 +1,13 @@
+{
+  "activate_conditionality": "Prepend",
+  "gen_max_length": 1024,
+  "do_sample": true,
+  "top_k": 30,
+  "top_p": 0.95,
+  "temperature": 0.7,
+  "model_ckpt_dir": "model_ckpts/pretraining_benefits/mpdb_2prop_scratch/prepend",
+  "num_return_sequences": 10,
+  "num_repeats": 100,
+  "parquet_in": "_artifacts/pretrain_benefits/mpdb-2prop_prompts.parquet",
+  "parquet_out": "_artifacts/pretrain_benefits/scratch-methods/mpdb_scratch-prepend_gen.parquet"
+}
