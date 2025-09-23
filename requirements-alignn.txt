@@ -1,0 +1,14 @@
+# Need to install DGL from the DGL wheel repository
+# pip3 install dgl -f https://data.dgl.ai/wheels/torch-2.1/cu121/repo.html
+# pip install git+https://github.com/lematerial/material-hasher.git
+
+# Packages
+alignn==2024.12.12
+pyarrow==19.0.1
+fastparquet==2024.11.0
+cif2cell==2.1.0
+pymatgen==2025.1.9
+mp_api==0.45.3
+datasets==3.4.1
+transformers==4.49.0
+codecarbon==2.8.3

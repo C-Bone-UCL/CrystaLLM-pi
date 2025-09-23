@@ -1,0 +1,13 @@
+{
+  "gen_max_length": 2048,
+  "do_sample": true,
+  "top_k": 10,
+  "top_p": 0.95,
+  "temperature": 1.3,
+  "model_ckpt_dir": "model_ckpts/Carbon-24-small-nico",
+  "num_return_sequences": 20,
+  "parquet_in": "model_evaluation/evaluation_files/benchmark/Carbon-24_prompts.parquet",
+  "parquet_out": "model_evaluation/evaluation_files/benchmark/Carbon-24-small_gen.parquet",
+  // "max_samples": 10
+  // "prompt": "<bos>\ndata_[C8]\n"
+}

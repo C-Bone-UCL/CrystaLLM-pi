@@ -1,0 +1,15 @@
+_utils/_evaluation_files/
+_comp_metrics/
+__logs__/
+__pycache__/
+model_ckpts/
+wandb/
+dataset_data_range
+mp_computed_structure_entries.json.gz
+optuna_hpsearch_PKV_slme.db
+Singularity.def
+None
+HF-databases/
+_old_files/
+.github
+exclude-rsync.txt

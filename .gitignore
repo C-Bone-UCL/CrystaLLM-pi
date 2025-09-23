@@ -1,0 +1,15 @@
+wandb/
+__pycache__/
+model_ckpts/
+_utils/_evaluation/evaluation_files/
+HF-databases/
+_comp_metrics/
+API_keys.jsonc
+optuna_hpsearch_cllmv2.db
+benchmark_metrics.csv
+_utils/_evaluation_conditional/alignn_model_ckpts/
+_utils/_evaluation_conditional/evaluation_files/
+_models/Slider_model copy.py
+_utils/_evaluation_og/lematerial-small-ppo_gen.parquet
+logs/
+.github/

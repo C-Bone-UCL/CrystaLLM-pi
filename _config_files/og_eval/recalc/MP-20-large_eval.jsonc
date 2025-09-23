@@ -1,0 +1,12 @@
+{
+    "gen_max_length": 1024,
+    "do_sample": true,
+    "top_k": 10,
+    "top_p": 0.95,
+    "temperature": 1.2,
+    "model_ckpt_dir": "model_ckpts/ogbench/MP-20-small-nico/checkpoint-8000",
+    "num_return_sequences": 20,
+    "parquet_in": "_utils/_evaluation_og/benchmark/MP-20_prompts.parquet",
+    "parquet_out": "_utils/_evaluation_og/benchmark/MP-20-large_gen.parquet",
+    // "prompt": "<bos>\ndata_[K1Mg1Mn2Al1Ge3O10F2]\n"
+  }

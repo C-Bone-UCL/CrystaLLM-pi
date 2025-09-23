@@ -1,0 +1,13 @@
+{
+    "gen_max_length": 2048,
+    "do_sample": true,
+    "top_k": 20,
+    "top_p": 0.95,
+    "temperature": 1.2,
+    "model_ckpt_dir": "model_ckpts/MPTS-52-large-young/checkpoint-11250",
+    "num_return_sequences": 20,
+    "parquet_in": "model_evaluation/evaluation_files/benchmark/MPTS-52_prompts.parquet",
+    "parquet_out": "model_evaluation/evaluation_files/benchmark/MPTS-52-large_gen.parquet"
+    // "max_samples": 10
+    // "prompt": "<bos>\ndata_[C8]\n"
+  }

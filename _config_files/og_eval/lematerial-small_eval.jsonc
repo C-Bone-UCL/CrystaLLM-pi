@@ -1,0 +1,13 @@
+{
+    "gen_max_length": 1024,
+    "do_sample": true,
+    "top_k": 20,
+    "top_p": 0.95,
+    "temperature": 1.2,
+    "model_ckpt_dir": "model_ckpts/mpdb-small-base-lematerial/checkpoint-1250000",
+    "num_return_sequences": 20,
+    "parquet_in": "_utils/_evaluation_og/generation_files/exp_prompts.parquet",
+    "parquet_out": "_utils/_evaluation_og/lematerial-small-exp-test_gen.parquet",
+    // "prompt": "<bos>\ndata_["
+    "num_repeats": 1
+  }

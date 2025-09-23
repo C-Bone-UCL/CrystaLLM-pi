@@ -1,0 +1,12 @@
+{
+  "gen_max_length": 2048,
+  "do_sample": true,
+  "top_k": 10,
+  "top_p": 0.95,
+  "temperature": 1.3,
+  "model_ckpt_dir": "model_ckpts/Perov-5-small-nico",
+  "num_return_sequences": 20,
+  "parquet_in": "model_evaluation/evaluation_files/benchmark/Perov-5_prompts.parquet",
+  "parquet_out": "model_evaluation/evaluation_files/benchmark/Perov-5-small_gen.parquet"
+  // "prompt": "<bos>\ndata_Ti1Os1N1O1F1\n"
+}
