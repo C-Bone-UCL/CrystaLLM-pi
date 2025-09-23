@@ -13,3 +13,4 @@ HF-databases/
 _old_files/
 .github
 exclude-rsync.txt
+_scripts_in_dev/
