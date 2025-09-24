@@ -255,8 +255,10 @@ def main():
     trainer.train()
 
     # Final evaluation
-    eval_results = trainer.evaluate()
-    print("Evaluation Results:", eval_results)
+    if args.eval_strategy != "no":
+        eval_results = trainer.evaluate()
+        print("Evaluation Results:", eval_results)
+    
     print("Saving model to:", args.output_dir)
 
     # Cleanup

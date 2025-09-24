@@ -23,14 +23,15 @@ def validate_condition_values(tokenized_dataset, dataset_with_idx, parsed_condit
     original_conditions = []
     for col_name in parsed_condition_columns:
         original_value = dataset_with_idx["train"][col_name][row_idx_raw]
-        if col_name == "Condition Vector" and isinstance(original_value, str):
-            try:
-                parsed_list = ast.literal_eval(original_value)
-                rounded_list = [round(float(v), 4) for v in parsed_list]
-                original_conditions.extend(rounded_list)
-            except (ValueError, SyntaxError) as e:
-                print(f"Warning: Could not parse 'Condition Vector' for row {row_idx_raw}: {e}")
-                original_conditions.extend([-100.0])
+        if col_name == "Condition Vector" or col_name == "condition_vector":
+            if isinstance(original_value, str):
+                try:
+                    parsed_list = ast.literal_eval(original_value)
+                    rounded_list = [round(float(v), 4) for v in parsed_list]
+                    original_conditions.extend(rounded_list)
+                except (ValueError, SyntaxError) as e:
+                    print(f"Warning: Could not parse 'Condition Vector' for row {row_idx_raw}: {e}")
+                    original_conditions.extend([-100.0])
         elif isinstance(original_value, (int, float)):
             original_conditions.append(round(float(original_value), 4))
         elif isinstance(original_value, str):

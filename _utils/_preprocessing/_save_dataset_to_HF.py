@@ -77,17 +77,26 @@ def create_dataset_splits(df, test_size, valid_size, duplicates_mode=False):
     
     elif 'Split' in df.columns:
         print("Splitting dataset according to the 'Split' column")
-        df_train = df[df['Split'] == 'train'].drop(columns=['Split']).reset_index(drop=True)
-        df_valid = df[df['Split'] == 'val'].drop(columns=['Split']).reset_index(drop=True) 
-        df_test = df[df['Split'] == 'test'].drop(columns=['Split']).reset_index(drop=True)
         
-        print('Train columns:', df_train.columns.tolist())
+        # Check which splits are actually present
+        available_splits = df['Split'].unique()
         
-        return DatasetDict({
-            'train': Dataset.from_pandas(df_train),
-            'validation': Dataset.from_pandas(df_valid),
-            'test': Dataset.from_pandas(df_test)
-        })
+        result_dict = {}
+        
+        if 'train' in available_splits:
+            df_train = df[df['Split'] == 'train'].drop(columns=['Split']).reset_index(drop=True)
+            result_dict['train'] = Dataset.from_pandas(df_train)
+            print('Train columns:', df_train.columns.tolist())
+        
+        if 'val' in available_splits:
+            df_valid = df[df['Split'] == 'val'].drop(columns=['Split']).reset_index(drop=True)
+            result_dict['validation'] = Dataset.from_pandas(df_valid)
+        
+        if 'test' in available_splits:
+            df_test = df[df['Split'] == 'test'].drop(columns=['Split']).reset_index(drop=True)
+            result_dict['test'] = Dataset.from_pandas(df_test)
+        
+        return DatasetDict(result_dict)
     
     else:
         # Random splitting

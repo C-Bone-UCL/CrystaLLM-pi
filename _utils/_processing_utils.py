@@ -23,10 +23,13 @@ from pymatgen.symmetry.groups import SpaceGroup
 from pymatgen.core.operations import SymmOp
 from pymatgen.core import Composition, Structure
 from pymatgen.io.cif import CifParser
+from _tokenizer import CustomCIFTokenizer
+
 
 logger = logging.getLogger(__name__)
 
 # Adapted from original CrystaLLM repo: https://github.com/lantunes/CrystaLLM
+
 
 def get_unit_cell_volume(a, b, c, alpha_deg, beta_deg, gamma_deg):
     alpha_rad = math.radians(alpha_deg)
@@ -522,3 +525,18 @@ def add_variable_brackets_to_cif(cif_str):
             i += 1
 
     return "\n".join(new_lines)
+
+
+def filter_df_to_context(
+    df: pd.DataFrame,
+    context: int = 1024,
+    cif_column: str = "CIF"
+) -> pd.DataFrame:
+    
+    tokenizer = CustomCIFTokenizer.from_pretrained(
+        pretrained_dir='HF-cif-tokenizer',
+        pad_token="<pad>"
+        )
+
+    mask = df[cif_column].fillna("").apply(lambda x: len(tokenizer.tokenize(x)) <= context)
+    return df.loc[mask].reset_index(drop=True)

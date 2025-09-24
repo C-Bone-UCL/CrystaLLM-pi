@@ -1,0 +1,13 @@
+{
+  "activate_conditionality": "None",
+  "gen_max_length": 1024,
+  "do_sample": true,
+  "top_k": 50,
+  "top_p": 0.95,
+  "temperature": 0.25,
+  "model_ckpt_dir": "model_ckpts/mpdb-small-base-lematerial/checkpoint-1250000",
+  "num_return_sequences": 10,
+  "num_repeats": 100,
+  "input_parquet": "_artifacts/fgw/uncond_ptnd_prompt.parquet",
+  "output_parquet": "_artifacts/fgw/uncond_025T-2_gen.parquet"
+}

@@ -105,6 +105,9 @@ if __name__ == "__main__":
                         help="Normalization method for the second property column.")
     parser.add_argument("--property3_normaliser", type=str, choices=["power_log", "linear", "signed_log", "log10", "None"], default="None",
                         help="Normalization method for the third property column.")
+    # add a --filter_to argument to filter dataframe to context length with given max length
+    parser.add_argument("--filter_to", type=int, default=None,
+                        help="If provided, filter dataframe to context length with given max length.")
 
     args = parser.parse_args()
 
@@ -183,10 +186,16 @@ if __name__ == "__main__":
 
     dataframe.reset_index(drop=True, inplace=True)
 
+    if args.filter_to is not None:
+        from _utils import filter_df_to_context
+        print(f"\nFiltering dataframe of len {len(dataframe)} to context length {args.filter_to}")
+        dataframe = filter_df_to_context(dataframe, context=args.filter_to)
+        print(f"Filtered dataframe length: {len(dataframe)}")
+
     if os.path.dirname(output_fname) != "":
         os.makedirs(os.path.dirname(output_fname), exist_ok=True)
 
-    print(f"\nSaving updated dataframe to {output_fname} as Parquet with zstd compression...")
+    print(f"\nSaving updated dataframe with len {len(dataframe)} to {output_fname}...")
     dataframe.to_parquet(output_fname, compression='zstd')
 
     print("Preprocessing completed successfully.")

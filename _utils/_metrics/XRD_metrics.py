@@ -6,16 +6,15 @@ between generated and true crystal structures
 import os
 import argparse
 import sys
+import re
 from tqdm import tqdm
 import pandas as pd
 import numpy as np
+import multiprocessing
 from pymatgen.io.cif import CifWriter
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from pymatgen.core import Structure
 from pymatgen.analysis.structure_matcher import StructureMatcher
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from _utils import is_sensible
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -25,6 +24,26 @@ LENGTH_LO = 0.5
 LENGTH_HI = 1000.0
 ANGLE_LO = 10.0
 ANGLE_HI = 170.0
+
+
+def is_sensible(cif_str, length_lo=0.5, length_hi=1000., angle_lo=10., angle_hi=170.):
+    """Check if CIF has reasonable lattice parameters."""
+    cell_length_pattern = re.compile(r"_cell_length_[abc]\s+([\d\.]+)")
+    cell_angle_pattern = re.compile(r"_cell_angle_(alpha|beta|gamma)\s+([\d\.]+)")
+
+    cell_lengths = cell_length_pattern.findall(cif_str)
+    for length_str in cell_lengths:
+        length = float(length_str)
+        if length < length_lo or length > length_hi:
+            return False
+
+    cell_angles = cell_angle_pattern.findall(cif_str)
+    for _, angle_str in cell_angles:
+        angle = float(angle_str)
+        if angle < angle_lo or angle > angle_hi:
+            return False
+
+    return True
 
 
 def _symmetrize_cif(struct):
@@ -69,7 +88,7 @@ def _create_empty_row(true_struct, valid_num):
         "True Struct": true_cif, "Gen Struct": None, "RMS-d": None,
         "True a": None, "True b": None, "True c": None, "True volume": None,
         "Gen a": None, "Gen b": None, "Gen c": None, "Gen volume": None,
-        "Valid Num": valid_num
+        "Sensibles Num": valid_num
     }
 
 
@@ -91,7 +110,7 @@ def _create_result_row(true_struct, best_gen, rms_dist, valid_num):
         "RMS-d": rms_dist if rms_dist not in (9999.0,) else None,
         "True a": true_a, "True b": true_b, "True c": true_c, "True volume": true_vol,
         "Gen a": gen_a, "Gen b": gen_b, "Gen c": gen_c, "Gen volume": gen_vol,
-        "Valid Num": valid_num
+        "Sensible Num": valid_num
     }
 
 
@@ -101,6 +120,7 @@ def _calculate_metrics(rms_dists, a_diffs, b_diffs, c_diffs, gen_structs):
     match_rate = np.sum(rms_array != None) / len(gen_structs)
     valid_rms = rms_array[rms_array != None]
     mean_rms_dist = valid_rms.mean() if len(valid_rms) > 0 else None
+    n_matched = np.sum(rms_array != None)
     
     def calc_mean_diff(diffs):
         arr = np.array(diffs, dtype=object)
@@ -110,6 +130,7 @@ def _calculate_metrics(rms_dists, a_diffs, b_diffs, c_diffs, gen_structs):
     return {
         "match_rate": match_rate,
         "rms_dist": mean_rms_dist,
+        "n_matched": n_matched,
         "a_diff": calc_mean_diff(a_diffs),
         "b_diff": calc_mean_diff(b_diffs),
         "c_diff": calc_mean_diff(c_diffs)
@@ -178,7 +199,7 @@ def get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, num_workers):
     true_structs = []
     valid_material_ids = []
     
-    for mid, cifs in tqdm(id_to_gen_cifs.items(), desc="Validating true CIFs"):
+    for mid, cifs in tqdm(id_to_gen_cifs.items(), desc="Parsing true CIFs"):
         if mid not in id_to_true_cifs:
             continue
         try:
@@ -207,7 +228,7 @@ def get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, num_workers):
         all_results = list(tqdm(
             executor.map(_parallel_convert_generated_cif, all_work_args),
             total=len(all_work_args),
-            desc="Converting CIFs"
+            desc="Parsing and sensible check for gen CIFs"
         ))
 
     # Group results by material
@@ -230,6 +251,9 @@ def _parallel_convert_generated_cif(args):
     cif, length_lo, length_hi, angle_lo, angle_hi = args
     try:
         # Check if CIF passes sensibility tests before trying to parse
+        # We only check sensibility because we dont want to remove potentially matching structures
+        # The assumption is that if they are in a test set, they should be generatable
+        # even if they are not fully valid, so they should be considered for matching
         if not is_sensible(cif, length_lo, length_hi, angle_lo, angle_hi):
             return None
         return Structure.from_str(cif, fmt="cif")
@@ -280,6 +304,9 @@ if __name__ == "__main__":
         print(f"Using true CIFs from input parquet")
 
     # Process structures and compute metrics
+    # make sure num_workers doesnt exceed available cpus // 4
+    max_workers = max(1, multiprocessing.cpu_count() // 4)
+    args.num_workers = min(args.num_workers, max_workers)
     gen_structs, true_structs = get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, args.num_workers)
     metrics, stats_df = get_match_rate_and_rms(gen_structs, true_structs, struct_matcher)
 

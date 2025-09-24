@@ -116,7 +116,7 @@ def parse_args():
     parser.add_argument("--output_parquet", type=str, default=None, help="Output parquet file to save generated CIF structures.")
     parser.add_argument("--num_repeats", type=int, default=1, help="Number of generation runs per sample (total = num_repeats * num_return_sequences).")
     parser.add_argument("--max_samples", type=int, default=None, help="Maximum number of samples to process from the input parquet file.")
-    
+    []
 
     # CodeCarbon arguments
     #######################
