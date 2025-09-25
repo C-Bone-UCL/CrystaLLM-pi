@@ -15,9 +15,13 @@ __old_files/
 __scripts_in_dev/
 __old_config_files/
 _artifacts/
-__notebook_drafts/
+_notebook_drafts/
 run-pxrd.py
+optuna_hpsearch_mp_20_pxrd_hps.db
+optuna_hpsearch_jarvis_XRD_hps.db
 .git/
 __old_model_ckpts/
+_hp-search-gpu-0.py
+_hp-search-gpu-1.py
+_hp-search-gpu-cod.py
 _notebooks_drafts/
-run-pxrd.py

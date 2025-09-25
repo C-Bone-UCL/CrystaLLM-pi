@@ -9,5 +9,5 @@
   "num_return_sequences": 10,
   "num_repeats": 100,
   "parquet_in": "_artifacts/pretrain_benefits/mpdb-2prop_prompts.parquet",
-  "parquet_out": "_artifacts/pretrain_benefits/scratch-methods/mpdb_scratch-slider_gen.parquet"
+  "parquet_out": "_artifacts/pretrain_benefits/scratch-methods/mpdb-scratch-slider_gen.parquet"
 }

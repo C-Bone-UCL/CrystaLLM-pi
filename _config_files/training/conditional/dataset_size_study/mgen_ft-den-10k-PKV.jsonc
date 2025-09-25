@@ -1,0 +1,85 @@
+{
+  // Data Arguments
+  //################
+  "dataset_HF": "c-bone/mattergen_den_ehull_10K",
+  "pretrained_tokenizer_dir": "HF-cif-tokenizer",
+  "context_length": 1024,
+  "dataset_streaming": false,
+  // Filters
+  "remove_CIFs_above_context": true,
+  "remove_CIFs_with_unk": true,
+
+    // Conditional Arguments
+  //#######################
+  "condition_columns": "['norm_Density (g/cm^3)', 'norm_energy_above_hull']" , 
+  "n_prefix_tokens": 2,
+  "n_hidden_cond": 1024,
+  "cond_dropout": 0.01,
+  "share_layers": false,
+  "n_heads_sharing_slider": 2,
+  "cond_lr": 0.0005,
+  "cond_wd": 0.01,
+  "activate_conditionality": "PKV",
+
+
+  // Model Arguments
+  //#################
+  // Model Depth
+  // n_positions has been tied to context_length
+  "n_embd": 512,
+  "n_layer": 8,
+  "n_head": 8,
+  // Dropout
+  "residual_dropout": 0.1,
+  "embedding_dropout": 0.1,
+  "attention_dropout": 0.1,
+
+  // Trainer Arguments
+  //###################
+  // Batching
+  "train_batch_size": 32,
+  "eval_batch_size": 32,
+  "gradient_accumulation_steps": 1,
+  "auto_find_batch_size": false,
+  // Learning Rate and Optimizer
+  "learning_rate": 0.000005,
+  "lr_scheduler_type": "cosine_with_min_lr",
+  "lr_scheduler_kwargs": {
+    "min_lr_rate": 0.01
+  },
+  "warmup_ratio": 0.02, // 2% of training steps
+  "adam_beta1": 0.9,
+  "adam_beta2": 0.999,
+  "grad_clip": 1.0,
+  // "max_grad_norm": 1.0,
+  "weight_decay": 0.01,
+  // Logging
+  "output_dir": "model_ckpts/mattergen_den_ehull_10k/PKV_ft",
+  "save_total_limit": 2,
+  "report_to": "wandb",
+  "wandb_project_folder": "dataset_size_study",
+  "pretrained_model_dir": "model_ckpts/mpdb-small-base-lematerial/checkpoint-1250000",
+  "eval_strategy": "steps",
+  "eval_steps": 500, // 0.5 epoch
+  "logging_steps": 200, // 0.1 epoch
+  "save_strategy": "steps",
+  "max_steps": 14000, // 30 epochs
+  // to calculate the number of steps, use the following formula:
+  // steps = (number of epochs) * (number of training samples) / (batch size)
+  "early_stopping_patience": 15,
+  "early_stopping_threshold": 0.000005,
+  // Utils
+  "seed": 2,
+  "data_seed": 1,
+  "load_best_model_at_end": true,
+  "metric_for_best_model": "eval_loss",
+  "greater_is_better": false,
+  "torch_compile": true,
+  "fp16": true,
+  "deepspeed_config": "_config_files/deepspeed_default.json",
+
+  // CodeCarbon Arguments
+  //######################
+  "codecarbon": true,
+  "tracker_project": "CrystaLLMv2"
+}

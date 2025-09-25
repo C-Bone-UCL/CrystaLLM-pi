@@ -377,14 +377,13 @@ XRD, Bandgap, Density, or challenge set benchmark metrics can also be calculated
 
 > **Environment Note**: ALIGNN-based scripts require the separate `alignn_env` environment due to dependency conflicts. Use `conda run -n alignn_env` for these tools.
 
-<!-- > See examples in the [Evaluation Notebooks](notebooks/) starting with C_ and D_. -->
-
 ## Studies
 
 To have a look at how the experiments from the paper were carried out, the notebooks used to generate the results are available in the [Notebooks that start with X_](notebooks/)
 
-## License
+Full information given for each, but most detail and example of a full end to end pipeline for Discovery can be found in the mp-20 notebook and recovery SLME notebook
 
+## License
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ## Contact
