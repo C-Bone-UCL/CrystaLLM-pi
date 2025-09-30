@@ -54,16 +54,16 @@
   // "max_grad_norm": 1.0,
   "weight_decay": 0.1,
   // Logging
-  "output_dir": "model_ckpts/COD_XRD_small_nohc_hps/slider",
+  "output_dir": "model_ckpts/COD_XRD_small_nohc_hp/slider",
   "save_total_limit": 2,
   "report_to": "wandb",
-  "wandb_project_folder": "COD_XRD_small_nohc_hps",
+  "wandb_project_folder": "COD_XRD_small_nohc_hp",
   "pretrained_model_dir": "model_ckpts/mattergen_XRD/slider_ft/checkpoint-405000",
   "eval_strategy": "steps",
-  "eval_steps": 150, // 0.5 epoch
-  "logging_steps": 15, // 0.1 epoch
+  "eval_steps": 250,
+  "logging_steps": 100,
   "save_strategy": "steps",
-  "max_steps": 15000, // 60 epochs
+  "max_steps": 10000,
   "early_stopping_patience": 15,
   "early_stopping_threshold": 0.00005,
   // Utils

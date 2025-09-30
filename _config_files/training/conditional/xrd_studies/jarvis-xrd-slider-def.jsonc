@@ -14,11 +14,11 @@
   "condition_columns": "['condition_vector']" , 
   "n_prefix_tokens": 40,
   "n_hidden_cond": 64,
-  "cond_dropout": 0.00,
+  "cond_dropout": 0.01,
   "share_layers": false,
   "n_heads_sharing_slider": 2,
-  "cond_lr": 0.000162237807,
-  "cond_wd": 0.28,
+  "cond_lr": 0.001,
+  "cond_wd": 0.01,
   "activate_conditionality": "Slider",
 
   // Model Arguments
@@ -41,19 +41,19 @@
   "gradient_accumulation_steps": 1,
   "auto_find_batch_size": false,
   // Learning Rate and Optimizer
-  "learning_rate": 1.610163547468336e-05,
+  "learning_rate": 0.00001,
   "lr_scheduler_type": "cosine_with_min_lr",
   "lr_scheduler_kwargs": {
     "min_lr_rate": 0.01
   },
-  "warmup_ratio": 0.02, // 5% of training steps
+  "warmup_ratio": 0.05, // 5% of training steps
   "adam_beta1": 0.9,
   "adam_beta2": 0.999,
   "grad_clip": 1.0,
   // "max_grad_norm": 1.0,
-  "weight_decay": 0.2,
+  "weight_decay": 0.1,
   // Logging
-  "output_dir": "model_ckpts/jarvis_XRD_full/slider_ft_opt",
+  "output_dir": "model_ckpts/jarvis_XRD_full/slider_ft_v3",
   "save_total_limit": 2,
   "report_to": "wandb",
   "wandb_project_folder": "SliderGPT_experiments",

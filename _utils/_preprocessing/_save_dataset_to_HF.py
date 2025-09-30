@@ -108,19 +108,30 @@ def create_dataset_splits(df, test_size, valid_size, duplicates_mode=False):
                 'train': dataset
             })
         
-        dataset = dataset.train_test_split(test_size=valid_size, seed=1)
+        # Handle case with test set but no validation set
+        if valid_size == 0.0 and test_size > 0:
+            dataset = dataset.train_test_split(test_size=test_size, seed=1)
+            return DatasetDict({
+                'train': dataset['train'],
+                'test': dataset['test']
+            })
         
-        if test_size > 0:
-            test_valid = dataset['test'].train_test_split(test_size=test_size, seed=1)
+        # Handle case with validation set but no test set
+        if test_size == 0.0 and valid_size > 0:
+            dataset = dataset.train_test_split(test_size=valid_size, seed=1)
+            return DatasetDict({
+                'train': dataset['train'],
+                'validation': dataset['test']
+            })
+        
+        # Handle case with both validation and test sets
+        if test_size > 0 and valid_size > 0:
+            dataset = dataset.train_test_split(test_size=valid_size + test_size, seed=1)
+            test_valid = dataset['test'].train_test_split(test_size=test_size/(test_size + valid_size), seed=1)
             return DatasetDict({
                 'train': dataset['train'],
                 'validation': test_valid['train'],
                 'test': test_valid['test']
-            })
-        else:
-            return DatasetDict({
-                'train': dataset['train'],
-                'validation': dataset['test']
             })
 
 

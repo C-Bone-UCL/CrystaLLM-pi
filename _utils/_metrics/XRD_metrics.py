@@ -148,11 +148,10 @@ def get_match_rate_and_rms(gen_structs, true_structs, matcher):
         tmp_best_gen = None
         current_true_struct = true_structs[i]
         
-        # Calculate normalization factor for RMS distance
+        # Handle structure parsing errors
         try:
-            norm_factor = (current_true_struct.volume / current_true_struct.num_sites) ** (1 / 3) if current_true_struct.num_sites > 0 else 1.0
+            current_true_struct.volume
         except Exception:
-            # Handle structure parsing errors
             rms_dists.append(None)
             a_diffs.extend([None] * 3)
             rows.append(_create_empty_row(current_true_struct, valid_num))
@@ -163,7 +162,7 @@ def get_match_rate_and_rms(gen_structs, true_structs, matcher):
             try:
                 rms_info = matcher.get_rms_dist(gen, true_structs[i])
                 if rms_info is not None:
-                    rms_val = rms_info[0] / norm_factor
+                    rms_val = rms_info[0]  # StructureMatcher already returns normalized RMS
                     if rms_val < tmp_rms_dists:
                         tmp_rms_dists = rms_val
                         tmp_best_gen = gen
@@ -276,7 +275,7 @@ if __name__ == "__main__":
     print(f"Using {'all' if n_gens is None else n_gens} generation(s) per compound")
 
     # Structure matcher with loose tolerances for lattice parameters (as per pxrd and jarvis (not spec?) benchmark)
-    struct_matcher = StructureMatcher(stol=0.5, angle_tol=10, ltol=0.3, scale=True)
+    struct_matcher = StructureMatcher(stol=0.5, angle_tol=10, ltol=0.3, primitive_cell=True)
 
     # Load generated CIFs
     df = pd.read_parquet(args.input_parquet)
