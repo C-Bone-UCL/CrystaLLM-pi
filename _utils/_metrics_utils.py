@@ -656,3 +656,31 @@ def is_valid(cif_str, bond_length_acceptability_cutoff=1.0, debug=False):
             print(f"Space group is inconsistent for {cif_str}")
         return False
     return True
+
+def reconstruct_xrd_peaks(condition_vector_str):
+    """Reconstruct XRD peaks from condition vector string."""
+    try:
+        if isinstance(condition_vector_str, str):
+            vector_str = condition_vector_str.strip()
+            if vector_str.startswith('[') and vector_str.endswith(']'):
+                vector_str = vector_str[1:-1]
+            values = [float(x.strip()) for x in vector_str.split(',')]
+        else:
+            values = list(condition_vector_str)
+        
+        # Split into theta and intensity parts
+        mid_point = len(values) // 2
+        theta_values = values[:mid_point]
+        intensity_values = values[mid_point:]
+        
+        # Remove padding (-100 values) and denormalize
+        valid_peaks = []
+        for theta_norm, int_norm in zip(theta_values, intensity_values):
+            if theta_norm != -100 and int_norm != -100:
+                theta = theta_norm * 90.0  # denormalize theta
+                intensity = int_norm * 100.0  # denormalize intensity
+                valid_peaks.append({'two_theta': theta, 'intensity': intensity})
+        
+        return valid_peaks
+    except Exception:
+        return []

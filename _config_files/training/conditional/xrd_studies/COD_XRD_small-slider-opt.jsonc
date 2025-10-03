@@ -14,11 +14,11 @@
   "condition_columns": "['Condition Vector']" , 
   "n_prefix_tokens": 40,
   "n_hidden_cond": 64,
-  "cond_dropout": 0.01,
+  "cond_dropout": 0.16,
   "share_layers": false,
   "n_heads_sharing_slider": 2,
-  "cond_lr": 0.000005,
-  "cond_wd": 0.01,
+  "cond_lr": 0.00003073369,
+  "cond_wd": 0.14,
   "activate_conditionality": "Slider",
 
 
@@ -42,12 +42,12 @@
   "gradient_accumulation_steps": 1,
   "auto_find_batch_size": false,
   // Learning Rate and Optimizer
-  "learning_rate": 0.00000005,
+  "learning_rate":  7.44848154686662e-07,
   "lr_scheduler_type": "cosine_with_min_lr",
   "lr_scheduler_kwargs": {
     "min_lr_rate": 0.01
   },
-  "warmup_ratio": 0.02, // 2% of training steps
+  "warmup_ratio": 0.09, // 2% of training steps
   "adam_beta1": 0.9,
   "adam_beta2": 0.999,
   "grad_clip": 1.0,
@@ -63,7 +63,7 @@
   "eval_steps": 250,
   "logging_steps": 100,
   "save_strategy": "steps",
-  "max_steps": 11664,
+  "max_steps": 5248,
   "early_stopping_patience": 15,
   "early_stopping_threshold": 0.00005,
   // Utils

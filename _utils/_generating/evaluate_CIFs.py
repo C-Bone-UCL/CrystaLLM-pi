@@ -1,7 +1,10 @@
 """
 Evaluates generated CIF structures for validity, consistency, and crystallographic properties.
 Feed in generated cifs directly (dont need to postprocess)
-Option to save the valid ones to a new parquet file
+Option to save the valid ones to a new parquet file.
+From original repo:
+https://github.com/lantunes/CrystaLLM/blob/main/bin/evaluate_cifs.py
+s
 """
 
 import argparse

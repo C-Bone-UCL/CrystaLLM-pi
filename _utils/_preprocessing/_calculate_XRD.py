@@ -83,43 +83,62 @@ def add_xrd_columns(df, num_workers, column_name='CIF'):
 
     return df
 
+def parse_condition_vector_string(vector_str):
+    """Parse condition vector string back to list of floats."""
+    if vector_str is None or vector_str == "None":
+        return None
+    
+    # Remove brackets and split by comma
+    vector_str = str(vector_str).strip()
+    if vector_str.startswith('[') and vector_str.endswith(']'):
+        vector_str = vector_str[1:-1]
+    
+    try:
+        return [float(x.strip()) for x in vector_str.split(',')]
+    except (ValueError, AttributeError):
+        return None
+
+def compute_one_condition_vector_as_list(xrd):
+    """Computes a single condition vector from an XRD pattern and returns as list."""
+    if xrd is None:
+        # Handle failed XRD computations
+        thetas = [-100] * TOP_K_PEAKS
+        ints = [-100] * TOP_K_PEAKS
+    else:
+        peaks = sorted(xrd, key=lambda d: d['intensity'], reverse=True)[:TOP_K_PEAKS]
+        thetas = [d['two_theta'] for d in peaks]
+        ints = [d['intensity'] for d in peaks]
+        # Pad with -100 if fewer than TOP_K_PEAKS
+        thetas += [-100] * (TOP_K_PEAKS - len(thetas))
+        ints += [-100] * (TOP_K_PEAKS - len(ints))
+
+    # Normalize and create condition vector
+    # Scale theta values
+    scaled_theta = [(t - THETA_MIN) / (THETA_MAX - THETA_MIN) if t != -100 else -100 for t in thetas]
+    scaled_theta = [round(t, 3) for t in scaled_theta]
+
+    # Scale intensity values
+    scaled_int = [(i - INTENSITY_MIN) / (INTENSITY_MAX - INTENSITY_MIN) if i != -100 else -100 for i in ints]
+    scaled_int = [round(i, 3) for i in scaled_int]
+
+    # Combine into vector list
+    vec = scaled_theta + scaled_int
+    return vec
+
+def compute_one_condition_vector(xrd):
+    """Computes a single condition vector from an XRD pattern."""
+    vec = compute_one_condition_vector_as_list(xrd)
+    vector_str = "[" + ",".join(map(str, vec)) + "]"
+    return vector_str
+
 def compute_condition_vector(df):
     """Computes condition vectors from XRD patterns for ML training."""
     print("Computing condition vectors from XRD patterns")
     
-    theta_lists = []
-    intensity_lists = []
-    
-    for xrd in tqdm(df['XRD'], desc="Processing XRD patterns", unit="patterns"):
-        if xrd is None:
-            # Handle failed XRD computations
-            thetas = [-100] * TOP_K_PEAKS
-            ints = [-100] * TOP_K_PEAKS
-        else:
-            peaks = sorted(xrd, key=lambda d: d['intensity'], reverse=True)[:TOP_K_PEAKS]
-            thetas = [d['two_theta'] for d in peaks]
-            ints = [d['intensity'] for d in peaks]
-            # Pad with -100 if fewer than TOP_K_PEAKS
-            thetas += [-100] * (TOP_K_PEAKS - len(thetas))
-            ints += [-100] * (TOP_K_PEAKS - len(ints))
-        
-        theta_lists.append(thetas)
-        intensity_lists.append(ints)
-
-    # Normalize and create condition vectors
     vector_strs = []
-    for thetas, ints in zip(theta_lists, intensity_lists):
-        # Scale theta values
-        scaled_theta = [(t - THETA_MIN) / (THETA_MAX - THETA_MIN) if t != -100 else -100 for t in thetas]
-        scaled_theta = [round(t, 3) for t in scaled_theta]
-        
-        # Scale intensity values
-        scaled_int = [(i - INTENSITY_MIN) / (INTENSITY_MAX - INTENSITY_MIN) if i != -100 else -100 for i in ints]
-        scaled_int = [round(i, 3) for i in scaled_int]
-        
-        # Combine into vector string
-        vec = scaled_theta + scaled_int
-        vector_strs.append("[" + ",".join(map(str, vec)) + "]")
+    for xrd in tqdm(df['XRD'], desc="Computing condition vectors", unit="structures"):
+        vector_str = compute_one_condition_vector(xrd)
+        vector_strs.append(vector_str)
     
     df['condition_vector'] = vector_strs
     print(f"Theta range: {THETA_MIN}-{THETA_MAX}, Intensity range: {INTENSITY_MIN}-{INTENSITY_MAX}")

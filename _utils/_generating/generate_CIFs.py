@@ -1,22 +1,5 @@
 """
-CIF generation script for conditional and unconditional crystal structure generation using transformer models.
-Supports PKV, Prepend, Slider, and Raw conditioning (can be done on multiple GPUs in parallel).
 
-Pass a .jsonc config file with required arguments:
-    python generate_CIFs.py --config your_config.jsonc
-
-Required config arguments:
-    - model_ckpt_dir: Path to trained model checkpoint
-    - input_parquet: Input prompts/conditions file
-    - output_parquet: Output CIFs file
-    - pretrained_tokenizer_dir: CIF tokenizer directory (usually HF-cif-tokenizer)
-
-Optional config arguments:
-    - activate_conditionality: PKV/Prepend/Slider/Raw (default: None for unconditional)
-    - gen_max_length: Max generation length (default: 1024)
-    - do_sample: True/False/beam (default: True)
-    - num_return_sequences: Sequences per GPU pass (default: 1)
-    - num_repeats: Repeat generations for memory management (default: 1)
 """
 
 import os
@@ -30,12 +13,12 @@ import gc
 from tqdm import tqdm
 import torch
 import pandas as pd
+import numpy as np
 from transformers import GPT2LMHeadModel
 
 # Global constants
 DEFAULT_MAX_LENGTH = 1024
 TOKENIZER_PAD_TOKEN = "<pad>"
-CONDITIONAL_MODELS = ["PKV", "Prepend", "Slider"]
 DEFAULT_TOKENIZER_DIR = "HF-cif-tokenizer"
 
 # Global warning filters
@@ -45,10 +28,65 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from _tokenizer import CustomCIFTokenizer
 from _models import PKVGPT, PrependGPT, SliderGPT
 from _args import parse_args
-from _utils import find_checkpoint_from_dir
+from _utils import find_checkpoint_from_dir, is_sensible, is_formula_consistent, is_space_group_consistent, extract_space_group_symbol, replace_symmetry_operators
 
 global_model = None
 global_tokenizer = None
+
+def check_cif(cif_str):
+    """Check if CIF string is self-consistent.""" 
+    try:
+        space_group_symbol = extract_space_group_symbol(cif_str)
+        if space_group_symbol is not None and space_group_symbol != "P 1":
+            cif_str = replace_symmetry_operators(cif_str, space_group_symbol)
+
+        if not is_sensible(cif_str):
+            return False
+        if not is_formula_consistent(cif_str):
+            return False
+        if not is_space_group_consistent(cif_str):
+            return False
+        
+        return True
+    except Exception as e:
+        return False
+    
+def score_output_logp(model, scores, full_sequences, sequence_idx, input_length):
+    """Score output based on perplexity of generated tokens."""
+    
+    if scores is None or len(scores) == 0:
+        return float('inf')
+    
+    # Compute transition scores for all sequences
+    transition_scores = model.compute_transition_scores(
+        full_sequences, scores, normalize_logits=True
+    )
+    
+    # Extract scores for the specific sequence
+    if transition_scores.dim() == 2:
+        generated_scores = transition_scores[sequence_idx]
+    else:
+        generated_scores = transition_scores[0] if transition_scores.dim() > 1 else transition_scores
+    
+    # Get scores only for generated tokens (skip input)
+    generated_only_scores = generated_scores[input_length:]
+    
+    if len(generated_only_scores) == 0:
+        return float('inf')
+    
+    # Filter out any NaN/inf values if they exist
+    if torch.isnan(generated_only_scores).any() or torch.isinf(generated_only_scores).any():
+        valid_scores = generated_only_scores[~(torch.isnan(generated_only_scores) | torch.isinf(generated_only_scores))]
+        if len(valid_scores) == 0:
+            return float('inf')
+        generated_only_scores = valid_scores
+    
+    # Calculate perplexity: exp(-mean_log_probability)
+    mean_log_prob = torch.mean(generated_only_scores).item()
+    perplexity = np.exp(-mean_log_prob)
+    
+    return perplexity
+        
 
 def init_tokenizer(pretrained_tokenizer_dir):
     """Initialize tokenizer with standard config."""
@@ -75,21 +113,12 @@ def get_model_max_length(model_ckpt_dir, activate_conditionality):
     """Get model's max length from config by loading temp model."""
     model_class = get_model_class(activate_conditionality)
     
-    # Handle Raw and unconditional cases
-    if activate_conditionality == "Raw" or activate_conditionality is None:
-        model_class = GPT2LMHeadModel
-    elif model_class == GPT2LMHeadModel and activate_conditionality not in [None, "Raw"]:
-         print(f"Warning: Unsupported conditionality {activate_conditionality}, using default max_length")
-         return DEFAULT_MAX_LENGTH
-
     try:
         temp_model = model_class.from_pretrained(model_ckpt_dir, low_cpu_mem_usage=True)
         n_positions = temp_model.config.n_positions
         del temp_model
         return n_positions
-    except Exception as e:
-        print(f"Error loading model to get max length: {e}")
-        # Fallback or error handling
+    except Exception:
         return DEFAULT_MAX_LENGTH
 
 
@@ -169,24 +198,9 @@ def init_worker(model_ckpt_dir, pretrained_tokenizer_dir, activate_conditionalit
     
     global_tokenizer = init_tokenizer(pretrained_tokenizer_dir)
     
-    # Load models based on conditionality type
-    if activate_conditionality == "PKV":
-        global_model = PKVGPT.from_pretrained(model_ckpt_dir).eval()
-        print("Loading model with PKV conditionality...")
-    elif activate_conditionality == "Prepend":
-        global_model = PrependGPT.from_pretrained(model_ckpt_dir).eval()
-        print("Loading model with Prepend conditionality...")
-    elif activate_conditionality == "Slider":
-        global_model = SliderGPT.from_pretrained(model_ckpt_dir).eval()
-        print("Loading model with Slider conditionality...")
-    elif activate_conditionality == "Raw" or activate_conditionality is None:
-        global_model = GPT2LMHeadModel.from_pretrained(model_ckpt_dir).eval()
-        print("Loading standard model...")
-    else:
-        # Fallback to standard GPT2 model for unknown conditionality types
-        global_model = GPT2LMHeadModel.from_pretrained(model_ckpt_dir).eval()
-        print(f"Unknown conditionality '{activate_conditionality}', loading standard model...")
-    
+    # Load model based on conditionality type
+    model_class = get_model_class(activate_conditionality)
+    global_model = model_class.from_pretrained(model_ckpt_dir).eval()
     global_model.resize_token_embeddings(len(global_tokenizer))
 
 def progress_listener(queue, total):
@@ -209,118 +223,166 @@ def generate_on_gpu(
     activate_conditionality,
     num_repeats,
     global_offset=0,
-    max_attempts=5,
+    scoring_mode="None",
+    target_valid_cifs=20,
+    max_return_attempts=2,
 ):
     global global_model, global_tokenizer
     
     device = setup_device(gpu_id)
     model = global_model.to(device)
     tokenizer = global_tokenizer
-    generated = []
+    all_results = []  # Store all ranked CIFs per prompt
     
     torch.cuda.manual_seed_all(int(time.time()) + os.getpid())
     
-    for rep in range(num_repeats):
-        for idx in range(start_idx, end_idx):
-            row = prompts.iloc[idx]
-            input_ids = tokenizer.encode(row["Prompt"], return_tensors="pt").to(device)
+    # Process each prompt individually
+    for idx in range(start_idx, end_idx):
+        row = prompts.iloc[idx]
+        input_ids = tokenizer.encode(row["Prompt"], return_tensors="pt").to(device)
+        
+        valid_cifs = []
+        generation_attempts = 0
+        
+        # For 'None' scoring mode, generate num_return_sequences * MAX_GENERATION_ATTEMPTS without validation
+        if scoring_mode == "None":
+            target_generations = generation_kwargs.get("num_return_sequences", 1) * max_return_attempts
+            max_attempts = max_return_attempts
+        else:
+            # Generate until we have TARGET_VALID_CIFS valid ones or hit max attempts
+            target_generations = target_valid_cifs
+            max_attempts = max_return_attempts
+        
+        while len(valid_cifs) < target_generations and generation_attempts < max_attempts:
+            generation_attempts += 1
             
-            # Handle different conditionality types
-            if activate_conditionality in ["PKV", "Prepend", "Slider"]:
-                # Parse condition vector for conditional models
-                condition_tensor = None
-                if row["condition_vector"] not in (None, "None"):
-                    values = parse_condition_vector(row["condition_vector"])
-                    if values:
-                        condition_tensor = torch.tensor([values], device=device)
-                
-                # Generate with conditional models
-                required = generation_kwargs.get("num_return_sequences", 1)
-                produced = 0
-                attempts = 0
-                
-                while produced < required and attempts < max_attempts:
-                    attempts += 1
-                    try:
-                        with torch.no_grad():
-                            outputs = model.generate(
-                                input_ids=input_ids,
-                                condition_values=condition_tensor,
-                                **generation_kwargs,
-                            )
-                    except RuntimeError as e:
-                        if device.type == "cuda" and "device-side assert" in str(e):
-                            print(f"CUDA error on GPU {gpu_id}: {e}")
-                            device = torch.device("cpu")
-                            # Reload model on CPU
-                            model_class = get_model_class(activate_conditionality)
-                            model = model_class.from_pretrained(model_ckpt_dir).eval().to(device)
-                            model.resize_token_embeddings(len(tokenizer))
-                            input_ids = input_ids.cpu()
-                            if condition_tensor is not None:
-                                condition_tensor = condition_tensor.cpu()
-                            continue
+            try:
+                # Handle different conditionality types
+                if activate_conditionality in ["PKV", "Prepend", "Slider"]:
+                    # Parse condition vector for conditional models
+                    condition_tensor = None
+                    if row["condition_vector"] not in (None, "None"):
+                        values = parse_condition_vector(row["condition_vector"])
+                        if values:
+                            condition_tensor = torch.tensor([values], device=device)
                     
-                    # Process outputs with validation
-                    for output in outputs:
-                        if torch.isnan(output).any() or torch.isinf(output).any():
-                            continue
-                        
-                        eos_idx = (output == tokenizer.eos_token_id).nonzero(as_tuple=True)[0]
-                        if eos_idx.numel() > 0:
-                            output = output[: int(eos_idx[0])]
-                        
-                        cif_txt = tokenizer.decode(output, skip_special_tokens=True).replace("\n\n", "\n")
-                        mid = determine_material_id(row, len(generated), global_offset)
-                        
-                        generated.append({
-                            "Material ID": mid,
-                            "Prompt": row["Prompt"],
-                            "Generated CIF": cif_txt,
-                            "condition_vector": row.get("condition_vector", "None"),
-                        })
-                        queue.put(1)
-                        produced += 1
-                        
-            else:
-                # Handle Raw or unconditional generation
-                with torch.no_grad():
-                    outputs = model.generate(
-                        input_ids=input_ids,
-                        **generation_kwargs,
-                    )
+                    with torch.no_grad():
+                        outputs = model.generate(
+                            input_ids=input_ids,
+                            condition_values=condition_tensor,
+                            return_dict_in_generate=True,
+                            output_scores=True,
+                            **generation_kwargs,
+                        )
+                else:
+                    # Handle Raw or unconditional generation
+                    with torch.no_grad():
+                        outputs = model.generate(
+                            input_ids=input_ids,
+                            return_dict_in_generate=True,
+                            output_scores=True,
+                            **generation_kwargs,
+                        )
                 
-                for output in outputs:
-                    eos_idx = (output == tokenizer.eos_token_id).nonzero(as_tuple=True)[0]
+                # Process each generated sequence
+                for seq_idx, output_seq in enumerate(outputs.sequences):
+                    if torch.isnan(output_seq).any() or torch.isinf(output_seq).any():
+                        continue
+                    
+                    # Find EOS token in the full sequence and truncate there
+                    eos_idx = (output_seq == tokenizer.eos_token_id).nonzero(as_tuple=True)[0]
                     if eos_idx.numel() > 0:
-                        output = output[: int(eos_idx[0])]
+                        # Include everything from start to EOS (but not EOS itself)
+                        full_sequence = output_seq[:int(eos_idx[0])]
+                    else:
+                        # No EOS found, use full sequence
+                        full_sequence = output_seq
                     
-                    cif_txt = tokenizer.decode(output, skip_special_tokens=True).replace("\n\n", "\n")
+                    # Decode full sequence (input + generated) and clean up CIF
+                    cif_txt = tokenizer.decode(full_sequence, skip_special_tokens=True).replace("\n\n", "\n")
                     
                     # Apply remove_conditionality for Raw conditioning
                     if activate_conditionality == "Raw":
                         cif_txt = remove_conditionality(cif_txt)
                     
-                    mid = determine_material_id(row, len(generated), global_offset)
+                    if scoring_mode == "None":
+                        # No validation or scoring - just collect all CIFs
+                        mid = determine_material_id(row, len(valid_cifs), global_offset)
+                        
+                        valid_cifs.append({
+                            "Material ID": mid,
+                            "Prompt": row["Prompt"],
+                            "Generated CIF": cif_txt,
+                            "condition_vector": row.get("condition_vector", "None"),
+                        })
+                        
+                        queue.put(1)
+                    else:
+                        # Validate CIF
+                        is_consistent = check_cif(cif_txt)
+                        
+                        if is_consistent:
+                            if scoring_mode.upper() == "LOGP":
+                                score = score_output_logp(model, outputs.scores, outputs.sequences, seq_idx, input_ids.shape[1])
+                            else:
+                                score = 0.0
+                            
+                            mid = determine_material_id(row, len(valid_cifs), global_offset)
+                            
+                            valid_cifs.append({
+                                "Material ID": mid,
+                                "Prompt": row["Prompt"],
+                                "Generated CIF": cif_txt,
+                                "is_consistent": True,
+                                "score": score,
+                                "condition_vector": row.get("condition_vector", "None"),
+                            })
+                            
+                            queue.put(1)
                     
-                    generated.append({
-                        "Material ID": mid,
-                        "Prompt": row["Prompt"],
-                        "Generated CIF": cif_txt,
-                        "condition_vector": row.get("condition_vector", "None") if "condition_vector" in row else "None",
-                    })
-                    queue.put(1)
+                    # Break if we've reached our target
+                    if len(valid_cifs) >= target_generations:
+                        break
+                
+                # For 'None' scoring mode, break after first successful generation attempt
+                # since we don't need validation - just collect all sequences from the generation
+                if scoring_mode == "None" and valid_cifs:
+                    break
+                        
+            except Exception:
+                continue
+        
+        # Process results based on scoring mode
+        if valid_cifs:
+            if scoring_mode == "None":
+                # No ranking for unscored mode
+                all_results.extend(valid_cifs)
+                print(f"Prompt {idx}: Generated {len(valid_cifs)} CIFs (no validation/scoring)")
+            else:
+                # Rank all CIFs for this prompt by score 
+                # For LOGP (perplexity): lower perplexity = better (reverse=False)
+                if scoring_mode.upper() == "LOGP":
+                    ranked_cifs = sorted(valid_cifs, key=lambda x: x["score"] if not np.isnan(x["score"]) and not np.isinf(x["score"]) else float('inf'), reverse=False)
+                
+                for rank, cif_data in enumerate(ranked_cifs, 1):
+                    cif_data["rank"] = rank
+                
+                all_results.extend(ranked_cifs)
+                best_score = ranked_cifs[0]["score"]
+                worst_score = ranked_cifs[-1]["score"]
+                print(f"Prompt {idx}: Generated {len(valid_cifs)} valid CIFs, {scoring_mode} scores: {best_score:.4f} to {worst_score:.4f}")
+        else:
+            print(f"Prompt {idx}: Failed to generate any CIFs after {generation_attempts} attempts")
     
     if device.type == "cuda":
         torch.cuda.empty_cache()
     
-    return generated
+    return all_results
 
 def create_output_dataframe(generated_data, args, df_prompts):
     """Create and format the output DataFrame."""
     df = pd.DataFrame(generated_data)
     if args.input_parquet and 'True CIF' in df_prompts.columns:
-        # Ensure 'Material ID' is of a compatible type for merging
         df_prompts['Material ID'] = df_prompts['Material ID'].astype(str)
         df['Material ID'] = df['Material ID'].astype(str)
         df = df.merge(df_prompts[['Material ID', 'True CIF']], on='Material ID', how='left')
@@ -338,6 +400,9 @@ def main():
     # Set defaults
     args.num_repeats = getattr(args, 'num_repeats', 1)
 
+    # set to GPU 1, dont use GPU 0 which is used by other processes
+    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+    
     print("Environment info")
     print(f"Available GPUs: {torch.cuda.device_count()}")
     for i in range(torch.cuda.device_count()):
@@ -380,25 +445,29 @@ def main():
     if args.max_samples:
         df_prompts = df_prompts.sample(n=int(args.max_samples), random_state=1)
     
-    # Optimize for single prompt case: duplicate prompt and halve repeats for better GPU utilization
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
-    single_prompt_optimization = False
-    if len(df_prompts) == 1 and num_gpus > 1 and args.num_repeats > 1:
-        single_prompt_optimization = True
-        original_repeats = args.num_repeats
-        args.num_repeats = args.num_repeats // num_gpus
-        # Duplicate the single prompt for each GPU
-        df_prompts = pd.concat([df_prompts] * num_gpus, ignore_index=True)
-    
     total_samples = len(df_prompts)
-    print(f"\nGeneration")
+    
+    print(f"\nGeneration Strategy")
     print(f"Number of condition-prompt pairs: {total_samples}")
+    if args.scoring_mode == "None":
+        target_per_prompt = generation_kwargs.get("num_return_sequences", 1) * args.max_return_attempts
+        print(f"Target CIFs per prompt: {target_per_prompt} (no validation/scoring)")
+        print(f"Will save all generated CIFs without validation or ranking")
+    else:
+        print(f"Target valid CIFs per prompt: {args.target_valid_cifs}")
+        print(f"Will save all CIFs ranked by {args.scoring_mode} score (up to {args.target_valid_cifs} per prompt)")
     
 
     # Setup multiprocessing
     manager = mp.Manager()
     queue = manager.Queue()
-    total_generations = total_samples * args.num_return_sequences * args.num_repeats
+    # Progress tracking: calculate expected generations based on scoring mode
+    if args.scoring_mode == "None":
+        target_per_prompt = generation_kwargs.get("num_return_sequences", 1) * args.max_return_attempts
+        total_expected_generations = total_samples * target_per_prompt
+    else:
+        total_expected_generations = total_samples * args.target_valid_cifs
     samples_per_gpu = total_samples // num_gpus
     
     results = []
@@ -408,7 +477,7 @@ def main():
                  initializer=init_worker,
                  initargs=(args.model_ckpt_dir, DEFAULT_TOKENIZER_DIR, args.activate_conditionality)) as pool:
         
-        pool.apply_async(progress_listener, (queue, total_generations))
+        pool.apply_async(progress_listener, (queue, total_expected_generations))
         
         try:
             # Handle case with 0 GPUs
@@ -416,25 +485,20 @@ def main():
                 results.append(pool.apply_async(
                     generate_on_gpu,
                     (0, df_prompts, generation_kwargs, queue, 0, total_samples,
-                    args.model_ckpt_dir, args.activate_conditionality, args.num_repeats, 0)
+                    args.model_ckpt_dir, args.activate_conditionality, args.num_repeats, 0, args.scoring_mode, args.target_valid_cifs, args.max_return_attempts)
                 ))
             else:
                 for gpu_id in range(num_gpus):
                     start = gpu_id * samples_per_gpu
                     end = (gpu_id + 1) * samples_per_gpu if gpu_id != num_gpus - 1 else total_samples
-                    # Calculate global offset for material ID generation
-                    if single_prompt_optimization:
-                        # For single prompt case, each GPU should have unique material ID ranges
-                        global_offset = gpu_id * args.num_return_sequences * args.num_repeats
-                    else:
-                        global_offset = 0
+                    global_offset = start  # Simple offset based on start index
                     results.append(pool.apply_async(
                         generate_on_gpu,
                         (gpu_id, df_prompts, generation_kwargs, queue, start, end,
-                        args.model_ckpt_dir, args.activate_conditionality, args.num_repeats, global_offset)
+                        args.model_ckpt_dir, args.activate_conditionality, args.num_repeats, global_offset, args.scoring_mode, args.target_valid_cifs, args.max_return_attempts)
                     ))
         except Exception as e:
-            print(f"(Did you set the correct activate conditionality??. Generation error: {e}")
+            print(f"Generation error (check activate_conditionality setting): {e}")
             pool.terminate()
             manager.shutdown()
             sys.exit(1)
@@ -454,7 +518,11 @@ def main():
         os.makedirs(output_dir)
         
     df.to_parquet(args.output_parquet, index=False)
-    print(f"\nSaved {len(df)} generated CIFs to {args.output_parquet}")
+    print(f"\nSaved {len(df)} CIFs to {args.output_parquet}")
+    if args.scoring_mode == "None":
+        print(f"Results include all generated CIFs (no validation or scoring applied).")
+    else:
+        print(f"Results include all generated CIFs ranked by {args.scoring_mode} score per prompt.")
     
 
     # Cleanup

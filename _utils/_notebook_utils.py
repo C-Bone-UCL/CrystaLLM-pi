@@ -38,9 +38,14 @@ def get_metrics_xrd(df, n_test, only_matched=False):
     percent_match = n_matches / n_test * 100
     # a_mae is MAE of True a vs Gen a (absolute values)
     # abs(true_a - gen_a) is diff
+    
     if only_matched:
         df = df[df['RMS-d'].notna()]
-        
+        print(f"Computing metrics only on matched structures ({len(df)} entries)")
+
+    else:
+        print(f"Computing metrics on all (also unmatched) structures ({len(df)} entries, {n_matches} matched)")
+
     a_mae = df['True a'].sub(df['Gen a']).abs().mean()
     b_mae = df['True b'].sub(df['Gen b']).abs().mean()
     c_mae = df['True c'].sub(df['Gen c']).abs().mean()
@@ -470,3 +475,59 @@ def get_metrics_dataset_size_study(
     metrics["raw_dataframe"] = met_df
     
     return metrics
+
+def process_xrd_to_condition_vector(file_content):
+    # Parse the text data
+    lines = file_content.strip().split('\n')
+    
+    # Skip header line
+    data_lines = lines[1:] if len(lines) > 1 else lines
+    
+    peaks = []
+    for line in data_lines:
+        if line.strip():
+            parts = line.strip().split('\t')
+            if len(parts) >= 2:
+                try:
+                    two_theta = float(parts[0])
+                    intensity = float(parts[1])
+                    peaks.append({'two_theta': two_theta, 'intensity': intensity})
+                except ValueError:
+                    continue
+    
+    # Sort by intensity (descending) and take top 20
+    top_k = 20
+    peaks = sorted(peaks, key=lambda d: d['intensity'], reverse=True)[:top_k]
+    
+    # Extract theta and intensity values
+    thetas = [d['two_theta'] for d in peaks]
+    ints = [d['intensity'] for d in peaks]
+    
+    # Pad with -100 if fewer than top_k peaks
+    thetas += [-100] * (top_k - len(thetas))
+    ints += [-100] * (top_k - len(ints))
+    
+    # Define scaling ranges
+    theta_min, theta_max = 0, 90
+    
+    # Find max intensity for normalization
+    valid_intensities = [i for i in ints if i != -100]
+    intensity_max = max(valid_intensities) if valid_intensities else 1
+    
+    # Scale theta values
+    scaled_theta = [(t - theta_min) / (theta_max - theta_min) if t != -100 else -100 for t in thetas]
+    scaled_theta = [round(t, 3) for t in scaled_theta]
+    
+    # Scale intensity values relative to max intensity
+    scaled_int = [i / intensity_max if i != -100 else -100 for i in ints]
+    scaled_int = [round(i, 3) for i in scaled_int]
+    
+    # Combine vectors (theta + intensity = 40 total values)
+    vec = scaled_theta + scaled_int
+    
+    # Format as string
+    vector_str = ",".join(map(str, vec))
+    
+    print("Theta scaled to [0,1] (0 to 90), Intensity scaled to [0,1] (relative to max in pattern), -100 for padding")
+    
+    return vector_str
