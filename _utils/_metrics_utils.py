@@ -126,7 +126,7 @@ def get_valid(df_proc, num_workers):
     
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         # Use map to apply the worker function to each CIF string
-        future_to_cif = executor.map(_validity_worker, cifs_to_check)
+        future_to_cif = executor.map(_validity_worker, cifs_to_check, timeout=5000)
         
         # tqdm shows progress as results are completed
         results = list(tqdm(future_to_cif, total=len(cifs_to_check), desc="Checking validity"))
@@ -184,7 +184,7 @@ def get_unique(df_gen, workers):
     # Process valid CIFs in parallel
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         tasks = zip(df_valid.index, cifs_to_check, ehull_values)
-        results = executor.map(_uniqueness_worker, tasks)
+        results = executor.map(_uniqueness_worker, tasks, timeout=5000)
         
         # Process results to find unique structures using iterative method
         is_unique = pd.Series(False, index=df_gen.index)
@@ -262,7 +262,7 @@ def get_novelty(df_gen, base_comps, ltol, stol, angle_tol, structures, workers):
     # Run novelty checks in parallel
     results = [False] * len(tasks)
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        future_to_task = executor.map(_novelty_worker, tasks)
+        future_to_task = executor.map(_novelty_worker, tasks, timeout=5000)
         results = list(tqdm(future_to_task, total=len(tasks), desc="Checking novelty"))
 
     # Assign results back to the dataframe
@@ -463,7 +463,7 @@ def _predict_bandgap(df_valid, num_workers):
     # Parse CIFs for ALIGNN prediction
     data_to_parse = [(idx, row["Generated CIF"]) for idx, row in df_valid.iterrows()]
     with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-        parsed_iter = executor.map(_parse_single_cif, data_to_parse)
+        parsed_iter = executor.map(_parse_single_cif, data_to_parse, timeout=5000)
         parsed_results = list(tqdm(parsed_iter, total=len(data_to_parse), desc="Parsing CIFs for ALIGNN"))
     
     # Extract valid atoms and their indices

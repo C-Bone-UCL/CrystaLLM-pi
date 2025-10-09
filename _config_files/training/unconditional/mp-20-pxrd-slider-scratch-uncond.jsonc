@@ -19,7 +19,7 @@
   "n_heads_sharing_slider": 2,
   "cond_lr": 0.0021071619928203556,
   "cond_wd": 0.16,
-  "activate_conditionality": "Slider",
+  // "activate_conditionality": "None",
 
   // Model Arguments
   //#################
@@ -53,7 +53,7 @@
   // "max_grad_norm": 1.0,
   "weight_decay": 0.01,
   // Logging
-  "output_dir": "model_ckpts/mp_20_pxrd_scratch/slider_opt",
+  "output_dir": "model_ckpts/mp_20_pxrd_scratch_uncond/base_uncond",
   "save_total_limit": 2,
   "report_to": "wandb",
   "wandb_project_folder": "SliderGPT_experiments",

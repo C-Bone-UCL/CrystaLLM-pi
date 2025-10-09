@@ -46,3 +46,5 @@ run-pxrd-mp-ft-none.py
 run-pxrd-mp-ft.py
 run-pxrd-mp-scratch.py
 run.py
+output.png
+test.parquet

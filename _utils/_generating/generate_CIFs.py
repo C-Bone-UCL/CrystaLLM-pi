@@ -51,8 +51,8 @@ def check_cif(cif_str):
     except Exception as e:
         return False
     
-def score_output_logp(model, scores, full_sequences, sequence_idx, input_length):
-    """Score output based on perplexity of generated tokens."""
+def score_output_logp(model, scores, full_sequences, sequence_idx, input_length, eos_token_id=None):
+    """Score output based on perplexity of generated tokens up to EOS if present."""
     
     if scores is None or len(scores) == 0:
         return float('inf')
@@ -68,8 +68,25 @@ def score_output_logp(model, scores, full_sequences, sequence_idx, input_length)
     else:
         generated_scores = transition_scores[0] if transition_scores.dim() > 1 else transition_scores
     
-    # Get scores only for generated tokens (skip input)
-    generated_only_scores = generated_scores[input_length:]
+    # Find EOS token position in the original sequence to determine scoring length
+    original_sequence = full_sequences[sequence_idx]
+    scoring_length = len(original_sequence)
+    
+    if eos_token_id is not None:
+        eos_positions = (original_sequence == eos_token_id).nonzero(as_tuple=True)[0]
+        if eos_positions.numel() > 0:
+            # Score up to (but not including) the first EOS token
+            eos_pos = int(eos_positions[0])
+            scoring_length = eos_pos
+    
+    # Adjust transition scores to match the scoring length
+    # transition_scores has length = original_sequence_length - 1 (no score for first token)
+    max_score_idx = min(scoring_length - 1, len(generated_scores) - 1)
+    if max_score_idx < 0:
+        return float('inf')
+    
+    # Get scores only for generated tokens (skip input) up to scoring length
+    generated_only_scores = generated_scores[input_length:max_score_idx + 1]
     
     if len(generated_only_scores) == 0:
         return float('inf')
@@ -323,7 +340,7 @@ def generate_on_gpu(
                         
                         if is_consistent:
                             if scoring_mode.upper() == "LOGP":
-                                score = score_output_logp(model, outputs.scores, outputs.sequences, seq_idx, input_ids.shape[1])
+                                score = score_output_logp(model, outputs.scores, outputs.sequences, seq_idx, input_ids.shape[1], tokenizer.eos_token_id)
                             else:
                                 score = 0.0
                             
@@ -401,7 +418,7 @@ def main():
     args.num_repeats = getattr(args, 'num_repeats', 1)
 
     # set to GPU 1, dont use GPU 0 which is used by other processes
-    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+    # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
     
     print("Environment info")
     print(f"Available GPUs: {torch.cuda.device_count()}")

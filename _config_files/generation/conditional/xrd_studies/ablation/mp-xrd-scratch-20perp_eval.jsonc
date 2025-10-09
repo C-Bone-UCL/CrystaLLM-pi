@@ -5,10 +5,10 @@
   "top_k": 10,
   "top_p": 0.95,
   "temperature": 0.75,
-  "model_ckpt_dir": "model_ckpts/jarvis_XRD_full/slider_ft_opt/checkpoint-18500",
+  "model_ckpt_dir": "model_ckpts/mp_20_pxrd_scratch/slider_opt/checkpoint-9500",
   "num_return_sequences": 20,
-  "input_parquet": "_artifacts/jarvis-XRD/jarvis-test_prompts.parquet",
-  "output_parquet": "_artifacts/jarvis-XRD/jarvis-ft-20perp-test_gen.parquet",
+  "input_parquet": "_artifacts/mp-20-pxrd/ablation/mp-test_prompts_1k.parquet",
+  "output_parquet": "_artifacts/mp-20-pxrd/ablation/mp-20-scratch-20perp_gen.parquet",
   "scoring_mode": "LOGP",
   "target_valid_cifs": 20,
   "max_return_attempts": 100

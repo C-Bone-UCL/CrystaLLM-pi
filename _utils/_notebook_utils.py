@@ -32,7 +32,7 @@ def build_challenge_dataframe(input_folder: str, output_parquet: str = "material
     df.to_parquet(output_parquet, index=False)
     print(f"Saved {len(df)} records to {output_parquet}")
 
-def get_metrics_xrd(df, n_test, only_matched=False):
+def get_metrics_xrd(df, n_test, only_matched=False, verbose=True):
     mean_rmsd = df['RMS-d'].mean()
     n_matches = df['RMS-d'].notna().sum()
     percent_match = n_matches / n_test * 100
@@ -41,10 +41,12 @@ def get_metrics_xrd(df, n_test, only_matched=False):
     
     if only_matched:
         df = df[df['RMS-d'].notna()]
-        print(f"Computing metrics only on matched structures ({len(df)} entries)")
+        if verbose:
+            print(f"Computing metrics only on matched structures ({len(df)} entries)")
 
     else:
-        print(f"Computing metrics on all (also unmatched) structures ({len(df)} entries, {n_matches} matched)")
+        if verbose:
+            print(f"Computing metrics on all (also unmatched) structures ({len(df)} entries, {n_matches} matched)")
 
     a_mae = df['True a'].sub(df['Gen a']).abs().mean()
     b_mae = df['True b'].sub(df['Gen b']).abs().mean()
@@ -55,6 +57,8 @@ def get_metrics_xrd(df, n_test, only_matched=False):
     b_corr = df[['True b', 'Gen b']].corr().iloc[0, 1]
     c_corr = df[['True c', 'Gen c']].corr().iloc[0, 1]
     vol_corr = df[['True volume', 'Gen volume']].corr().iloc[0, 1]
+
+    average_score = df['Score'].mean() if 'Score' in df.columns else float('nan')
     
     metrics = {
         'Number of matched structures': n_matches,
@@ -68,21 +72,25 @@ def get_metrics_xrd(df, n_test, only_matched=False):
         'a R^2': a_corr,
         'b R^2': b_corr,
         'c R^2': c_corr,
-        'Volume R^2': vol_corr
+        'Volume R^2': vol_corr,
+        'Average Score': average_score
     }
 
-    # print metrics nicely
-    print(F"Number of matched structures: {n_matches} / {n_test}")
-    print(f"Mean RMS-d: {mean_rmsd:.4f}")
-    print(f"Percent Matched (%): {percent_match:.2f}% ({n_matches}/{n_test})")
-    print(f"a MAE: {a_mae:.4f}")
-    print(f"b MAE: {b_mae:.4f}")
-    print(f"c MAE: {c_mae:.4f}")
-    print(f"Volume MAE: {vol_mae:.4f}")
-    print(f"a R^2: {a_corr:.4f}")
-    print(f"b R^2: {b_corr:.4f}")
-    print(f"c R^2: {c_corr:.4f}")
-    print(f"Volume R^2: {vol_corr:.4f}")
+    if verbose:
+        print(F"Number of matched structures: {n_matches} / {n_test}")
+        print(f"Mean RMS-d: {mean_rmsd:.4f}")
+        print(f"Percent Matched (%): {percent_match:.2f}% ({n_matches}/{n_test})")
+        print(f"a MAE: {a_mae:.4f}")
+        print(f"b MAE: {b_mae:.4f}")
+        print(f"c MAE: {c_mae:.4f}")
+        print(f"Volume MAE: {vol_mae:.4f}")
+        print(f"a R^2: {a_corr:.4f}")
+        print(f"b R^2: {b_corr:.4f}")
+        print(f"c R^2: {c_corr:.4f}")
+        print(f"Volume R^2: {vol_corr:.4f}")
+        if 'Score' in df.columns:
+            print(f"Average Score: {average_score:.4f}")
+
     return metrics
 
 def get_metrics_ptnd_vs_scratch(

@@ -1,0 +1,15 @@
+{
+  "activate_conditionality": "Slider",
+  "gen_max_length": 1024,
+  "do_sample": "true",
+  "top_k": 10,
+  "top_p": 0.95,
+  "temperature": 0.75,
+  "model_ckpt_dir": "model_ckpts/mp_20_pxrd_scratch_uncond/base_uncond",
+  "num_return_sequences": 20,
+  "input_parquet": "_artifacts/mp-20-pxrd/ablation/mp-test_prompts_1k_nocond.parquet",
+  "output_parquet": "_artifacts/mp-20-pxrd/ablation/mp-20-scratch-uncond-20shot_gen.parquet",
+  "scoring_mode": "None",
+  // "target_valid_cifs": 20,
+  "max_return_attempts": 1
+}

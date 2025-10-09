@@ -21,6 +21,7 @@ from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 from pymatgen.io.cif import CifWriter
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from pymatgen.core import Structure, Element
@@ -210,6 +211,93 @@ def _create_result_row(true_struct, best_gen, rms_dist, valid_num, score=None):
     return row
 
 
+def _process_material_comparison(args_tuple):
+    """Process structure comparison for a single material (for parallel execution)."""
+    (
+        i, gen_structs_i, true_struct_i, material_id, scores,
+        validity_check, matcher_params
+    ) = args_tuple
+    
+    try:
+        # Recreate StructureMatcher in worker process
+        from pymatgen.analysis.structure_matcher import StructureMatcher
+        matcher = StructureMatcher(**matcher_params)
+        
+        valid_num = len(gen_structs_i)
+        
+        # Handle true structure parsing errors
+        try:
+            true_struct_i.volume
+        except Exception:
+            best_score = scores[0] if scores else None
+            return (i, None, None, None, None, _create_empty_row(true_struct_i, valid_num, best_score))
+        
+        tmp_rms_dists = []
+        valid_gen_structs = []
+        valid_gen_scores = []
+        
+        # Process each generated structure
+        for j, gen in enumerate(gen_structs_i):
+            try:
+                if validity_check == "crystallm":
+                    struct_valid = is_valid(gen)
+                elif validity_check == "diffcsp":
+                    struct_valid = is_valid_bench(gen)
+                else:
+                    struct_valid = True
+                
+                if struct_valid:
+                    try:
+                        rms_dist = matcher.get_rms_dist(gen, true_struct_i)
+                        rms_dist = None if rms_dist is None else rms_dist[0]
+                        if rms_dist is not None:
+                            tmp_rms_dists.append(rms_dist)
+                            valid_gen_structs.append(gen)
+                            gen_score = scores[j] if j < len(scores) else None
+                            valid_gen_scores.append(gen_score)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        
+        # Process results
+        tmp_best_gen = None
+        tmp_a_diffs = tmp_b_diffs = tmp_c_diffs = None
+        final_rms_dist = None
+        best_score = None
+        
+        if len(tmp_rms_dists) == 0:
+            # No valid StructureMatcher matches
+            final_rms_dist = None
+            # Lattice fallback for additional XRD analysis
+            tmp_best_gen, tmp_a_diffs, tmp_b_diffs, tmp_c_diffs = _find_best_lattice_match(
+                gen_structs_i, true_struct_i)
+            if tmp_a_diffs == 9999.0:
+                tmp_a_diffs = tmp_b_diffs = tmp_c_diffs = None
+            best_score = scores[0] if scores else None
+        else:
+            # Take minimum RMS distance among valid matches
+            min_idx = np.argmin(tmp_rms_dists)
+            final_rms_dist = tmp_rms_dists[min_idx]
+            tmp_best_gen = valid_gen_structs[min_idx]
+            best_score = valid_gen_scores[min_idx] if min_idx < len(valid_gen_scores) else None
+            
+            # Calculate lattice parameter differences for best RMS match
+            true_a, true_b, true_c = true_struct_i.lattice.abc
+            gen_a, gen_b, gen_c = tmp_best_gen.lattice.abc
+            tmp_a_diffs = abs(true_a - gen_a)
+            tmp_b_diffs = abs(true_b - gen_b)
+            tmp_c_diffs = abs(true_c - gen_c)
+        
+        row = _create_result_row(true_struct_i, tmp_best_gen, final_rms_dist, valid_num, best_score)
+        
+        return (i, final_rms_dist, tmp_a_diffs, tmp_b_diffs, tmp_c_diffs, row)
+        
+    except Exception as e:
+        # Return empty result for failed processing
+        return (i, None, None, None, None, None)
+
+
 def _calculate_metrics(rms_dists, a_diffs, b_diffs, c_diffs, gen_structs):
     """Calculate overall metrics from collected differences."""
     rms_array = np.array(rms_dists, dtype=object)
@@ -233,7 +321,7 @@ def _calculate_metrics(rms_dists, a_diffs, b_diffs, c_diffs, gen_structs):
     }
 
 
-def get_match_rate_and_rms(gen_structs, true_structs, matcher, args, score_data=None):
+def get_match_rate_and_rms(gen_structs, true_structs, matcher, args, score_data=None, num_workers=None):
     """Compute match rate and RMS distance plus additional XRD metrics.
     
     - Only valid structures (smact + structure validity) are considered
@@ -243,102 +331,70 @@ def get_match_rate_and_rms(gen_structs, true_structs, matcher, args, score_data=
     
     Args:
         score_data: Dict mapping material_id -> list of scores corresponding to gen_structs
+        num_workers: Number of parallel workers (defaults to CPU count // 2)
     """
-    def process_one(pred, gt, is_pred_valid):
-        """For individual structure comparison."""
-        if not is_pred_valid:
-            return None
-        try:
-            rms_dist = matcher.get_rms_dist(pred, gt)
-            rms_dist = None if rms_dist is None else rms_dist[0]
-            return rms_dist
-        except Exception:
-            return None
-
-    rms_dists, a_diffs, b_diffs, c_diffs, rows = [], [], [], [], []
+    if num_workers is None:
+        num_workers = max(1, multiprocessing.cpu_count() // 2)
     
-    # Get material IDs for score lookup
+    # Prepare data for parallel processing
     material_ids = list(score_data.keys()) if score_data else []
-
-    for i in tqdm(range(len(gen_structs)), desc="Comparing structures"):
-        valid_num = len(gen_structs[i])
-        current_true_struct = true_structs[i]
+    matcher_params = {
+        'stol': matcher.stol,
+        'angle_tol': matcher.angle_tol, 
+        'ltol': matcher.ltol
+    }
+    
+    # Build work items
+    work_items = []
+    for i in range(len(gen_structs)):
         current_material_id = material_ids[i] if i < len(material_ids) else None
         current_scores = score_data.get(current_material_id, []) if score_data and current_material_id else []
         
-        # Handle true structure parsing errors
-        try:
-            current_true_struct.volume
-        except Exception:
-            rms_dists.append(None)
-            a_diffs.append(None)
-            b_diffs.append(None)
-            c_diffs.append(None)
+        work_items.append((
+            i, gen_structs[i], true_structs[i], current_material_id, current_scores,
+            args.validity_check, matcher_params
+        ))
+    
+    # Process in parallel
+    results = []
+    if num_workers == 1:
+        # Serial processing for debugging or single-core systems
+        for work_item in tqdm(work_items, desc="Comparing structures"):
+            results.append(_process_material_comparison(work_item))
+    else:
+        # Parallel processing
+        with ProcessPoolExecutor(max_workers=num_workers) as executor:
+            results = list(tqdm(
+                executor.map(_process_material_comparison, work_items),
+                total=len(work_items),
+                desc="Comparing structures"
+            ))
+    
+    # Collect results in original order
+    rms_dists = [None] * len(gen_structs)
+    a_diffs = [None] * len(gen_structs)
+    b_diffs = [None] * len(gen_structs)
+    c_diffs = [None] * len(gen_structs)
+    rows = [None] * len(gen_structs)
+    
+    for result in results:
+        if result and len(result) == 6:
+            i, rms_dist, a_diff, b_diff, c_diff, row = result
+            if i is not None and 0 <= i < len(gen_structs):
+                rms_dists[i] = rms_dist
+                a_diffs[i] = a_diff
+                b_diffs[i] = b_diff
+                c_diffs[i] = c_diff
+                rows[i] = row
+    
+    # Handle any failed results by creating empty rows
+    for i in range(len(gen_structs)):
+        if rows[i] is None:
+            current_material_id = material_ids[i] if i < len(material_ids) else None
+            current_scores = score_data.get(current_material_id, []) if score_data and current_material_id else []
             best_score = current_scores[0] if current_scores else None
-            rows.append(_create_empty_row(current_true_struct, valid_num, best_score))
-            continue
-
-        tmp_rms_dists = []
-        valid_gen_structs = []
-        valid_gen_scores = []
-        
-        for j, gen in enumerate(gen_structs[i]):
-            try:
-                if args.validity_check == "crystallm":
-                    struct_valid = is_valid(gen)
-                elif args.validity_check == "diffcsp":
-                    struct_valid = is_valid_bench(gen)
-                else:
-                    struct_valid = True
-                rmsd = process_one(gen, true_structs[i], struct_valid)
-                if rmsd is not None:
-                    tmp_rms_dists.append(rmsd)
-                    valid_gen_structs.append(gen)
-                    # Track corresponding score if available
-                    gen_score = current_scores[j] if j < len(current_scores) else None
-                    valid_gen_scores.append(gen_score)
-            except Exception:
-                pass
-
-        # Initialize defaults
-        tmp_best_gen = None
-        tmp_a_diffs = tmp_b_diffs = tmp_c_diffs = None
-        final_rms_dist = None
-        best_score = None
-
-        # minimum RMS among valid matches OR no match
-        if len(tmp_rms_dists) == 0:
-            # No valid StructureMatcher matches
-            final_rms_dist = None
-            # Lattice fallback for additional XRD analysis
-            tmp_best_gen, tmp_a_diffs, tmp_b_diffs, tmp_c_diffs = _find_best_lattice_match(
-                gen_structs[i], current_true_struct)
-            if tmp_a_diffs == 9999.0:
-                tmp_a_diffs = tmp_b_diffs = tmp_c_diffs = None
-            # Use first available score as fallback
-            best_score = current_scores[0] if current_scores else None
-        else:
-            # take minimum RMS distance among valid matches
-            min_idx = np.argmin(tmp_rms_dists)
-            final_rms_dist = tmp_rms_dists[min_idx]
-            tmp_best_gen = valid_gen_structs[min_idx]
-            best_score = valid_gen_scores[min_idx] if min_idx < len(valid_gen_scores) else None
-            
-            # Calculate lattice parameter differences for best RMS match
-            true_a, true_b, true_c = true_structs[i].lattice.abc
-            gen_a, gen_b, gen_c = tmp_best_gen.lattice.abc
-            tmp_a_diffs = abs(true_a - gen_a)
-            tmp_b_diffs = abs(true_b - gen_b)
-            tmp_c_diffs = abs(true_c - gen_c)
-
-        # Store results: only StructureMatcher successes count for match_rate
-        rms_dists.append(final_rms_dist)
-        a_diffs.append(tmp_a_diffs)
-        b_diffs.append(tmp_b_diffs)
-        c_diffs.append(tmp_c_diffs)
-        
-        rows.append(_create_result_row(current_true_struct, tmp_best_gen, final_rms_dist, valid_num, best_score))
-
+            rows[i] = _create_empty_row(true_structs[i], len(gen_structs[i]), best_score)
+    
     return _calculate_metrics(rms_dists, a_diffs, b_diffs, c_diffs, gen_structs), pd.DataFrame(rows)
 
 
@@ -418,7 +474,6 @@ def _parallel_convert_generated_cif(args):
     """Convert CIF string to pymatgen Structure with sensibility pre-filtering."""
     cif, length_lo, length_hi, angle_lo, angle_hi = args
     try:
-        # Pre-filter with fast sensibility check before expensive parsing
         if not is_sensible(cif, length_lo, length_hi, angle_lo, angle_hi):
             return None
         return Structure.from_str(cif, fmt="cif")
@@ -435,6 +490,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_parquet", required=True, type=str, help="Output path for statistics")
     parser.add_argument("--ref_parquet", default=None, type=str, help="Override true CIFs from this DB")
     parser.add_argument("--validity_check", type=str, choices=["diffcsp", "crystallm", "none"], default="diffcsp", help="Validity check to use: 'diffcsp' for smact+structure (benchmark), 'crystallm' for to avoid overly strict checks")
+    parser.add_argument("--sort_gens", type=str, choices=["rank", "random", "first"], default="rank", help="Sorting method when num_gens=1: 'rank' to use rank=1, 'random' to randomly select one generation, 'first' to use the first generation")
 
     args = parser.parse_args()
 
@@ -443,17 +499,22 @@ if __name__ == "__main__":
 
     struct_matcher = StructureMatcher(stol=0.5, angle_tol=10, ltol=0.3, primitive_cell=True)
 
+
     # Load generated CIFs
     df = pd.read_parquet(args.input_parquet)
+
+    if len(df) > 100000 and args.num_workers != 1:
+        args.num_workers = max(1, multiprocessing.cpu_count() // 6)
+    else:
+        args.num_workers = max(1, multiprocessing.cpu_count() // 3)
+
+    print(f"Using {args.num_workers} workers for parallel processing (based on input size)")
     
     # Check if score column exists
     has_score_column = "score" in df.columns
-    if has_score_column:
-        print("Score column detected, will include scores in output")
-    
-    # Check if rank column exists and handle rank-based filtering for num_gens=1
     has_rank_column = "rank" in df.columns
-    if n_gens == 1 and has_rank_column:
+
+    if n_gens == 1 and has_rank_column and args.sort_gens == 'rank':  # Fixed condition
         print("Using rank=1 rows for num_gens=1 (rank column detected)")
         # Filter to only rank=1 rows for each material, then take the CIF and score
         id_to_gen_cifs = {}
@@ -465,10 +526,27 @@ if __name__ == "__main__":
                 if has_score_column:
                     id_to_scores[mid] = rank_1_rows["score"].tolist()
             else:
-                # Fallback to first row if no rank=1 found
                 id_to_gen_cifs[mid] = [group["Generated CIF"].iloc[0]]
                 if has_score_column:
                     id_to_scores[mid] = [group["score"].iloc[0]]
+    elif n_gens == 1 and args.sort_gens == 'random':
+        print("Randomly selecting one generation per material for num_gens=1")
+        id_to_gen_cifs = {}
+        id_to_scores = {} if has_score_column else None
+        for mid, group in df.groupby("Material ID"):
+            selected_row = group.sample(n=1, random_state=1)
+            id_to_gen_cifs[mid] = selected_row["Generated CIF"].tolist()
+            if has_score_column:
+                id_to_scores[mid] = selected_row["score"].tolist()
+    elif n_gens == 1 and args.sort_gens == 'first':
+        print("Selecting the first generation per material for num_gens=1")
+        id_to_gen_cifs = {}
+        id_to_scores = {} if has_score_column else None
+        for mid, group in df.groupby("Material ID"):
+            first_row = group.iloc[0]
+            id_to_gen_cifs[mid] = [first_row["Generated CIF"]]
+            if has_score_column:
+                id_to_scores[mid] = [first_row["score"]]
     else:
         # Original logic: take all CIFs for each material
         id_to_gen_cifs = {mid: group["Generated CIF"].tolist() for mid, group in df.groupby("Material ID")}
@@ -501,7 +579,10 @@ if __name__ == "__main__":
     max_workers = max(1, multiprocessing.cpu_count() // 4)
     args.num_workers = min(args.num_workers, max_workers)
     gen_structs, true_structs, score_data = get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, args.num_workers, df, has_rank_column, id_to_scores)
-    metrics, stats_df = get_match_rate_and_rms(gen_structs, true_structs, struct_matcher, args, score_data)
+    
+    # Use half the workers for structure comparison to balance load
+    comparison_workers = max(1, args.num_workers // 2)
+    metrics, stats_df = get_match_rate_and_rms(gen_structs, true_structs, struct_matcher, args, score_data, comparison_workers)
 
     # Save and display results
     stats_df.to_parquet(args.output_parquet, index=False)
