@@ -147,3 +147,9 @@ if __name__ == "__main__":
         print("\nNot saving processed dataframe.")
 
     print("\nVUN metrics calculation completed.")
+    
+    # Clean up any lingering processes
+    import multiprocessing as mp
+    for p in mp.active_children():
+        p.terminate()
+        p.join()

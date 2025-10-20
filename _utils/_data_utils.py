@@ -13,7 +13,7 @@ def validate_condition_values(tokenized_dataset, dataset_with_idx, parsed_condit
     Helper function to validate condition values between source and tokenized datasets.
     Can be moved to utils file if needed.
     """
-    print("\n======= Condition Values Check =======")
+    print("\nCondition Values Check")
     if not tokenized_dataset["train"]:
         print("Train split is empty, skipping condition check")
         return
@@ -82,7 +82,7 @@ def get_token_length_stats(tokenized_dataset, split="train"):
 
 
 def filter_long_CIFs(tokenized_dataset, context_length):
-    """Filter out entries in the dataset where the token length exceeds a specified context length. This is useful to ensure that all examples fit within the model's context window. I also made a funcion that can do this before passing to the dataloader so use that one instead to avoid reduncant filtering if you always want this"""
+    """Filter out entries where token length exceeds context length."""
     
     def filter_long(example):
         return len(example["input_ids"]) <= context_length
@@ -92,7 +92,7 @@ def filter_long_CIFs(tokenized_dataset, context_length):
 
 
 def filter_CIFs_with_unk(tokenized_dataset, tokenizer):
-    """Print amount of <unk> tokens and remove examples with <unk> tokens if dataset is not streaming. Useful if youre not sure if your training data contains unk tokens."""
+    """Remove examples with unknown tokens from dataset."""
     
     def filter_no_unk(example):
         return tokenizer.unk_token_id not in example["input_ids"]
@@ -191,18 +191,7 @@ def _process_conditions_for_text(examples, condition_columns, num_examples):
     return condition_strings
 
 def tokenize_function(examples, tokenizer, condition_columns=None, mode="unconditional"):
-    """
-    Unified tokenization function supporting unconditional, conditional, and raw conditional modes.
-    
-    Args:
-        examples: Dataset examples containing CIF data
-        tokenizer: The tokenizer to use
-        condition_columns: List of condition column names (required for conditional modes)
-        mode: One of "unconditional", "conditional", or "raw" 
-    
-    Returns:
-        Tokenized output with input_ids, attention_mask, fixed_mask, and optionally condition_values
-    """
+    """Tokenize CIF examples with optional conditioning support."""
     if mode not in ["unconditional", "conditional", "raw"]:
         raise ValueError(f"Invalid mode: {mode}. Must be 'unconditional', 'conditional', or 'raw'")
     

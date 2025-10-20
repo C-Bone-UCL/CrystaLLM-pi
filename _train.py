@@ -145,7 +145,7 @@ def main():
             validate_conditions=VERBOSE
         )
         print(f"Context length for raw conditionality (to account for new condition tokens): {args.context_length}")
-    else:
+    elif args.activate_conditionality == "None" or args.activate_conditionality is None:
         print("\n**CONDITIONALITY DEACTIVATED**")
         # Load data and data collator
         tokenized_dataset, data_collator = load_data(

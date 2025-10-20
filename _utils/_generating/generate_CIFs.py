@@ -1,5 +1,6 @@
 """
-
+Generate CIF structures using trained conditional/unconditional models.
+Supports parallel generation across multiple GPUs with validation and scoring options.
 """
 
 import os
@@ -30,8 +31,8 @@ from _models import PKVGPT, PrependGPT, SliderGPT
 from _args import parse_args
 from _utils import find_checkpoint_from_dir, is_sensible, is_formula_consistent, is_space_group_consistent, extract_space_group_symbol, replace_symmetry_operators
 
-global_model = None
-global_tokenizer = None
+model = None
+tokenizer = None
 
 def check_cif(cif_str):
     """Check if CIF string is self-consistent.""" 
@@ -48,7 +49,7 @@ def check_cif(cif_str):
             return False
         
         return True
-    except Exception as e:
+    except:
         return False
     
 def score_output_logp(model, scores, full_sequences, sequence_idx, input_length, eos_token_id=None):
@@ -201,24 +202,24 @@ def parse_condition_vector(condition_vector):
     else:
         return [float(condition_vector)]
 
-def determine_material_id(row, generated_count, global_offset=0):
-    """Determine material ID from row data."""
+def get_material_id(row, count, offset=0):
+    """Get material ID from row data or generate one."""
     if "Material ID" in row:
         return row["Material ID"]
     elif "Formula" in row:
         return row["Formula"]
     else:
-        return f"Generated_{generated_count + global_offset + 1}"
+        return f"Generated_{count + offset + 1}"
 
 def init_worker(model_ckpt_dir, pretrained_tokenizer_dir, activate_conditionality):
-    global global_model, global_tokenizer
+    global model, tokenizer
     
-    global_tokenizer = init_tokenizer(pretrained_tokenizer_dir)
+    tokenizer = init_tokenizer(pretrained_tokenizer_dir)
     
     # Load model based on conditionality type
     model_class = get_model_class(activate_conditionality)
-    global_model = model_class.from_pretrained(model_ckpt_dir).eval()
-    global_model.resize_token_embeddings(len(global_tokenizer))
+    model = model_class.from_pretrained(model_ckpt_dir).eval()
+    model.resize_token_embeddings(len(tokenizer))
 
 def progress_listener(queue, total):
     pbar = tqdm(total=total, desc="Generating CIFs...")
@@ -244,12 +245,11 @@ def generate_on_gpu(
     target_valid_cifs=20,
     max_return_attempts=2,
 ):
-    global global_model, global_tokenizer
+    global model, tokenizer
     
     device = setup_device(gpu_id)
-    model = global_model.to(device)
-    tokenizer = global_tokenizer
-    all_results = []  # Store all ranked CIFs per prompt
+    model = model.to(device)
+    results = []
     
     torch.cuda.manual_seed_all(int(time.time()) + os.getpid())
     
@@ -324,7 +324,7 @@ def generate_on_gpu(
                     
                     if scoring_mode == "None":
                         # No validation or scoring - just collect all CIFs
-                        mid = determine_material_id(row, len(valid_cifs), global_offset)
+                        mid = get_material_id(row, len(valid_cifs), global_offset)
                         
                         valid_cifs.append({
                             "Material ID": mid,
@@ -344,7 +344,7 @@ def generate_on_gpu(
                             else:
                                 score = 0.0
                             
-                            mid = determine_material_id(row, len(valid_cifs), global_offset)
+                            mid = get_material_id(row, len(valid_cifs), global_offset)
                             
                             valid_cifs.append({
                                 "Material ID": mid,
@@ -373,8 +373,7 @@ def generate_on_gpu(
         if valid_cifs:
             if scoring_mode == "None":
                 # No ranking for unscored mode
-                all_results.extend(valid_cifs)
-                print(f"Prompt {idx}: Generated {len(valid_cifs)} CIFs (no validation/scoring)")
+                results.extend(valid_cifs)
             else:
                 # Rank all CIFs for this prompt by score 
                 # For LOGP (perplexity): lower perplexity = better (reverse=False)
@@ -384,21 +383,16 @@ def generate_on_gpu(
                 for rank, cif_data in enumerate(ranked_cifs, 1):
                     cif_data["rank"] = rank
                 
-                all_results.extend(ranked_cifs)
-                best_score = ranked_cifs[0]["score"]
-                worst_score = ranked_cifs[-1]["score"]
-                print(f"Prompt {idx}: Generated {len(valid_cifs)} valid CIFs, {scoring_mode} scores: {best_score:.4f} to {worst_score:.4f}")
-        else:
-            print(f"Prompt {idx}: Failed to generate any CIFs after {generation_attempts} attempts")
+                results.extend(ranked_cifs)
     
     if device.type == "cuda":
         torch.cuda.empty_cache()
     
-    return all_results
+    return results
 
-def create_output_dataframe(generated_data, args, df_prompts):
-    """Create and format the output DataFrame."""
-    df = pd.DataFrame(generated_data)
+def build_output_df(data, args, df_prompts):
+    """Build the final output dataframe."""
+    df = pd.DataFrame(data)
     if args.input_parquet and 'True CIF' in df_prompts.columns:
         df_prompts['Material ID'] = df_prompts['Material ID'].astype(str)
         df['Material ID'] = df['Material ID'].astype(str)
@@ -408,11 +402,13 @@ def create_output_dataframe(generated_data, args, df_prompts):
 def main():
     args = parse_args()
     
-    # Minimum required arguments
-    required_args = ['model_ckpt_dir', 'input_parquet', 'output_parquet']
-    for req_arg in required_args:
-        if not getattr(args, req_arg):
-            sys.exit(f"ERROR: {req_arg} argument must be set.")
+    # Check required arguments
+    if not args.model_ckpt_dir:
+        sys.exit("ERROR: model_ckpt_dir is required")
+    if not args.input_parquet:
+        sys.exit("ERROR: input_parquet is required")
+    if not args.output_parquet:
+        sys.exit("ERROR: output_parquet is required")
     
     # Set defaults
     args.num_repeats = getattr(args, 'num_repeats', 1)
@@ -425,7 +421,8 @@ def main():
     for i in range(torch.cuda.device_count()):
         print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
     
-    print("\nGeneration settings")
+    print()
+    print("Generation settings")
     print(f"Total sequences per prompt-condition pair: {args.num_return_sequences * args.num_repeats}")
     print(f"Will save generated CIFs to {args.output_parquet}")
     
@@ -439,7 +436,8 @@ def main():
     if os.path.exists(losses_file):
         with open(losses_file, "r") as f:
             losses = json.load(f)
-        print("\nModel checkpoint info")
+        print()
+        print("Model checkpoint info")
         print(f"Most Recent Train Loss: {losses['training_losses'][-1]:.4f}")
         print(f"Most Recent Validation Loss: {losses['validation_losses'][-1]:.4f}")
     
@@ -527,7 +525,7 @@ def main():
         queue.put("kill")
     
     # Create and save output
-    df = create_output_dataframe(generated_data, args, df_prompts)
+    df = build_output_df(generated_data, args, df_prompts)
 
     # if there is a directory in the output path, create it
     output_dir = os.path.dirname(args.output_parquet)

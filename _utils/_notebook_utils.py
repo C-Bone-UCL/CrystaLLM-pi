@@ -77,7 +77,7 @@ def get_metrics_xrd(df, n_test, only_matched=False, verbose=True):
     }
 
     if verbose:
-        print(F"Number of matched structures: {n_matches} / {n_test}")
+        print(f"Number of matched structures: {n_matches} / {n_test}")
         print(f"Mean RMS-d: {mean_rmsd:.4f}")
         print(f"Percent Matched (%): {percent_match:.2f}% ({n_matches}/{n_test})")
         print(f"a MAE: {a_mae:.4f}")

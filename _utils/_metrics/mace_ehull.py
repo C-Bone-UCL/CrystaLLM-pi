@@ -88,7 +88,7 @@ def get_mace_energy(cif_str, calculator):
         # Calculate energy
         energy = atoms.get_potential_energy()
         return energy, structure
-    except Exception as e:
+    except Exception:
         return None, None
 
 def process_batch(cif_batch, mp_provider, device_id):
@@ -100,7 +100,7 @@ def process_batch(cif_batch, mp_provider, device_id):
     
     results = []
     
-    for i, cif_str in enumerate(cif_batch):
+    for cif_str in cif_batch:
         try:
             # Get MACE energy using the pre-loaded calculator
             energy, structure = get_mace_energy(cif_str, calculator)
@@ -112,7 +112,7 @@ def process_batch(cif_batch, mp_provider, device_id):
             eh, _ = mp_provider.compute_ehull_and_eform(structure, float(energy))
             results.append(eh)
             
-        except Exception as e:
+        except Exception:
             results.append(np.nan)
     
     return results
@@ -164,7 +164,7 @@ def main():
             structure = Structure.from_str(cif_str, fmt="cif")
             elements = tuple(sorted(str(el) for el in structure.composition.elements))
             unique_chemsys.add(elements)
-        except:
+        except Exception:
             continue
     
     print(f"Found {len(unique_chemsys)} unique chemical systems in sample.")

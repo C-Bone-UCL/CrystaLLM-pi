@@ -32,36 +32,30 @@ def validate_cif_numerics(cif: str) -> str:
 
 def postprocess(cif: str) -> str:
     """Process CIF string with enhanced validation"""
-    original_cif = cif
+    # Remove bracket characters from CIF content
+    cif = cif.replace('[', '').replace(']', '')
+
+    # Pre-clean numerical values
+    cif = validate_cif_numerics(cif)
+    
+    # Handle space group processing - this is where parsing can fail
     try:
-        # Remove bracket characters from CIF content
-        cif = cif.replace('[', '').replace(']', '')
-
-        # Pre-clean numerical values
-        cif = validate_cif_numerics(cif)
-        
-        # Handle multiple space group declarations
         space_group_symbol = extract_space_group_symbol(cif)
+        if space_group_symbol and space_group_symbol != "P 1":
+            cif = replace_symmetry_operators(cif, space_group_symbol)
         
-        # Only process if we found a valid space group
         if space_group_symbol:
-            if space_group_symbol != "P 1":
-                # Use more robust symmetry replacement
-                cif = replace_symmetry_operators(cif, space_group_symbol)
-            
-            # Clean atom props with stricter regex
             cif = remove_atom_props_block(cif)
-            
-        # Post-clean formatting issues while preserving newlines
-        # Replace multiple spaces with single space, but preserve newlines
-        cif = re.sub(r'(?<=\S)[ \t]+(?=\S)', ' ', cif)
+    except (ValueError, IndexError, KeyError):
+        # Skip space group processing if CIF is malformed
+        pass
         
-        # Reduce excess consecutive newlines (3+) to double newlines
-        cif = re.sub(r'\n\s*\n+', '\n', cif)
-
-    except Exception as e:
-        cif = f"# WARNING: Processing failed for cif: {str(e)}\n" + original_cif
-        print(f"Critical error processing cif: {str(e)}")
+    # Post-clean formatting issues while preserving newlines
+    # Replace multiple spaces with single space, but preserve newlines
+    cif = re.sub(r'(?<=\S)[ \t]+(?=\S)', ' ', cif)
+    
+    # Reduce excess consecutive newlines (3+) to double newlines
+    cif = re.sub(r'\n\s*\n+', '\n', cif)
 
     return cif
 

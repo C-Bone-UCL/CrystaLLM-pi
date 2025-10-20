@@ -290,30 +290,32 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
 
     def remove_custom_tokens(self, tokens):
         """
-        Remove a list of tokens from the tokenizer vocabulary (if present).
-        Updates internal mappings and escaped tokens for regex.
-        Note: Removing tokens changes ID assignments for the rest of the vocab.
-        Use with caution for a trained model.
+        Remove tokens from vocabulary. btw: This breaks trained models
+        Only use this on fresh tokenizers before training.
         """
+        removed_any = False
         for token in tokens:
             if token in self.token_to_id:
+                # Don't remove special tokens
+                if token in [self.unk_token, self.pad_token, self.bos_token, 
+                           self.eos_token, self.var_open_token, self.var_close_token, self.prop_token]:
+                    print(f"Skipping special token '{token}' - cannot remove")
+                    continue
+                    
                 old_id = self.token_to_id.pop(token)
-                if old_id in self.id_to_token:
-                    del self.id_to_token[old_id]
-        # Rebuild tokens and IDs from scratch to maintain consistency
-        # (IDs shift, so any model trained with old IDs is no longer compatible)
-        sorted_pairs = sorted(self.token_to_id.items(), key=lambda x: x[1])
-        self.token_to_id = {}
-        self.id_to_token = {}
-        for i, (token, _) in enumerate(sorted_pairs):
-            self.token_to_id[token] = i
-            self.id_to_token[i] = token
-        self._tokens = list(self.token_to_id.keys())
-        self._escaped_tokens = sorted(
-            [re.escape(t) for t in self._tokens],
-            key=len,
-            reverse=True
-        )
+                del self.id_to_token[old_id]
+                self._tokens.remove(token)
+                removed_any = True
+                print(f"Removed token '{token}' (was ID {old_id})")
+        
+        if removed_any:
+            # Just update the escaped tokens - leave IDs as-is to avoid breaking everything
+            self._escaped_tokens = sorted(
+                [re.escape(t) for t in self._tokens],
+                key=len,
+                reverse=True
+            )
+            print("WARNING: Token removal creates gaps in ID space. Model compatibility may be affected.")
 
     def validate_tokenizer_state(self):
         """

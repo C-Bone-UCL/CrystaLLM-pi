@@ -175,7 +175,7 @@ def _create_empty_row(true_struct, valid_num, score=None):
         "True Struct": true_cif, "Gen Struct": None, "RMS-d": None,
         "True a": None, "True b": None, "True c": None, "True volume": None,
         "Gen a": None, "Gen b": None, "Gen c": None, "Gen volume": None,
-        "Sensibles Num": valid_num
+        "Sensibles Num": valid_num, "n_matched_struct": 0
     }
     
     if score is not None:
@@ -210,7 +210,6 @@ def _create_result_row(true_struct, best_gen, rms_dist, valid_num, score=None):
     
     return row
 
-
 def _process_material_comparison(args_tuple):
     """Process structure comparison for a single material (for parallel execution)."""
     (
@@ -230,7 +229,7 @@ def _process_material_comparison(args_tuple):
             true_struct_i.volume
         except Exception:
             best_score = scores[0] if scores else None
-            return (i, None, None, None, None, _create_empty_row(true_struct_i, valid_num, best_score))
+            return (i, None, None, None, None, _create_empty_row(true_struct_i, valid_num, best_score), 0)
         
         tmp_rms_dists = []
         valid_gen_structs = []
@@ -259,6 +258,9 @@ def _process_material_comparison(args_tuple):
                         pass
             except Exception:
                 pass
+        
+        # Count how many structures matched for this material
+        n_matched_struct = len(tmp_rms_dists)
         
         # Process results
         tmp_best_gen = None
@@ -290,13 +292,13 @@ def _process_material_comparison(args_tuple):
             tmp_c_diffs = abs(true_c - gen_c)
         
         row = _create_result_row(true_struct_i, tmp_best_gen, final_rms_dist, valid_num, best_score)
+        row["n_matched_struct"] = n_matched_struct
         
-        return (i, final_rms_dist, tmp_a_diffs, tmp_b_diffs, tmp_c_diffs, row)
+        return (i, final_rms_dist, tmp_a_diffs, tmp_b_diffs, tmp_c_diffs, row, n_matched_struct)
         
     except Exception as e:
         # Return empty result for failed processing
-        return (i, None, None, None, None, None)
-
+        return (i, None, None, None, None, None, 0)
 
 def _calculate_metrics(rms_dists, a_diffs, b_diffs, c_diffs, gen_structs):
     """Calculate overall metrics from collected differences."""
@@ -378,8 +380,8 @@ def get_match_rate_and_rms(gen_structs, true_structs, matcher, args, score_data=
     rows = [None] * len(gen_structs)
     
     for result in results:
-        if result and len(result) == 6:
-            i, rms_dist, a_diff, b_diff, c_diff, row = result
+        if result and len(result) == 7:
+            i, rms_dist, a_diff, b_diff, c_diff, row, n_matched_struct = result
             if i is not None and 0 <= i < len(gen_structs):
                 rms_dists[i] = rms_dist
                 a_diffs[i] = a_diff
@@ -404,8 +406,6 @@ def get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, num_workers, df=None, h
     Args:
         id_to_scores: Dict mapping material_id -> list of scores corresponding to CIFs
     """
-    from concurrent.futures import ProcessPoolExecutor
-
     true_structs = []
     valid_material_ids = []
     
@@ -591,3 +591,9 @@ if __name__ == "__main__":
     print("\nMetrics:")
     for k, v in metrics.items():
         print(f"  {k}: {v:.4f}" if v is not None else f"  {k}: None")
+
+    # Clean up any lingering processes
+    import multiprocessing as mp
+    for p in mp.active_children():
+        p.terminate()
+        p.join()

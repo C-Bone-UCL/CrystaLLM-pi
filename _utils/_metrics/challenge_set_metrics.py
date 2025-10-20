@@ -60,23 +60,46 @@ def _parallel_parse(args):
 def get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, length_lo, length_hi, angle_lo, angle_hi, num_workers):
     """Convert CIF strings to pymatgen Structures for generated and true materials."""
     gen_structs, true_structs, material_ids = [], [], []
-    for material_id, cifs in tqdm(id_to_gen_cifs.items(), desc="converting CIFs to Structures..."):
+    all_work_args = []
+    material_cif_mapping = []
+    
+    # First pass: collect all valid materials and prepare work args
+    for material_id, cifs in id_to_gen_cifs.items():
         if material_id not in id_to_true_cifs:
             continue
         try:
             true_struct = Structure.from_str(id_to_true_cifs[material_id], fmt="cif")
         except Exception:
             continue
+        
         subset = cifs if n_gens is None else cifs[:n_gens]
-        work_args = [(cif, length_lo, length_hi, angle_lo, angle_hi) for cif in subset]
+        start_idx = len(all_work_args)
+        for cif in subset:
+            all_work_args.append((cif, length_lo, length_hi, angle_lo, angle_hi))
+        end_idx = len(all_work_args)
+        
+        material_cif_mapping.append((material_id, true_struct, subset, start_idx, end_idx))
+    
+    # Process all CIFs in a single executor
+    all_parsed = []
+    if all_work_args:
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            parsed = list(executor.map(_parallel_parse, work_args))
-        parsed = [(cif, st) for cif, st in zip(subset, parsed) if st is not None]
+            all_parsed = list(tqdm(
+                executor.map(_parallel_parse, all_work_args),
+                total=len(all_work_args),
+                desc="converting CIFs to Structures..."
+            ))
+    
+    # Second pass: group results back by material
+    for material_id, true_struct, subset, start_idx, end_idx in material_cif_mapping:
+        parsed_batch = all_parsed[start_idx:end_idx]
+        parsed = [(cif, st) for cif, st in zip(subset, parsed_batch) if st is not None]
         if not parsed:
             continue
         material_ids.append(material_id)
         true_structs.append(true_struct)
         gen_structs.append(parsed)
+    
     return gen_structs, true_structs, material_ids
 
 def _parallel_evaluate(args):

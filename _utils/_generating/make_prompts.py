@@ -17,13 +17,21 @@ From Hugging Face dataset:
     python make_prompts.py --HF_dataset "c-bone/mpdb-2prop_clean" --split test \\
         --automatic --level level_3 --output_parquet prompts.parquet
 
-Manual construction:
+Manual construction (level 2 - composition only):
     python make_prompts.py --manual --compositions "K4Sc4P8O28,Li2O" \\
-        --condition_lists "1.2,2.5,3.1" --output_parquet prompts.parquet
+        --condition_lists "0.2,0.5,0.1" "0.0" --level level_2 --output_parquet prompts.parquet
+
+Manual construction (level 3 - composition + atomic props):
+    python make_prompts.py --manual --compositions "K4Sc4P8O28,Li2O" \\
+        --condition_lists "0.2,0.5" --level level_3 --output_parquet prompts.parquet
+
+Manual construction (level 4 - up to spacegroup):
+    python make_prompts.py --manual --compositions "K4Sc4P8O28" \\
+        --spacegroups "P1,Pm-3m" --condition_lists "0.2,0.5" --level level_4 --output_parquet prompts.parquet
 
 Raw conditioning format:
     python make_prompts.py --manual --compositions "K4Sc4P8O28" \\
-        --condition_lists "1.2,2.5" --raw --output_parquet prompts.parquet
+        --condition_lists "0.2,0.5" --raw --level level_2 --output_parquet prompts.parquet
 """
 
 import argparse
@@ -36,10 +44,44 @@ import os
 import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from _utils import load_api_keys
+from _utils import (
+    load_api_keys,
+    extract_formula_units,
+    replace_data_formula_with_nonreduced_formula,
+    semisymmetrize_cif,
+    add_atomic_props_block,
+    round_numbers,
+    remove_comments,
+    add_variable_brackets_to_cif
+)
+from _utils._processing_utils import get_atomic_props_block_for_formula
+from _utils._generating.postprocess import process_dataframe, postprocess
 
 # Configuration
 API_KEY_PATH = 'API_keys.jsonc'
+DECIMAL_PLACES = 4
+OXI_DEFAULT = False
+
+def augment_cif_for_prompt(cif_str):
+    """Apply the same augmentation process as in _cleaning.py for consistent formatting."""
+    try:
+        if cif_str is None or pd.isna(cif_str):
+            return None
+            
+        formula_units = extract_formula_units(cif_str)
+        if formula_units == 0:
+            return None
+
+        cif_str = replace_data_formula_with_nonreduced_formula(cif_str)
+        cif_str = semisymmetrize_cif(cif_str)
+        cif_str = add_atomic_props_block(cif_str, OXI_DEFAULT)
+        cif_str = round_numbers(cif_str, decimal_places=DECIMAL_PLACES)
+        cif_str = remove_comments(cif_str)
+        cif_str = add_variable_brackets_to_cif(cif_str)
+        
+        return cif_str
+    except Exception:
+        return None
 
 def load_hf_dataset(dataset_name, split):
     """Load dataset from Hugging Face with authentication."""
@@ -68,6 +110,7 @@ def extract_composition_from_cif(cif_content):
     if pd.isna(cif_content):
         return None
     match = re.search(r'data_\[([^\]]+)\]', cif_content)
+
     return match.group(1) if match else None
 
 def create_automatic_prompts(df, cif_column, level, condition_columns=None):
@@ -76,7 +119,7 @@ def create_automatic_prompts(df, cif_column, level, condition_columns=None):
     
     # Extract condition vector if specified
     if condition_columns:
-        if 'Condition Vector' or 'condition_vector' in condition_columns:
+        if 'Condition Vector' in condition_columns or 'condition_vector' in condition_columns:
             # take the string, and make a vector by removing the brackets and splitting by comma
             def parse_condition_vector(row):
                 vec_str = row.get('Condition Vector') or row.get('condition_vector')
@@ -113,7 +156,8 @@ def create_automatic_prompts(df, cif_column, level, condition_columns=None):
     
     elif level == "level_2": # composition only
         def extract_prompt(cif_content):
-            if pd.isna(cif_content):
+            cif_content = augment_cif_for_prompt(cif_content)
+            if cif_content is None or pd.isna(cif_content):
                 return ""
             comp = extract_composition_from_cif(cif_content)
             if comp:
@@ -123,7 +167,8 @@ def create_automatic_prompts(df, cif_column, level, condition_columns=None):
     
     elif level == "level_3": # composition and atomic props
         def extract_prompt(cif_content):
-            if pd.isna(cif_content):
+            cif_content = augment_cif_for_prompt(cif_content)
+            if cif_content is None or pd.isna(cif_content):
                 return ""
             parts = cif_content.split('\n_symmetry_space_group_name_H-M')
             prompt = parts[0] + '\n_symmetry_space_group_name_H-M' if len(parts) > 1 else parts[0]
@@ -131,7 +176,8 @@ def create_automatic_prompts(df, cif_column, level, condition_columns=None):
     
     elif level == "level_4": # up to spacegroup info
         def extract_prompt(cif_content):
-            if pd.isna(cif_content):
+            cif_content = augment_cif_for_prompt(cif_content)
+            if cif_content is None or pd.isna(cif_content):
                 return ""
             parts = cif_content.split('\n_cell_length_a')
             return "<bos>\n" + parts[0]
@@ -142,11 +188,28 @@ def create_automatic_prompts(df, cif_column, level, condition_columns=None):
     df['Prompt'] = df[cif_column].apply(extract_prompt)
     return df
 
-def create_manual_prompts(compositions, condition_lists, raw_mode=False):
-    """Generate prompts manually from compositions and condition lists."""
+def create_manual_prompts(compositions, condition_lists, raw_mode=False, level="level_2", spacegroups=None):
+    """Generate prompts manually from compositions and condition lists with different detail levels."""
     # Handle compositions
     if not compositions or compositions == [None]:
         compositions = [None]
+    
+    # Validate required parameters based on level
+    if level in ["level_2", "level_3", "level_4"] and (not compositions or compositions == [None]):
+        raise ValueError(f"Level {level} requires compositions to be specified")
+    
+    if level == "level_4" and not spacegroups:
+        raise ValueError("Level 4 requires spacegroups to be specified")
+    
+    # Handle spacegroups for level 4
+    if spacegroups and level == "level_4":
+        if len(spacegroups) != len(compositions):
+            if len(spacegroups) == 1:
+                # Use same spacegroup for all compositions
+                spacegroups = spacegroups * len(compositions)
+            else:
+                raise ValueError("Number of spacegroups must match number of compositions or be exactly 1")
+    
     # Build condition vectors from all condition lists
     condition_vector = []
     if condition_lists:
@@ -167,22 +230,55 @@ def create_manual_prompts(compositions, condition_lists, raw_mode=False):
         condition_vector = get_combinations(condition_lists)
     else:
         condition_vector = ["None"]
+    
     prompts = []
     conds = []
     
-    for comp in compositions:
+    for i, comp in enumerate(compositions):
         for cond in condition_vector:
+            if level == "level_1":
+                # Minimal, unconditional
+                base_prompt = "<bos>\ndata_["
+            
+            elif level == "level_2":
+                # Composition only
+                if comp is None:
+                    base_prompt = "<bos>\ndata_["
+                else:
+                    base_prompt = f"<bos>\ndata_[{comp}]\n"
+            
+            elif level == "level_3":
+                # Composition and atomic props
+                if comp is None:
+                    base_prompt = "<bos>\ndata_["
+                else:
+                    atomic_props = get_atomic_props_block_for_formula(comp, oxi=OXI_DEFAULT)
+                    atomic_props = add_variable_brackets_to_cif(atomic_props)
+                    base_prompt = f"<bos>\ndata_[{comp}]\n{atomic_props}\n_symmetry_space_group_name_H-M"
+            
+            elif level == "level_4":
+                # Up to spacegroup info
+                if comp is None:
+                    base_prompt = "<bos>\ndata_["
+                else:
+                    spacegroup = spacegroups[i] if spacegroups else "P1"
+                    atomic_props = get_atomic_props_block_for_formula(comp, oxi=OXI_DEFAULT)
+                    atomic_props = add_variable_brackets_to_cif(atomic_props)
+                    base_prompt = f"<bos>\ndata_[{comp}]\n{atomic_props}\n_symmetry_space_group_name_H-M [{spacegroup}]\n"
+            
+            else:
+                raise ValueError(f"Invalid level: {level}. Must be one of level_1, level_2, level_3, level_4")
+            
+            # Apply raw mode conditioning if specified
             if raw_mode:
                 cond_str = str(cond).replace("'", "").replace(",", " ")
-                if comp is None:
-                    prompt = f"<bos>\n[{cond_str}]\ndata_["
+                if cond_str == "None":
+                    prompt = base_prompt
                 else:
-                    prompt = f"<bos>\n[{cond_str}]\ndata_[{comp}]\n"
+                    prompt = f"<bos>\n[{cond_str}]\n" + base_prompt[6:]  # Remove <bos>\n from base_prompt
             else:
-                if comp is None:
-                    prompt = "<bos>\ndata_["
-                else:
-                    prompt = f"<bos>\ndata_[{comp}]\n"       
+                prompt = base_prompt
+                
             prompts.append(prompt)
             conds.append(cond)
     
@@ -202,20 +298,21 @@ if __name__ == "__main__":
     mode_group.add_argument("--automatic", action="store_true", help="Use automatic prompt generation from CIF data")
     mode_group.add_argument("--manual", action="store_true", help="Use manual prompt generation from compositions and conditions")
     
-    # For both
+    # For both modes
     parser.add_argument("--output_parquet", required=True, help="Path to output parquet file")
     parser.add_argument("--raw", action="store_true", help="Use raw conditioning format")
+    parser.add_argument("--level", type=str, choices=["level_1", "level_2", "level_3", "level_4"], 
+                        help="Prompt level (required for automatic mode, optional for manual mode, default: level_2)")
     
     # Automatic mode arguments
     parser.add_argument("--cif_column", type=str, default="CIF", help="Column name containing CIF data")
-    parser.add_argument("--level", type=str, choices=["level_1", "level_2", "level_3", "level_4"], 
-                        help="Prompt level for automatic mode")
     parser.add_argument("--condition_columns", nargs='+', help="Columns to extract for condition vector, for example 2 columns: --condition_columns 'norm_pf_at_700K' 'gap'")
     parser.add_argument("--remove_ref_columns", action="store_true", help="Keep only Prompt and condition_vector columns in output")
     
     # Manual mode arguments
     parser.add_argument("--compositions", type=str, help="Comma-separated list of compositions")
     parser.add_argument("--condition_lists", nargs='+', help="Space-separated condition lists (each list is comma-separated, will make for ex list_1 times list_2 amount of combinations of conditions for each prompts)")
+    parser.add_argument("--spacegroups", type=str, help="Comma-separated list of spacegroups (required for level_4, must match compositions or be exactly 1)")
     
     args = parser.parse_args()
     
@@ -253,12 +350,30 @@ if __name__ == "__main__":
 
         
     else:  # manual
+        # Set default level for manual mode
+        level = args.level if args.level else "level_2"
+        
         # Parse compositions
         if args.compositions:
             comp_str = re.sub(r'^\{|\}$', '', args.compositions.strip())
             compositions = [c.strip() for c in comp_str.split(',') if c.strip()]
         else:
             compositions = [None]
+        
+        # Parse spacegroups
+        spacegroups = None
+        if args.spacegroups and level == "level_4":
+            spacegroup_str = re.sub(r'^\{|\}$', '', args.spacegroups.strip())
+            spacegroups = [sg.strip() for sg in spacegroup_str.split(',') if sg.strip()]
+            # make sure spacegroup exists using
+            # look in HF-cif-tokenizer/spacegroups.txt
+            valid_spacegroups = set()
+            with open(os.path.join(os.path.dirname(__file__), '..', '..', 'HF-cif-tokenizer', 'spacegroups.txt'), 'r') as f:
+                for line in f:
+                    valid_spacegroups.add(line.strip())
+            for sg in spacegroups:
+                if sg not in valid_spacegroups:
+                    raise ValueError(f"Invalid spacegroup: {sg} (it needs to be formatted like in the tokenizers spacegroups.txt file)")
     
         # Parse condition lists
         condition_lists = []
@@ -268,8 +383,10 @@ if __name__ == "__main__":
                 if conditions:
                     condition_lists.append(conditions)
         
-        result_df = create_manual_prompts(compositions, condition_lists, args.raw)
-        print(f"\nGenerated manual prompts for {len(compositions)} compositions and {len(condition_lists)} condition lists")
+        result_df = create_manual_prompts(compositions, condition_lists, args.raw, level, spacegroups)
+        print(f"\nGenerated manual prompts for {len(compositions)} compositions and {len(condition_lists)} condition lists at {level}")
+        if spacegroups:
+            print(f"Using spacegroups: {spacegroups}")
 
     # Remove reference columns if requested
     if args.remove_ref_columns:

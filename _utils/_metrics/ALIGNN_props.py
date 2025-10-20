@@ -275,7 +275,7 @@ if __name__ == "__main__":
     df = pd.read_parquet(args.input_parquet)
     df.reset_index(drop=True, inplace=True)
     if "Generated CIF" not in df.columns:
-        print("Error: 'CIF' column not found.")
+        print("Error: 'Generated CIF' column not found.")
         sys.exit(1)
 
     # Prepare data for parallel parsing

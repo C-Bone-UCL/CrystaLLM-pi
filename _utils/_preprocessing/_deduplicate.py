@@ -187,5 +187,5 @@ if __name__ == "__main__":
     if output_dir:  # Only create directory if it's not empty string
         os.makedirs(output_dir, exist_ok=True)
     
-    df.to_parquet(out_fname, compression='zstd')
+    deduplicated_df.to_parquet(out_fname)
     print("Process completed successfully.")

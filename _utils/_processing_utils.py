@@ -9,7 +9,6 @@ import os
 import json
 import numpy as np
 import logging
-import re
 import _tokenizer
 from importlib import reload
 import commentjson

@@ -40,7 +40,6 @@ def parse_args():
     parser.add_argument("--n_heads_sharing_slider", type=int, default=None, help="Number of attention heads that share conditioning weights in Slider-GPT.")
     parser.add_argument("--cond_lr", type=float, default=None, help="Learning rate for conditional parameters (separate from main model learning rate).") 
     parser.add_argument("--cond_wd", type=float, default=None, help="Weight decay for conditional parameters in Slider-GPT architecture.")
-    
 
     # Model Arguments
     #######################
@@ -114,7 +113,7 @@ def parse_args():
     parser.add_argument("--num_return_sequences", type=int, default=1, help="Number of CIF sequences to generate per sample (adjust for GPU memory).")
     parser.add_argument("--input_parquet", type=str, default=None, help="Input parquet file containing test data for generation.")
     parser.add_argument("--output_parquet", type=str, default=None, help="Output parquet file to save generated CIF structures.")
-    parser.add_argument("--max_return_attempts", type=int, default=1, help="Number of generation runs per sample (total = num_repeats * num_return_sequences).")
+    parser.add_argument("--max_return_attempts", type=int, default=1, help="Number of generation runs per sample (total = max_return_attempts * num_return_sequences).")
     parser.add_argument("--max_samples", type=int, default=None, help="Maximum number of samples to process from the input parquet file.")
     parser.add_argument("--scoring_mode", type=str, default="None", help="Scoring mode for generated structures: 'logp', 'xrd', or 'None'.")
     parser.add_argument("--target_valid_cifs", type=int, default=20, help="Target number of valid CIFs to generate per prompts.")

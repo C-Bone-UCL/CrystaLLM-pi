@@ -14,5 +14,4 @@ _utils/_evaluation_og/lematerial-small-ppo_gen.parquet
 logs/
 .github/
 notebooks/Z_rsync.ipynb
-run*.py
 .exclude-rsync.txt

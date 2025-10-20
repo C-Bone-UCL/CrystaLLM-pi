@@ -11,6 +11,7 @@ import argparse
 import tarfile
 import queue
 import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
@@ -58,126 +59,91 @@ def read_generated_cifs(input_path):
         df = pd.read_parquet(input_path)
     return df
 
-def progress_listener(queue, n):
-    """Track progress of CIF evaluation."""
-    pbar = tqdm(total=n)
-    tot = 0
-    while True:
-        message = queue.get()
-        tot += message
-        pbar.update(message)
-        if tot == n:
-            break
 
-def eval_cif(progress_queue, task_queue, result_queue, tokenizer):
-    """Evaluate a CIF for validity and other properties."""
-    # Initialize counters and result containers
-    n_atom_site_multiplicity_consistent = 0
-    n_space_group_consistent = 0
-    bond_length_reasonableness_scores = []
-    is_valid_and_len = []
-    valid_cifs = []
 
-    while not task_queue.empty():
-        try:
-            i, cif = task_queue.get_nowait()
-        except queue.Empty:
-            break
-
-        try:
-            # Check if the CIF is sensible using global constants
-            if not is_sensible(cif, LENGTH_LO, LENGTH_HI, ANGLE_LO, ANGLE_HI):
-                raise Exception("CIF not sensible")
-
-            # Tokenize the CIF and get its length
-            gen_len = len(tokenizer.encode(cif))
-
-            # Extract and replace symmetry operators if necessary
-            space_group_symbol = extract_space_group_symbol(cif)
-            if DEBUG:
-                print(f"Space group symbol: {space_group_symbol}")
-            if space_group_symbol is not None and space_group_symbol != "P 1":
-                cif = replace_symmetry_operators(cif, space_group_symbol)
-
-            # Check atom site multiplicity consistency
-            if is_atom_site_multiplicity_consistent(cif):
-                n_atom_site_multiplicity_consistent += 1
-                if DEBUG:
-                    print("Atom site multiplicity consistent")
-            else:
-                if DEBUG:
-                    print("Atom site multiplicity NOT consistent")
-
-            # Check space group consistency
-            if is_space_group_consistent(cif):
-                n_space_group_consistent += 1
-                if DEBUG:
-                    print("Space group consistent")
-            else:
-                if DEBUG:
-                    print("Space group NOT consistent")
-
-            # Calculate bond length reasonableness score
-            score = bond_length_reasonableness_score(cif)
-            bond_length_reasonableness_scores.append(score)
-            if DEBUG:
-                print(f"Bond length reasonableness score: {score}")
-
-            # Extract cell parameters and calculate volumes
-            cell_params = ['_cell_length_a', '_cell_length_b', '_cell_length_c', 
-                          '_cell_angle_alpha', '_cell_angle_beta', '_cell_angle_gamma']
-            a, b, c, alpha, beta, gamma = [extract_numeric_property(cif, param) for param in cell_params]
-            implied_vol = get_unit_cell_volume(a, b, c, alpha, beta, gamma)
-            gen_vol = extract_volume(cif)
-            data_formula = extract_data_formula(cif)
-
-            # Check if the CIF is valid
-            valid = is_valid(cif, bond_length_acceptability_cutoff=1.0, debug=False)
-            if DEBUG:
-                print(f"Is valid: {valid}")
-
-            # Record the results
-            is_valid_and_len.append((data_formula, space_group_symbol, valid, gen_len, implied_vol, gen_vol))
-
-            # If valid, store for later saving
-            if valid:
-                valid_cifs.append((i, cif))
-
-        except Exception as e:
-            if DEBUG:
-                print(f"ERROR in CIF {i}: {e}")
-                print(f"Line: {sys.exc_info()[-1].tb_lineno}")
-            
-        progress_queue.put(1)
-
-    # Return aggregated results
-    result = (
-        n_atom_site_multiplicity_consistent,
-        n_space_group_consistent,
-        bond_length_reasonableness_scores,
-        is_valid_and_len,
-        valid_cifs
-    )
-    result_queue.put(result)
-
-def aggregate_results(result_queue):
-    """Aggregate results from all worker processes."""
-    n_atom_site_multiplicity_consistent = 0
-    n_space_group_consistent = 0
-    bond_length_reasonableness_scores = []
-    is_valid_and_lens = []
-    valid_cif_indices = []
-
-    while not result_queue.empty():
-        (n_atom_site_occ, n_space_group, scores, is_valid_and_len, valid_cifs) = result_queue.get()
-        n_atom_site_multiplicity_consistent += n_atom_site_occ
-        n_space_group_consistent += n_space_group
-        bond_length_reasonableness_scores.extend(scores)
-        is_valid_and_lens.extend(is_valid_and_len)
-        valid_cif_indices.extend(valid_cifs)
+def eval_cif_single(args_tuple):
+    """Evaluate a single CIF for validity and other properties."""
+    i, cif, tokenizer_dir, debug = args_tuple
     
-    return (n_atom_site_multiplicity_consistent, n_space_group_consistent, 
-            bond_length_reasonableness_scores, is_valid_and_lens, valid_cif_indices)
+    # Initialize tokenizer in each process
+    tokenizer = CustomCIFTokenizer.from_pretrained(
+        pretrained_dir=tokenizer_dir,
+        pad_token="<pad>"
+    )
+    
+    result = {
+        'atom_site_consistent': False,
+        'space_group_consistent': False,
+        'bond_score': None,
+        'valid_data': None,
+        'valid_cif': None
+    }
+    
+    try:
+        # Check if the CIF is sensible using global constants
+        if not is_sensible(cif, LENGTH_LO, LENGTH_HI, ANGLE_LO, ANGLE_HI):
+            raise Exception("CIF not sensible")
+
+        # Tokenize the CIF and get its length
+        gen_len = len(tokenizer.encode(cif))
+
+        # Extract and replace symmetry operators if necessary
+        space_group_symbol = extract_space_group_symbol(cif)
+        if debug:
+            print(f"Space group symbol: {space_group_symbol}")
+        if space_group_symbol is not None and space_group_symbol != "P 1":
+            cif = replace_symmetry_operators(cif, space_group_symbol)
+
+        # Check atom site multiplicity consistency
+        if is_atom_site_multiplicity_consistent(cif):
+            result['atom_site_consistent'] = True
+            if debug:
+                print("Atom site multiplicity consistent")
+        elif debug:
+            print("Atom site multiplicity NOT consistent")
+
+        # Check space group consistency
+        if is_space_group_consistent(cif):
+            result['space_group_consistent'] = True
+            if debug:
+                print("Space group consistent")
+        elif debug:
+            print("Space group NOT consistent")
+
+        # Calculate bond length reasonableness score
+        score = bond_length_reasonableness_score(cif)
+        result['bond_score'] = score
+        if debug:
+            print(f"Bond length reasonableness score: {score}")
+
+        # Extract cell parameters and calculate volumes
+        cell_params = ['_cell_length_a', '_cell_length_b', '_cell_length_c', 
+                      '_cell_angle_alpha', '_cell_angle_beta', '_cell_angle_gamma']
+        a, b, c, alpha, beta, gamma = [extract_numeric_property(cif, param) for param in cell_params]
+        implied_vol = get_unit_cell_volume(a, b, c, alpha, beta, gamma)
+        gen_vol = extract_volume(cif)
+        data_formula = extract_data_formula(cif)
+
+        # Check if the CIF is valid
+        valid = is_valid(cif, bond_length_acceptability_cutoff=1.0, debug=False)
+        if debug:
+            print(f"Is valid: {valid}")
+
+        # Record the results
+        result['valid_data'] = (data_formula, space_group_symbol, valid, gen_len, implied_vol, gen_vol)
+
+        # If valid, store for later saving
+        if valid:
+            result['valid_cif'] = (i, cif)
+
+    except Exception as e:
+        if debug:
+            print(f"ERROR in CIF {i}: {e}")
+            print(f"Line: {sys.exc_info()[-1].tb_lineno}")
+    
+    return result
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate generated structures.")
@@ -201,48 +167,23 @@ if __name__ == "__main__":
     cifs = df["Generated CIF"].tolist()
     print(f"Loaded {len(cifs)} CIFs from {args.input_parquet}")
 
-    # Initialize tokenizer once
-    tokenizer = CustomCIFTokenizer.from_pretrained(
-        pretrained_dir=DEFAULT_TOKENIZER_DIR,
-        pad_token="<pad>"
-    )
-
-    # Setup multiprocessing
-    manager = mp.Manager()
-    progress_queue = manager.Queue()
-    task_queue = manager.Queue()
-    result_queue = manager.Queue()
-
-    # Populate task queue
+    # Prepare tasks for parallel processing
     n = len(cifs)
-    for i, cif in enumerate(cifs):
-        task_queue.put((i, cif))
-
-    # Start progress watcher and worker processes
-    watcher = mp.Process(target=progress_listener, args=(progress_queue, n,))
-    processes = [
-        mp.Process(
-            target=eval_cif,
-            args=(progress_queue, task_queue, result_queue, tokenizer)
-        ) for _ in range(args.num_workers)
-    ]
-    processes.append(watcher)
-
-    try:
-        for process in processes:
-            process.start()
-        for process in processes:
-            process.join()
-    finally:
-        # Ensure all processes are cleaned up
-        for process in processes:
-            if process.is_alive():
-                process.terminate()
-                process.join()
-
-    # Aggregate results from all workers
-    (n_atom_site_multiplicity_consistent, n_space_group_consistent, 
-     bond_length_reasonableness_scores, is_valid_and_lens, valid_cif_indices) = aggregate_results(result_queue)
+    tasks = [(i, cif, DEFAULT_TOKENIZER_DIR, args.debug) for i, cif in enumerate(cifs)]
+    
+    # Process CIFs in parallel with proper resource management
+    print("Evaluating CIFs in parallel...")
+    results = []
+    with ProcessPoolExecutor(max_workers=args.num_workers) as executor:
+        for result in tqdm(executor.map(eval_cif_single, tasks), total=n):
+            results.append(result)
+    
+    # Aggregate results
+    n_atom_site_multiplicity_consistent = sum(1 for r in results if r['atom_site_consistent'])
+    n_space_group_consistent = sum(1 for r in results if r['space_group_consistent'])
+    bond_length_reasonableness_scores = [r['bond_score'] for r in results if r['bond_score'] is not None]
+    is_valid_and_lens = [r['valid_data'] for r in results if r['valid_data'] is not None]
+    valid_cif_indices = [r['valid_cif'] for r in results if r['valid_cif'] is not None]
 
     # Process results and generate summary statistics
     n_valid = 0

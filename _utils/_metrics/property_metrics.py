@@ -39,11 +39,20 @@ def inverse_signed_log_normalization(normed, x_min, x_max, beta=0.8):
     signed_val = unpow * (signed_max - signed_min) + signed_min
     return np.sign(signed_val) * (np.expm1(np.abs(signed_val)))
 
+def _get_property_type(prop):
+    """Get the property type for column mapping."""
+    if 'bandgap' in prop.lower() or 'bg' in prop.lower():
+        return 'bandgap'
+    elif 'density' in prop.lower():
+        return 'density'
+    return None
+
 def _get_property_mae(df, prop, target_col):
     """Calculate MAE for a specific property."""
-    if 'bandgap' in prop.lower() or 'bg' in prop.lower():
+    prop_type = _get_property_type(prop)
+    if prop_type == 'bandgap':
         pred_col = 'ALIGNN_bg (eV)'
-    elif 'density' in prop.lower():
+    elif prop_type == 'density':
         pred_col = 'gen_density (g/cm3)'
     else:
         return None
@@ -85,25 +94,40 @@ def process_property_targets(gen_df_proc, property_targets, norm_methods, max_va
     """Process property targets and add denormalized target columns."""
     condition_column_name = 'condition_vector' if 'condition_vector' in gen_df_proc.columns else 'Condition Vector'
     
-    for i in gen_df_proc.index:
-        cond_val = gen_df_proc.at[i, condition_column_name]
-        
-        # Parse condition values (handle both string and list formats)
+    def parse_condition_vector(cond_val):
+        """Parse condition vector from string or return as-is."""
         try:
-            cond_vals = ast.literal_eval(cond_val) if isinstance(cond_val, str) else cond_val
+            return ast.literal_eval(cond_val) if isinstance(cond_val, str) else cond_val
         except Exception:
-            cond_vals = cond_val
-        if not isinstance(cond_vals, (list, tuple)): 
-            cond_vals = [cond_vals]
-
-        # Process each property target
-        for j, prop in enumerate(property_targets):
-            target_col = f"target_{prop}"
-            val = cond_vals[j] if j < len(cond_vals) else -100
-            
-            # Denormalize the property value
-            denorm_val = _denormalize_property_value(val, norm_methods[j], min_values[j], max_values[j])
-            gen_df_proc.at[i, target_col] = denorm_val
+            return cond_val
+    
+    # Vectorized parsing of condition vectors
+    gen_df_proc['parsed_conditions'] = gen_df_proc[condition_column_name].apply(parse_condition_vector)
+    
+    # Ensure all parsed conditions are lists
+    gen_df_proc['parsed_conditions'] = gen_df_proc['parsed_conditions'].apply(
+        lambda x: x if isinstance(x, (list, tuple)) else [x]
+    )
+    
+    # Process each property target using vectorized operations
+    for j, prop in enumerate(property_targets):
+        target_col = f"target_{prop}"
+        
+        # Extract the j-th value from each condition vector
+        gen_df_proc[f'raw_val_{j}'] = gen_df_proc['parsed_conditions'].apply(
+            lambda cond_vals: cond_vals[j] if j < len(cond_vals) else -100
+        )
+        
+        # Denormalize values vectorized
+        gen_df_proc[target_col] = gen_df_proc[f'raw_val_{j}'].apply(
+            lambda val: _denormalize_property_value(val, norm_methods[j], min_values[j], max_values[j])
+        )
+        
+        # Clean up temporary column
+        gen_df_proc.drop(f'raw_val_{j}', axis=1, inplace=True)
+    
+    # Clean up temporary column
+    gen_df_proc.drop('parsed_conditions', axis=1, inplace=True)
     
     return gen_df_proc
 
@@ -111,9 +135,10 @@ def _get_metric_header(property_targets):
     """Generate CSV header for metrics based on property types."""
     header_parts = ["CV"]
     for prop in property_targets:
-        if 'bandgap' in prop.lower() or 'bg' in prop.lower():
+        prop_type = _get_property_type(prop)
+        if prop_type == 'bandgap':
             header_parts.append("MAE_BG")
-        elif 'density' in prop.lower():
+        elif prop_type == 'density':
             header_parts.append("MAE_density")
     return ",".join(header_parts) + "\n"
 
@@ -161,25 +186,26 @@ def _print_mae_results(mae_results, property_targets):
     for prop in property_targets:
         mae_key = f'MAE_{prop}'
         if mae_key in mae_results and mae_results[mae_key] is not None:
-            if 'bandgap' in prop.lower() or 'bg' in prop.lower():
+            prop_type = _get_property_type(prop)
+            if prop_type == 'bandgap':
                 print(f"Mean Absolute Error in Band Gap Prediction: {mae_results[mae_key]}")
-            elif 'density' in prop.lower():
+            elif prop_type == 'density':
                 print(f"Mean Absolute Error in Density Prediction: {mae_results[mae_key]}")
 
 def print_property_metrics(df, property_targets, condition_column_name, sort_metrics_by):
     """Print property metrics to console."""
     # Print overall metrics if requested
     if sort_metrics_by in ["all", "both"]:
-        print("\n============ Overall Property Metrics =============")
+        print("\nOverall Property Metrics")
         mae_results = compute_property_mae(df, property_targets)
         _print_mae_results(mae_results, property_targets)
 
     # Print metrics by condition vector if requested
     if sort_metrics_by in ["Condition Vector", "both"]:
-        print("\n======= Property Metrics by Condition Vector =====")
+        print("\nProperty Metrics by Condition Vector")
         groups = df.groupby(condition_column_name)
         for cond_vec, subdf in groups:
-            print(f"\n=====Condition Vector: {cond_vec}=====")
+            print(f"\nCondition Vector: {cond_vec}")
             mae_results = compute_property_mae(subdf, property_targets)
             _print_mae_results(mae_results, property_targets)
 
@@ -249,7 +275,7 @@ def main():
         print(f"Saving updated dataframe with property metrics to {args.parquet_out}...")
         gen_df_proc.to_parquet(args.parquet_out)
     
-    print("\nProperty metrics calculation completed.")
+    print("\nProperty metrics calculation completed")
 
 if __name__ == "__main__":
     main()

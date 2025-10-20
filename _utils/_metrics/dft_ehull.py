@@ -127,23 +127,17 @@ def main():
     if ENERGY_COLUMN not in df.columns:
         raise KeyError(f"Missing energy column '{ENERGY_COLUMN}' in CSV.")
 
-    # Initialize result storage
-    ehull_values = []
-    formation_energies = []
-    structures = []  # Cache parsed structures
-
-    # Process structures and compute thermodynamic properties
-    print("Processing structures and computing E_hull and formation energy per atom...")
-    for idx, row in tqdm(df.iterrows(), total=len(df), dynamic_ncols=True):
+    def compute_thermodynamics(row):
+        """Compute E_hull and formation energy for a single row"""
         # Process energy rescaling and structure parsing
         structure, energy_rescaled, n_atoms = process_energy_rescaling(row)
         
         if structure is None:
-            # Failed to process - append NaN values
-            ehull_values.append(np.nan)
-            formation_energies.append(np.nan)
-            structures.append(None)
-            continue
+            return pd.Series({
+                'dft_ehull': np.nan,
+                'dft_formation_energy_per_atom': np.nan,
+                'structure_obj': None
+            })
 
         # Compute hull and formation energy using MP references
         try:
@@ -155,16 +149,24 @@ def main():
         if np.isfinite(ehull_val):
             ehull_val = float(np.clip(ehull_val, *EHULL_CLIP_RANGE))
             if ehull_val in EHULL_CLIP_RANGE:
-                struct_name = df.at[idx, "Structure"] if "Structure" in df.columns else f"Entry {idx}"
+                struct_name = row.get("Structure", f"Entry {row.name}")
                 print(f"Clipped E_hull to: {ehull_val:.6f} eV for {struct_name}")
 
-        ehull_values.append(ehull_val)
-        formation_energies.append(eform_pa if np.isfinite(eform_pa) else np.nan)
-        structures.append(structure)
+        return pd.Series({
+            'dft_ehull': ehull_val,
+            'dft_formation_energy_per_atom': eform_pa if np.isfinite(eform_pa) else np.nan,
+            'structure_obj': structure
+        })
 
-    # Add computed columns to DataFrame
-    df["dft_ehull"] = ehull_values
-    df["dft_formation_energy_per_atom"] = formation_energies
+    # Process structures and compute thermodynamic properties
+    print("Processing structures and computing E_hull and formation energy per atom...")
+    tqdm.pandas(desc="Computing thermodynamics", dynamic_ncols=True)
+    results = df.progress_apply(compute_thermodynamics, axis=1)
+    
+    # Extract results
+    df["dft_ehull"] = results['dft_ehull']
+    df["dft_formation_energy_per_atom"] = results['dft_formation_energy_per_atom']
+    structures = results['structure_obj'].tolist()
 
     # Novelty calculation if comparison train set provided
     if args.huggingface_dataset:

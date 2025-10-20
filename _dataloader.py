@@ -15,6 +15,8 @@ from _utils import (
     validate_condition_values
 )
 
+NUM_PROC_TOK = 4
+
 np.random.seed(1)
 
 class CustomCIFDataCollator:
@@ -254,13 +256,13 @@ def load_data(
         tokenize_fn,
         batched=True,
         remove_columns=columns_to_remove,
-        **({"num_proc": 4})
+        num_proc=NUM_PROC_TOK
     )
 
 
     # Few filters/validations/stats
     if remove_CIFs_above_context:
-        print("\n======= Tokenization Filters Stats =======")
+        print("\n******* Tokenization Filters Stats *******")
         print(f"Removing CIFs with token length exceeding {context_length}")
         tokenized_dataset = filter_long_CIFs(tokenized_dataset, context_length)
 
@@ -272,7 +274,7 @@ def load_data(
         raise ValueError("Fixed mask not present in tokenized dataset")
 
     if show_token_stats:
-        print("\n======= Token Length Stats =======")
+        print("\n******* Token Length Stats *******")
         get_token_length_stats(tokenized_dataset)
 
     if mode == "conditional" and validate_conditions:

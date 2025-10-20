@@ -7,9 +7,9 @@
   "temperature": 0.75,
   "model_ckpt_dir": "model_ckpts/COD_XRD_small_nohc_full/slider_ft_opt/checkpoint-5000",
   "num_return_sequences": 20,
-  "input_parquet": "_artifacts/cod-xrd/amil/amil-TiO2_ref_prompts.parquet",
-  "output_parquet": "_artifacts/cod-xrd/amil/amil-TiO2_gen.parquet",
+  "input_parquet": "_artifacts/cod-xrd/amil/amil-TiO2-sc-sg_ref_prompts.parquet",
+  "output_parquet": "_artifacts/cod-xrd/amil/amil-TiO2-sc-sg_gen.parquet",
   "scoring_mode": "LOGP",
-  "target_valid_cifs": 20,
+  "target_valid_cifs": 100,
   "max_return_attempts": 100
 }

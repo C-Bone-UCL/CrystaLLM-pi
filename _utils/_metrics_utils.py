@@ -1,26 +1,20 @@
-"""
-Utility functions for computing Validity, Uniqueness, Novelty (VUN), and other
-metrics for CrystaLLMv2. Optimized for parallel processing.
-"""
+"""VUN metrics and property calculations for CrystaLLMv2."""
+
 import argparse
 import os
 import re
 import signal
 import sys
 import warnings
-import argparse
 import numpy as np
 import requests
 from pathlib import Path
 from tqdm import tqdm
 import logging
-import warnings
-import sys
 from collections import defaultdict
 import multiprocessing as mp
 from functools import partial
 from typing import Dict, Generator, Tuple
-import os
 import json
 import concurrent.futures
 
@@ -44,12 +38,9 @@ from _utils._generating.postprocess import process_dataframe
 
 logger = logging.getLogger(__name__)
 
-#####################################
-# Loading and processing Generated Data
-#####################################
-
+# Generated data processing
 def load_and_process_generated_data(gen_data_path, num_workers):
-    """Load and process generated CIF data."""
+    """Load generated CIFs and run processing pipeline."""
     print("\nLoading & Processing Generated CIFs")
     print(f"Loading generated data from {gen_data_path}...")
     
@@ -68,7 +59,7 @@ def load_and_process_generated_data(gen_data_path, num_workers):
 
 
 def build_generated_structures(df_proc):
-    """Build pymatgen Structure objects for valid generated CIFs."""
+    """Convert valid CIFs to pymatgen structures."""
     structures = [None] * len(df_proc)
     
     # This part is fast, so no need to parallelize
@@ -85,7 +76,7 @@ def build_generated_structures(df_proc):
 
 
 def extract_generated_formulas(structures):
-    """Extract unique reduced formulas from a list of pymatgen structures."""
+    """Get unique formulas from structures."""
     print("Extracting unique reduced formulas from generated structures...")
     
     formulas = set()
@@ -100,10 +91,7 @@ def extract_generated_formulas(structures):
     return formulas
 
 
-#####################################
-# VUN Metrics Functions
-#####################################
-
+# VUN metrics
 def _validity_worker(cif_str: str) -> bool:
     """Worker function to check if a single CIF string is valid."""
     if not cif_str or not isinstance(cif_str, str):
@@ -115,7 +103,7 @@ def _validity_worker(cif_str: str) -> bool:
         return False
 
 def get_valid(df_proc, num_workers):
-    """Compute validity for each CIF in parallel."""
+    """Check CIF validity in parallel."""
     print("\nValidity Metrics")
     
     max_workers_recommended = 16
@@ -125,11 +113,13 @@ def get_valid(df_proc, num_workers):
     results = [False] * len(df_proc)
     
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        # Use map to apply the worker function to each CIF string
-        future_to_cif = executor.map(_validity_worker, cifs_to_check, timeout=5000)
+        futures = [executor.submit(_validity_worker, cif) for cif in cifs_to_check]
         
-        # tqdm shows progress as results are completed
-        results = list(tqdm(future_to_cif, total=len(cifs_to_check), desc="Checking validity"))
+        for i, future in enumerate(tqdm(concurrent.futures.as_completed(futures), 
+                                      total=len(futures), desc="Checking validity")):
+            # Find which future completed and store result in correct position
+            future_idx = futures.index(future)
+            results[future_idx] = future.result()
 
     df_proc["is_valid"] = results
     valid_count = df_proc['is_valid'].sum()
@@ -161,7 +151,7 @@ def _uniqueness_worker(args_tuple: Tuple[int, str, float]) -> Tuple[int, str, fl
         return idx, None, None
 
 def get_unique(df_gen, workers):
-    """Identify unique structures based on BAWL hashing."""
+    """Find unique structures using BAWL hashing."""
     print("\nUniqueness Metrics")
     max_workers_recommended = 32
     max_workers = min(workers, max_workers_recommended)
@@ -183,14 +173,16 @@ def get_unique(df_gen, workers):
     
     # Process valid CIFs in parallel
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        tasks = zip(df_valid.index, cifs_to_check, ehull_values)
-        results = executor.map(_uniqueness_worker, tasks, timeout=5000)
+        tasks = list(zip(df_valid.index, cifs_to_check, ehull_values))
+        futures = [executor.submit(_uniqueness_worker, task) for task in tasks]
         
-        # Process results to find unique structures using iterative method
+        # Process results to find unique structures
         is_unique = pd.Series(False, index=df_gen.index)
         best_indices, best_metrics = {}, {}
         
-        for idx, hash_val, metric_val in tqdm(results, total=len(df_valid), desc="Finding best unique structures"):
+        for future in tqdm(concurrent.futures.as_completed(futures), 
+                          total=len(futures), desc="Finding best unique structures"):
+            idx, hash_val, metric_val = future.result()
             if hash_val is None:
                 continue
             
@@ -242,7 +234,7 @@ def _novelty_worker(args_tuple):
     return True # No match found after checking all references
 
 def get_novelty(df_gen, base_comps, ltol, stol, angle_tol, structures, workers):
-    """Check novelty of generated structures against a reference dataset."""
+    """Check if structures are novel vs training set."""
     print("\nNovelty Metrics")
     max_workers_recommended = 32
     max_workers = min(workers, max_workers_recommended)
@@ -262,8 +254,13 @@ def get_novelty(df_gen, base_comps, ltol, stol, angle_tol, structures, workers):
     # Run novelty checks in parallel
     results = [False] * len(tasks)
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        future_to_task = executor.map(_novelty_worker, tasks, timeout=5000)
-        results = list(tqdm(future_to_task, total=len(tasks), desc="Checking novelty"))
+        futures = [executor.submit(_novelty_worker, task) for task in tasks]
+        
+        for i, future in enumerate(tqdm(concurrent.futures.as_completed(futures), 
+                                      total=len(futures), desc="Checking novelty")):
+            # Find original task index and store result
+            task_idx = futures.index(future)
+            results[task_idx] = future.result()
 
     # Assign results back to the dataframe
     df_gen["is_novel"] = False
@@ -273,12 +270,9 @@ def get_novelty(df_gen, base_comps, ltol, stol, angle_tol, structures, workers):
     print(f"Found {novel_count} novel CIFs.")
     return df_gen
 
-#####################################
-# Novelty check helpers
-#####################################
-
+# Novelty helpers
 def load_and_filter_training_data(hf_dataset, processed_data_path, num_workers, gen_formulas):
-    """Load training dataset and filter it to include only relevant compositions."""
+    """Load training data and filter to relevant compositions."""
     print("\nLoading Training Dataset (for novelty check)")
     
     if processed_data_path and os.path.exists(processed_data_path):
@@ -295,7 +289,7 @@ def load_and_filter_training_data(hf_dataset, processed_data_path, num_workers, 
     return build_reference_compositions(proc_train_df, gen_formulas)
 
 def build_reference_compositions(proc_train_df, gen_formulas):
-    """Build a dictionary of reference CIFs, grouped by composition."""
+    """Group training CIFs by composition."""
     print("Filtering training dataset to compositions present in generated set...")
     
     base_comps = defaultdict(list)
@@ -313,12 +307,9 @@ def build_reference_compositions(proc_train_df, gen_formulas):
     print(f"Filtered training set to {len(relevant_train_df)} CIFs relevant for novelty check.")
     return base_comps
 
-################################
-# Reference Data for Ehull calcs
-################################
-
+# MP data for ehull calculations
 def download_mp_data(mp_data_path):
-    """Download MP computed structure entries if file doesn't exist"""
+    """Download MP data if needed."""
     if Path(mp_data_path).exists():
         print(f"MP data file already exists: {mp_data_path}")
         return
@@ -343,7 +334,7 @@ def download_mp_data(mp_data_path):
     print(f"Downloaded {Path(mp_data_path).stat().st_size / 1024 / 1024:.1f} MB to {mp_data_path}")
 
 class MPDataProvider:
-    """Efficient MP data provider that builds phase diagrams on-demand for specific chemical systems"""
+    """MP data provider with on-demand phase diagram building."""
     def __init__(self, mp_data_path):
         print("Loading MP entries...")
         df_mp = pd.read_json(mp_data_path)
@@ -375,7 +366,7 @@ class MPDataProvider:
         print(f"Organized {sum(len(v) for v in self.entries_by_chemsys.values())} entries across {len(self.entries_by_chemsys)} chemical systems")
     
     def get_phase_diagram(self, elements):
-        """Get or build phase diagram for a specific chemical system"""
+        """Get or build phase diagram for chemical system."""
         chemsys = tuple(sorted(str(el) for el in elements))
         
         if chemsys in self.pd_cache:
@@ -404,7 +395,7 @@ class MPDataProvider:
         return pd_sys
 
     def compute_ehull_and_eform(self, structure: Structure, energy_eV: float):
-        """Compute e_above_hull exactly like mace_ehull_copy.py"""
+        """Compute e_above_hull and formation energy."""
         elements = sorted({el.symbol for el in structure.composition.elements})
         pd_sys = self.get_phase_diagram(elements)
         
@@ -428,13 +419,9 @@ class MPDataProvider:
         eform_pa = pd_sys.get_form_energy_per_atom(entry)
         return eh, eform_pa
 
-################################
-# Property metrics
-################################
-
-### Density
+# Property calculations
 def get_density(cif):
-    """Calculate density from CIF string, returning NaN on any error."""
+    """Calculate density from CIF."""
     try:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
@@ -448,7 +435,7 @@ def get_density(cif):
     
 ### Bandgap with ALIGNN
 def _predict_bandgap(df_valid, num_workers):
-    """Predict bandgap using ALIGNN for valid structures."""
+    """Get ALIGNN bandgap predictions."""
     print("Getting predictions for band gaps...")
 
     # Add project root to path for imports
@@ -463,8 +450,12 @@ def _predict_bandgap(df_valid, num_workers):
     # Parse CIFs for ALIGNN prediction
     data_to_parse = [(idx, row["Generated CIF"]) for idx, row in df_valid.iterrows()]
     with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-        parsed_iter = executor.map(_parse_single_cif, data_to_parse, timeout=5000)
-        parsed_results = list(tqdm(parsed_iter, total=len(data_to_parse), desc="Parsing CIFs for ALIGNN"))
+        futures = [executor.submit(_parse_single_cif, data) for data in data_to_parse]
+        parsed_results = []
+        
+        for future in tqdm(concurrent.futures.as_completed(futures), 
+                          total=len(futures), desc="Parsing CIFs for ALIGNN"):
+            parsed_results.append(future.result())
     
     # Extract valid atoms and their indices
     atoms_list = [atoms for _, atoms in parsed_results if atoms is not None]
@@ -479,12 +470,12 @@ def _predict_bandgap(df_valid, num_workers):
 
 ### Density and Bandgap main functions
 def _predict_density(df_valid):
-    """Calculate density for valid structures."""
+    """Calculate density for structures."""
     print("Getting density predictions...")
     return df_valid["Generated CIF"].apply(get_density)
 
 def predict_properties(gen_df_proc, property_targets, num_workers):
-    """Predict properties using ALIGNN and density calculations."""
+    """Run property predictions (ALIGNN + density)."""
     df_valid = gen_df_proc[gen_df_proc["is_valid"]].copy()
     
     for prop in property_targets:
@@ -498,15 +489,9 @@ def predict_properties(gen_df_proc, property_targets, num_workers):
     return gen_df_proc
 
 
-#####################################
-# Basic CIF evaluation functions
-# Adapted from original CrystaLLM repo: https://github.com/lantunes/CrystaLLM
-#####################################
-
+# CIF validation functions (adapted from CrystaLLM)
 def bond_length_reasonableness_score(cif_str, tolerance=0.32, h_factor=2.5):
-    """
-    If a bond length is 30% shorter or longer than the sum of the atomic radii, the score is lower.
-    """
+    """Score based on bond length vs atomic radii."""
     structure = Structure.from_str(cif_str, fmt="cif")
     crystal_nn = CrystalNN()
 
@@ -658,7 +643,7 @@ def is_valid(cif_str, bond_length_acceptability_cutoff=1.0, debug=False):
     return True
 
 def reconstruct_xrd_peaks(condition_vector_str):
-    """Reconstruct XRD peaks from condition vector string."""
+    """Parse XRD peaks from condition vector."""
     try:
         if isinstance(condition_vector_str, str):
             vector_str = condition_vector_str.strip()

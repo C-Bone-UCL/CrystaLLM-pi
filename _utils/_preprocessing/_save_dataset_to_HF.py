@@ -9,10 +9,10 @@ Example for 100k dataset:
 """
 
 import argparse
-import pandas as pd
-import numpy as np
 import os
 import sys
+import pandas as pd
+import numpy as np
 
 from datasets import Dataset, DatasetDict
 from huggingface_hub import login
@@ -38,7 +38,7 @@ def create_dataset_splits(df, test_size, valid_size, duplicates_mode=False):
         
         n_materials = len(unique_materials)
         
-        # Handle case where all data goes to train set
+        # All data to training if no splits requested
         if test_size == 0.0 and valid_size == 0.0:
             df_train = df.reset_index(drop=True)
             return DatasetDict({
@@ -81,34 +81,34 @@ def create_dataset_splits(df, test_size, valid_size, duplicates_mode=False):
         # Check which splits are actually present
         available_splits = df['Split'].unique()
         
-        result_dict = {}
+        splits = {}
         
         if 'train' in available_splits:
             df_train = df[df['Split'] == 'train'].drop(columns=['Split']).reset_index(drop=True)
-            result_dict['train'] = Dataset.from_pandas(df_train)
+            splits['train'] = Dataset.from_pandas(df_train)
             print('Train columns:', df_train.columns.tolist())
         
         if 'val' in available_splits:
             df_valid = df[df['Split'] == 'val'].drop(columns=['Split']).reset_index(drop=True)
-            result_dict['validation'] = Dataset.from_pandas(df_valid)
+            splits['validation'] = Dataset.from_pandas(df_valid)
         
         if 'test' in available_splits:
             df_test = df[df['Split'] == 'test'].drop(columns=['Split']).reset_index(drop=True)
-            result_dict['test'] = Dataset.from_pandas(df_test)
+            splits['test'] = Dataset.from_pandas(df_test)
         
-        return DatasetDict(result_dict)
+        return DatasetDict(splits)
     
     else:
         # Random splitting
         dataset = Dataset.from_pandas(df)
         
-        # Handle case where all data goes to train set
+        # No splits requested, return everything as training data
         if test_size == 0.0 and valid_size == 0.0:
             return DatasetDict({
                 'train': dataset
             })
         
-        # Handle case with test set but no validation set
+        # Test set only
         if valid_size == 0.0 and test_size > 0:
             dataset = dataset.train_test_split(test_size=test_size, seed=1)
             return DatasetDict({
@@ -116,7 +116,7 @@ def create_dataset_splits(df, test_size, valid_size, duplicates_mode=False):
                 'test': dataset['test']
             })
         
-        # Handle case with validation set but no test set
+        # Validation set only
         if test_size == 0.0 and valid_size > 0:
             dataset = dataset.train_test_split(test_size=valid_size, seed=1)
             return DatasetDict({
@@ -124,7 +124,7 @@ def create_dataset_splits(df, test_size, valid_size, duplicates_mode=False):
                 'validation': dataset['test']
             })
         
-        # Handle case with both validation and test sets
+        # Both validation and test sets
         if test_size > 0 and valid_size > 0:
             dataset = dataset.train_test_split(test_size=valid_size + test_size, seed=1)
             test_valid = dataset['test'].train_test_split(test_size=test_size/(test_size + valid_size), seed=1)
@@ -167,9 +167,8 @@ if __name__ == "__main__":
 
     # Save locally if requested
     if args.save_local:
-        # make sure the directory exists (wandle if no directory)
+        # Create directory if it doesn't exist
         if '/' in args.output_parquet:
-            import os
             os.makedirs(os.path.dirname(args.output_parquet), exist_ok=True)
 
         dataset.save_to_disk(args.output_parquet)

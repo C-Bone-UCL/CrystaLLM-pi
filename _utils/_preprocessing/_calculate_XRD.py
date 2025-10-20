@@ -175,7 +175,7 @@ def main():
     
     # Save results
     print(f"Saving results to {args.output_parquet}")
-    # if 
+    
     df.to_parquet(args.output_parquet, index=False)
     print("done")
 
