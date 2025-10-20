@@ -1,0 +1,14 @@
+{
+  "activate_conditionality": "Slider",
+  "gen_max_length": 1024,
+  "do_sample": "true",
+  "top_k": 10,
+  "top_p": 0.95,
+  "temperature": 0.75,
+  "model_ckpt_dir": "model_ckpts/mp-20-pxrd/slider_opt/checkpoint-7500",
+  "num_return_sequences": 20,
+  "input_parquet": "_artifacts/mp-20-pxrd/mp-test_prompts.parquet",
+  "output_parquet": "_artifacts/mp-20-pxrd/mp-ft-20perp-test_gen.parquet",
+  "perplexity_rank": true,
+  "n_perplexity_samples": 20
+}
