@@ -383,23 +383,23 @@ def normalize_property_column(dataframe, prop_name, norm_method):
     dataframe[prop_name] = dataframe[prop_name].apply(lambda x: round(x, 3))
     
     if norm_method == "power_log":
-        print(f"\nNormalizing with power log method for {prop_name} (beta = 0.8)...")
+        print(f"Normalizing with power log method for {prop_name} (beta = 0.8)...")
         max_val = dataframe[prop_name].max()
-        print(f"Max value of {prop_name}: {max_val}")
+        # print(f"Max value of {prop_name}: {max_val}")
         if max_val == 0:
             norm_values = dataframe[prop_name]
         else:
             norm_values = (np.log(1 + dataframe[prop_name]) / np.log(1 + max_val)) ** 0.8
         dataframe["norm_" + prop_name] = norm_values.round(4)
-        print(f"Max value of power log {prop_name}: {norm_values.max()}")
-        print(f"Min value of power log {prop_name}: {norm_values.min()}")
+        # print(f"Max value of power log {prop_name}: {norm_values.max()}")
+        # print(f"Min value of power log {prop_name}: {norm_values.min()}")
 
     elif norm_method == "signed_log":
-        print(f"\nNormalizing with signed log method for {prop_name}...")
+        print(f"Normalizing with signed log method for {prop_name}...")
         max_val = dataframe[prop_name].max()
         min_val = dataframe[prop_name].min()
-        print(f"Max value of {prop_name}: {max_val}")
-        print(f"Min value of {prop_name}: {min_val}")
+        # print(f"Max value of {prop_name}: {max_val}")
+        # print(f"Min value of {prop_name}: {min_val}")
 
         def signed_log(x):
             return np.sign(x) * np.log1p(np.abs(x))
@@ -411,34 +411,34 @@ def normalize_property_column(dataframe, prop_name, norm_method):
         normed_values = (signed_values - signed_min) / (signed_max - signed_min)
         normed_values = normed_values ** 0.8
 
-        print(f"Max value of signed log {prop_name}: {normed_values.max()}")
-        print(f"Min value of signed log {prop_name}: {normed_values.min()}")
+        # print(f"Max value of signed log {prop_name}: {normed_values.max()}")
+        # print(f"Min value of signed log {prop_name}: {normed_values.min()}")
 
         dataframe["norm_" + prop_name] = normed_values.round(4)
 
     elif norm_method == "linear":
-        print(f"\nNormalizing with linear method for {prop_name}...")
+        print(f"Normalizing with linear method for {prop_name}...")
         min_val = dataframe[prop_name].min()
         max_val = dataframe[prop_name].max()
-        print(f"Min value of {prop_name}: {min_val}")
+        # print(f"Min value of {prop_name}: {min_val}")
         min_val = 0
-        print(f"Setting min value of {prop_name} to 0 for linear normalization")
+        # print(f"Setting min value of {prop_name} to 0 for linear normalization")
 
-        print(f"Max value of {prop_name}: {max_val}")
+        # print(f"Max value of {prop_name}: {max_val}")
         if max_val - min_val == 0:
             norm_values = dataframe[prop_name]
         else:
             norm_values = (dataframe[prop_name] - min_val) / (max_val - min_val)
 
-        print(f"Max value of linear {prop_name}: {norm_values.max()}")
-        print(f"Min value of linear {prop_name}: {norm_values.min()}")
+        # print(f"Max value of linear {prop_name}: {norm_values.max()}")
+        # print(f"Min value of linear {prop_name}: {norm_values.min()}")
 
         dataframe["norm_" + prop_name] = norm_values.round(4)
 
     elif norm_method == "log10":
-        print(f"\nNormalizing with log10 method for {prop_name}...")
-        print(f"Max value of {prop_name}: {dataframe[prop_name].max()}")
-        print(f"Min value of {prop_name}: {dataframe[prop_name].min()}")
+        print(f"Normalizing with log10 method for {prop_name}...")
+        # print(f"Max value of {prop_name}: {dataframe[prop_name].max()}")
+        # print(f"Min value of {prop_name}: {dataframe[prop_name].min()}")
 
         # compute log10 and clamp invalid values to 0.0
         vals = [np.log10(float(x)) for x in dataframe[prop_name]]
@@ -448,8 +448,8 @@ def normalize_property_column(dataframe, prop_name, norm_method):
         ]
         dataframe["norm_" + prop_name] = np.round(vals, 4)
 
-        print(f"Max value of log10 {prop_name}: {dataframe['norm_' + prop_name].max()}")
-        print(f"Min value of log10 {prop_name}: {dataframe['norm_' + prop_name].min()}")
+        # print(f"Max value of log10 {prop_name}: {dataframe['norm_' + prop_name].max()}")
+        # print(f"Min value of log10 {prop_name}: {dataframe['norm_' + prop_name].min()}")
     
     return dataframe
 

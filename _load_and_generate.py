@@ -1,47 +1,44 @@
 #!/usr/bin/env python3
 """
-Generate crystal structures using CrystaLLM-2.0 models from Hugging Face Hub.
+Load and generate CIF structures from HuggingFace CrystaLLM models.
 
-Simple interface for generating CIF structures with different CrystaLLM models.
-Handles prompt creation, conditional generation, and post-processing automatically.
+Works with all the CrystaLLM-2.0 models on Huggingface. Give real property values for manual generation and it handles the normalization automatically.
 
-AVAILABLE MODELS:
-- c-bone/CrystaLLM-2.0_base     : Unconditional generation (no conditions)
-- c-bone/CrystaLLM-2.0_SLME     : Solar efficiency conditioning (1 condition)
-- c-bone/CrystaLLM-2.0_bandgap  : Bandgap + stability conditioning (2 conditions)
-- c-bone/CrystaLLM-2.0_density  : Density + stability conditioning (2 conditions)
+Models:
+- c-bone/CrystaLLM-2.0_base (unconditional)
+- c-bone/CrystaLLM-2.0_SLME (solar efficiency)  
+- c-bone/CrystaLLM-2.0_bandgap (bandgap + ehull)
+- c-bone/CrystaLLM-2.0_density (density + ehull)
+- c-bone/CrystaLLM-2.0_COD-XRD (XRD patterns, for this one you need a prepared df first)
 
-CONDITIONING:
-All values must be normalized [0-1]. For bandgap/density models, if you only care
-about one property, set the second condition (ehull) to 0.0 for stable materials.
+Usage examples:
 
-EXAMPLES:
-# Unconditional
-python generate_from_hf.py --hf_model_path c-bone/CrystaLLM-2.0_base \\
-    --manual --compositions "LiFePO4,TiO2" --output_parquet out.parquet
+# Basic unconditional generation
+python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-2.0_base \
+    --manual --compositions "LiFePO4,TiO2" --output_parquet results.parquet
 
-# SLME model (solar efficiency)
-python generate_from_hf.py --hf_model_path c-bone/CrystaLLM-2.0_SLME \\
-    --manual --compositions "CsPbI3" --condition_lists "0.8" --output_parquet out.parquet
+# Solar efficiency model - just give real SLME values (0-33 range is what was seen during training)  
+python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-2.0_SLME \
+    --manual --compositions "CsPbI3" --condition_lists "25.0" --output_parquet results.parquet
 
-# Bandgap model 
-python generate_from_hf.py --hf_model_path c-bone/CrystaLLM-2.0_bandgap \\
-    --manual --compositions "Si" --condition_lists "0.3" "0.0" --output_parquet out.parquet
+# Bandgap model - bandgap in eV, ehull in eV/atom (set ehull=0 for stable, max bandgap ~17.9 eV was seen during training)
+python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-2.0_bandgap \
+    --manual --compositions "Si" --condition_lists "1.1" "0.0" --output_parquet results.parquet
 
-# From existing prompts
-python generate_from_hf.py --hf_model_path c-bone/CrystaLLM-2.0_bandgap \\
-    --input_parquet prompts.parquet --output_parquet out.parquet
+# Density model - density in g/cm3, ehull in eV/atom (set ehull=0 for stable, max density ~25.5 g/cm3 was seen during training)
+python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-2.0_density \
+    --manual --compositions "Os" --condition_lists "22.0" "0.0" --output_parquet results.parquet
 """
 
 
 import os
 import sys
 import argparse
+from typing import List, Dict, Any, Optional
 import pandas as pd
 import torch
 import numpy as np
 
-# Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from _utils._generating.make_prompts import create_manual_prompts
@@ -50,58 +47,161 @@ from _utils._generating.generate_CIFs import (
     parse_condition_vector, remove_conditionality, check_cif, score_output_logp
 )
 from _utils._generating.postprocess import process_dataframe
+from _utils import normalize_property_column
 
 TOKENIZER_DIR = "HF-cif-tokenizer"
 
+# Model specs - used for auto-normalization
 MODEL_INFO = {
     "c-bone/CrystaLLM-2.0_base": {
         "description": "Unconditional generation",
         "conditions": 0,
-        "example_conditions": None
+        "example_conditions": None, 
+        "max": None,
+        "min": None,
+        "normlization": None
     },
     "c-bone/CrystaLLM-2.0_SLME": {
         "description": "Solar cell efficiency (SLME) conditioning", 
         "conditions": 1,
-        "example_conditions": ["0.8"]
+        "example_conditions": ["25.0"],
+        "max": 33.192,
+        "min": 0.0,
+        "normlization": "linear"
     },
     "c-bone/CrystaLLM-2.0_bandgap": {
         "description": "Bandgap + stability conditioning",
         "conditions": 2, 
-        "example_conditions": ["0.3", "0.0"]
+        "example_conditions": ["1.1", "0.0"],
+        "max": [17.891, 5.418],
+        "min": [0.0, 0.0],
+        "normlization": ["power_log", "linear"]
     },
     "c-bone/CrystaLLM-2.0_density": {
         "description": "Density + stability conditioning",
         "conditions": 2,
-        "example_conditions": ["0.9", "0.0"] 
-    }
+        "example_conditions": ["15.0", "0.0"],
+        "max": [25.494, 0.1],
+        "min": [0.0, 0.0],
+        "normlization": ["linear", "linear"]
+    },
+    "c-bone/CrystaLLM-2.0_COD-XRD": {
+        "description": "Experimental XRD conditioning",
+        "conditions": 40,
+        "example_conditions": ["-100"] * 20 + ["-100"] * 20,
+        "max": [90.0, 100.0],
+        "min": [0.0, 0.0],
+        "normlization": ["linear", "linear"]
+    },
 }
 
 
-def load_hf_model(hf_model_path, model_type="None"):
-    """Load CrystaLLM model from Hugging Face Hub."""
-    print(f"Loading model from Hugging Face: {hf_model_path}")
+def normalize_property_values(raw_values: List[List[float]], model_path: str) -> List[List[float]]:
+    """Normalize raw property values to [0-1] using model settings."""
+    if not raw_values:
+        return raw_values
+        
+    model_info = MODEL_INFO.get(model_path)
+    if not model_info or not model_info.get("normlization"):
+        print("No normalization info - assuming values already normalized")
+        return raw_values
+
+    norm_methods = model_info["normlization"]
+    min_vals = model_info["min"] 
+    max_vals = model_info["max"]
     
-    # Get appropriate model class
+    # make everything lists for easier processing
+    if not isinstance(norm_methods, list):
+        norm_methods = [norm_methods] * len(raw_values)
+    if not isinstance(min_vals, list):
+        min_vals = [min_vals] * len(raw_values) if min_vals is not None else [0.0] * len(raw_values)
+    if not isinstance(max_vals, list):
+        max_vals = [max_vals] * len(raw_values) if max_vals is not None else [1.0] * len(raw_values)
+
+    normalized_values = []
+    
+    for i, values in enumerate(raw_values):
+        prop_name = f"prop_{i}"
+        method = norm_methods[i] if i < len(norm_methods) else "linear"
+        min_val = min_vals[i] if i < len(min_vals) else 0.0
+        max_val = max_vals[i] if i < len(max_vals) else 1.0
+        
+        # temp dataframe with anchor values for proper range
+        df_temp = pd.DataFrame({prop_name: [float(v) for v in values]})
+        df_temp = pd.concat([
+            df_temp, 
+            pd.DataFrame({prop_name: [min_val, max_val]})
+        ], ignore_index=True)
+        
+        df_normalized = normalize_property_column(df_temp, prop_name, method)
+        norm_col = f"norm_{prop_name}"
+        
+        if norm_col in df_normalized.columns:
+            # only take original values, not the anchors
+            norm_vals = df_normalized[norm_col].iloc[:len(values)].tolist()
+            norm_vals = [float(max(0.0, min(1.0, v))) for v in norm_vals]
+        else:
+            norm_vals = _linear_normalize(values, min_val, max_val)
+
+        
+        normalized_values.append([round(v, 4) for v in norm_vals])
+    
+    return normalized_values
+
+
+def _linear_normalize(values: List[float], min_val: float, max_val: float) -> List[float]:
+    """Simple linear normalization."""
+    if max_val - min_val == 0:
+        return [0.0] * len(values)
+    return [float(max(0.0, min(1.0, (v - min_val) / (max_val - min_val)))) for v in values]
+
+
+def validate_model_conditions(model_path: str, condition_lists: Optional[List[List[float]]]) -> None:
+    """Check that condition count matches what the model expects."""
+    model_info = MODEL_INFO.get(model_path)
+    if not model_info:
+        print(f"Warning: Unknown model {model_path}")
+        return
+        
+    expected = model_info["conditions"]
+    provided = len(condition_lists) if condition_lists else 0
+    
+    if expected == 0 and condition_lists:
+        print("Base model doesn't need conditions - ignoring them")
+    elif expected > 0 and expected != provided:
+        examples = model_info.get("example_conditions", [])
+        raise ValueError(
+            f"Model {model_path} needs {expected} condition list(s), got {provided}.\n"
+            f"Try: {examples}\n"
+            f"({model_info['description']})"
+        )
+
+
+def load_hf_model(hf_model_path: str, model_type: str = "None"):
+    """Load model from HuggingFace."""
+    print(f"Loading from HF: {hf_model_path}")
+    
     model_class = get_model_class(model_type)
-    print(f"Using model class: {model_class.__name__}")
+    print(f"Using {model_class.__name__}")
     
     try:
-        # Load model with trust_remote_code for custom CrystaLLM architectures
-        print("Downloading model (this may take a few minutes for first download)...")
+        print("Downloading... (might take a few mins first time)")
         model = model_class.from_pretrained(hf_model_path, trust_remote_code=True)
         
-        print(f"Successfully loaded {model_type} model")
-        print(f"  Model parameters: ~{sum(p.numel() for p in model.parameters()) / 1e6:.1f}M")
+        print(f"Loaded {model_type} model")
+        param_count = sum(p.numel() for p in model.parameters()) / 1e6
+        print(f"~{param_count:.1f}M parameters")
         return model
     except Exception as e:
-        print(f"Error loading model: {e}")
-        print("Make sure you have internet connection and the model path is correct.")
-        print("Available models: c-bone/CrystaLLM-2.0_base, c-bone/CrystaLLM-2.0_SLME, c-bone/CrystaLLM-2.0_bandgap, c-bone/CrystaLLM-2.0_density")
+        print(f"Error: {e}")
+        print("Check internet connection and model path")
+        available = list(MODEL_INFO.keys())
+        print(f"Available: {', '.join(available)}")
         return None
 
 
-def get_material_id(row, count, offset=0):
-    """Get material ID from row data or generate one."""
+def get_material_id(row: Dict[str, Any], count: int, offset: int = 0) -> str:
+    """Get material ID from row or make one up."""
     if "Material ID" in row:
         return row["Material ID"]
     elif "Formula" in row:
@@ -110,51 +210,53 @@ def get_material_id(row, count, offset=0):
         return f"Generated_{count + offset + 1}"
 
 
-def generate_prompts_from_args(args):
-    """Generate prompts from command line arguments."""
-    
+def generate_prompts_from_args(args) -> pd.DataFrame:
+    """Make prompts from args."""    
     if args.input_parquet:
-        print(f"Loading existing prompts from: {args.input_parquet}")
+        print(f"Loading prompts from: {args.input_parquet}")
+        print("Note: should already have normalized [0-1] values")
         return pd.read_parquet(args.input_parquet)
     
     elif args.manual:
-        print("Creating prompts from compositions and conditions...")
+        print("Making prompts from compositions and conditions")
         
-        # Parse compositions
         compositions = [comp.strip() for comp in args.compositions.split(',')]
-        
-        # Parse condition lists
-        condition_lists = []
+
+        # parse condition lists
+        raw_condition_lists = []
         if args.condition_lists:
             for cond_list in args.condition_lists:
                 values = [float(x.strip()) for x in cond_list.split(',')]
-                if any(v < 0 or v > 1 for v in values):
-                    print(f"WARNING: Condition values should be normalized [0-1]. Found: {values}")
-                condition_lists.append(values)
+                raw_condition_lists.append(values)
+
+        validate_model_conditions(args.hf_model_path, raw_condition_lists)
         
-        # Parse spacegroups (level_4 only)
-        spacegroups = [sg.strip() for sg in args.spacegroups.split(',')] if args.spacegroups else None
+        # normalise using the utility
+        normalized_condition_lists = normalize_property_values(raw_condition_lists, args.hf_model_path)
+        
+        spacegroups = None
+        if args.spacegroups:
+            spacegroups = [sg.strip() for sg in args.spacegroups.split(',')]
         
         df = create_manual_prompts(
             compositions=compositions,
-            condition_lists=condition_lists,
+            condition_lists=normalized_condition_lists,
             raw_mode=args.raw,
             level=args.level,
             spacegroups=spacegroups
         )
         
-        print(f"Created {len(df)} prompts at {args.level}")
+        print(f"Made {len(df)} prompts at {args.level}")
         return df
     
     else:
-        raise ValueError("Must specify either --input_parquet or --manual")
+        raise ValueError("Need either --input_parquet or --manual")
 
 
 def setup_generation_args(args):
-    """Create generation arguments object for the generation pipeline."""
+    """Package up generation settings."""
     class GenerationArgs:
         def __init__(self):
-            # Standard evaluation arguments
             self.gen_max_length = args.gen_max_length
             self.do_sample = args.do_sample
             self.num_return_sequences = args.num_return_sequences
@@ -165,71 +267,54 @@ def setup_generation_args(args):
             self.max_samples = args.max_samples
             self.target_valid_cifs = args.target_valid_cifs
             self.max_return_attempts = args.max_return_attempts
-            
-            # Model type
             self.activate_conditionality = args.model_type
     
     return GenerationArgs()
 
 
 def generate_cifs_with_hf_model(df_prompts, hf_model_path, gen_args):
-    """Generate CIFs using a Hugging Face model with proper generate_on_gpu logic.
+    """Generate CIFs using HF model - uses same logic as generate_on_gpu."""
+    print(f"Generating with: {hf_model_path}")
     
-    This function now uses the same generation logic as generate_on_gpu to ensure:
-    - Proper conditional model handling (PKV, Prepend, Slider)
-    - Correct EOS token truncation and sequence processing  
-    - Optional CIF validation and scoring
-    """
-    print(f"Generating CIFs with model: {hf_model_path}")
+    tokenizer = init_tokenizer(TOKENIZER_DIR)
     
-    # Initialize tokenizer
-    tokenizer_dir = TOKENIZER_DIR
-    tokenizer = init_tokenizer(tokenizer_dir)
-    
-    # Load model
     model = load_hf_model(hf_model_path, gen_args.activate_conditionality)
     if model is None:
-        raise RuntimeError("Failed to load model. Please check the model path and try again.")
+        raise RuntimeError("Model loading failed")
     
     model.eval()
     model.resize_token_embeddings(len(tokenizer))
     
-    # Setup device
     device = setup_device(0)
     model = model.to(device)
     
-    # Build generation kwargs
     generation_kwargs = build_generation_kwargs(gen_args, tokenizer, model.config.n_positions)
     print(f"Generation settings: {generation_kwargs}")
     
-    # Use generate_on_gpu logic for proper CIF generation
     all_results = []
     
     for idx, row in df_prompts.iterrows():        
-        # Tokenize prompt
         input_ids = tokenizer.encode(row["Prompt"], return_tensors="pt").to(device)
         
         valid_cifs = []
-        generation_attempts = 0
+        attempts = 0
         
-        # Use scoring mode logic similar to generate_on_gpu
         scoring_mode = gen_args.scoring_mode
-        max_return_attempts = gen_args.max_return_attempts
+        max_attempts = gen_args.max_return_attempts
         
         if scoring_mode == "None":
-            target_generations = generation_kwargs.get("num_return_sequences", 1) * max_return_attempts
-            max_attempts = max_return_attempts
+            target_gens = generation_kwargs.get("num_return_sequences", 1) * max_attempts
+            max_tries = max_attempts
         else:
-            target_generations = gen_args.target_valid_cifs
-            max_attempts = max_return_attempts
+            target_gens = gen_args.target_valid_cifs
+            max_tries = max_attempts
         
-        while len(valid_cifs) < target_generations and generation_attempts < max_attempts:
-            generation_attempts += 1
+        while len(valid_cifs) < target_gens and attempts < max_tries:
+            attempts += 1
             
             try:
-                # Handle different conditionality types like generate_on_gpu
                 if gen_args.activate_conditionality in ["PKV", "Prepend", "Slider"]:
-                    # Parse condition vector for conditional models
+                    # conditional models need condition tensor
                     condition_tensor = None
                     if row["condition_vector"] not in (None, "None"):
                         values = parse_condition_vector(row["condition_vector"])
@@ -245,7 +330,7 @@ def generate_cifs_with_hf_model(df_prompts, hf_model_path, gen_args):
                             **generation_kwargs,
                         )
                 else:
-                    # Handle Raw or unconditional generation
+                    # Raw or unconditional
                     with torch.no_grad():
                         outputs = model.generate(
                             input_ids=input_ids,
@@ -254,29 +339,25 @@ def generate_cifs_with_hf_model(df_prompts, hf_model_path, gen_args):
                             **generation_kwargs,
                         )
                 
-                # Process each generated sequence using generate_on_gpu logic
+                # process each sequence
                 for seq_idx, output_seq in enumerate(outputs.sequences):
                     if torch.isnan(output_seq).any() or torch.isinf(output_seq).any():
                         continue
                     
-                    # Find EOS token in the full sequence and truncate there
+                    # find EOS and truncate
                     eos_idx = (output_seq == tokenizer.eos_token_id).nonzero(as_tuple=True)[0]
                     if eos_idx.numel() > 0:
-                        # Include everything from start to EOS (but not EOS itself)
                         full_sequence = output_seq[:int(eos_idx[0])]
                     else:
-                        # No EOS found, use full sequence
                         full_sequence = output_seq
                     
-                    # Decode full sequence (input + generated) and clean up CIF
                     cif_txt = tokenizer.decode(full_sequence, skip_special_tokens=True).replace("\n\n", "\n")
                     
-                    # Apply remove_conditionality for Raw conditioning
                     if gen_args.activate_conditionality == "Raw":
                         cif_txt = remove_conditionality(cif_txt)
                     
                     if scoring_mode == "None":
-                        # No validation or scoring - just collect all CIFs
+                        # just collect everything
                         mid = get_material_id(row, len(valid_cifs), 0)
                         
                         valid_cifs.append({
@@ -286,10 +367,10 @@ def generate_cifs_with_hf_model(df_prompts, hf_model_path, gen_args):
                             "condition_vector": row.get("condition_vector", "None"),
                         })
                     else:
-                        # Validate CIF
-                        is_consistent = check_cif(cif_txt)
+                        # validate first
+                        is_valid = check_cif(cif_txt)
                         
-                        if is_consistent:
+                        if is_valid:
                             if scoring_mode.upper() == "LOGP":
                                 score = score_output_logp(model, outputs.scores, outputs.sequences, seq_idx, input_ids.shape[1], tokenizer.eos_token_id)
                             else:
@@ -306,129 +387,117 @@ def generate_cifs_with_hf_model(df_prompts, hf_model_path, gen_args):
                                 "condition_vector": row.get("condition_vector", "None"),
                             })
                     
-                    # Break if we've reached our target
-                    if len(valid_cifs) >= target_generations:
+                    if len(valid_cifs) >= target_gens:
                         break
                         
             except Exception as e:
-                print(f"Error generating for prompt {idx + 1}: {e}")
+                print(f"Error on prompt {idx + 1}: {e}")
                 continue
         
-        # Process results based on scoring mode
+        # handle results based on scoring
         if valid_cifs:
             if scoring_mode == "None":
-                # No ranking for unscored mode
                 all_results.extend(valid_cifs)
-                print(f"Generated {len(valid_cifs)} CIFs (no validation/scoring)")
+                print(f"Got {len(valid_cifs)} CIFs (no validation)")
             else:
-                # Rank all CIFs for this prompt by score 
+                # rank by score if using LOGP
                 if scoring_mode.upper() == "LOGP":
-                    ranked_cifs = sorted(valid_cifs, key=lambda x: x["score"] if not np.isnan(x["score"]) and not np.isinf(x["score"]) else float('inf'), reverse=False)
+                    ranked = sorted(valid_cifs, key=lambda x: x["score"] if not np.isnan(x["score"]) and not np.isinf(x["score"]) else float('inf'), reverse=False)
                 else:
-                    ranked_cifs = valid_cifs
+                    ranked = valid_cifs
                 
-                for rank, cif_data in enumerate(ranked_cifs, 1):
+                for rank, cif_data in enumerate(ranked, 1):
                     cif_data["rank"] = rank
                 
-                all_results.extend(ranked_cifs)
-                if ranked_cifs:
-                    best_score = ranked_cifs[0]["score"]
-                    worst_score = ranked_cifs[-1]["score"]
-                    print(f"Generated {len(valid_cifs)} valid CIFs, {scoring_mode} scores: {best_score:.4f} to {worst_score:.4f}")
+                all_results.extend(ranked)
+                if ranked:
+                    best = ranked[0]["score"]
+                    worst = ranked[-1]["score"]
+                    print(f"Got {len(valid_cifs)} valid CIFs, scores: {best:.4f} to {worst:.4f}")
         else:
-            print(f"Failed to generate any CIFs after {generation_attempts} attempts")
+            print(f"Failed after {attempts} attempts")
     
     return pd.DataFrame(all_results)
 
 
 def main():
+    """Main function."""
     parser = argparse.ArgumentParser()
     
-    # Required arguments
+    # Required args
     parser.add_argument("--hf_model_path", required=True,
-                       help="HuggingFace model path (c-bone/CrystaLLM-2.0_base, c-bone/CrystaLLM-2.0_SLME, c-bone/CrystaLLM-2.0_bandgap, c-bone/CrystaLLM-2.0_density, c-bone/CrystaLLM-2.0_COD-XRD)")
+                       help="HuggingFace model path")
     parser.add_argument("--output_parquet", required=True,
-                       help="Output parquet file path for generated CIF structures")
+                       help="Output parquet file")
     
-    # Prompt source (mutually exclusive)
+    # Input source
     prompt_group = parser.add_mutually_exclusive_group(required=True)
     prompt_group.add_argument("--input_parquet", 
-                             help="Input parquet file with existing prompts")
+                             help="Input parquet with prompts")
     prompt_group.add_argument("--manual", action="store_true",
-                             help="Create prompts manually from compositions and conditions")
+                             help="Make prompts from compositions/conditions")
     
-    # Manual prompt arguments
+    # Manual prompt options
     parser.add_argument("--compositions", 
-                       help="Comma-separated chemical compositions (e.g., 'LiFePO4,Si,TiO2')")
+                       help="Comma-separated compositions (e.g., 'LiFePO4,Si,TiO2')")
     parser.add_argument("--condition_lists", nargs='+',
-                       help="Normalized condition values [0-1]. Base: none, SLME: 1 list, bandgap/density: 2 lists")
+                       help="Real property values. Base: none, SLME: 1 value (0-33), bandgap/density: 2 values")
     parser.add_argument("--level", choices=["level_1", "level_2", "level_3", "level_4"],
                        default="level_2", help="Prompt detail level")
     parser.add_argument("--spacegroups",
-                       help="Comma-separated spacegroups (only for level_4)")
+                       help="Comma-separated spacegroups (level_4 only)")
     
-    # Generation arguments (aligned with evaluation standards)
-    # add a gen_config arg
+    # Generation settings
     parser.add_argument("--do_sample", type=str, default="True", 
-                       help="Enable sampling for generation (True/False/beam)")
+                       help="Sampling mode (True/False/beam)")
     parser.add_argument("--top_k", type=int, default=15,
-                       help="Number of highest probability tokens to consider for top-k sampling")
+                       help="Top-k sampling")
     parser.add_argument("--top_p", type=float, default=0.95,
-                       help="Cumulative probability threshold for nucleus (top-p) sampling")
+                       help="Top-p sampling")
     parser.add_argument("--temperature", type=float, default=1.0,
-                       help="Temperature for controlling randomness in generation")
+                       help="Sampling temperature")
     parser.add_argument("--gen_max_length", type=int, default=1024,
-                       help="Maximum length of generated CIF sequences")
+                       help="Max generation length")
     parser.add_argument("--num_return_sequences", type=int, default=1,
-                       help="Number of CIF sequences to generate per sample")
+                       help="Sequences per sample")
     parser.add_argument("--max_return_attempts", type=int, default=1,
-                       help="Number of generation runs per sample (total = max_return_attempts * num_return_sequences) if using logp scoring itll do until it hits either max_return attempts or the target of valid cifs.")
+                       help="Generation attempts per sample")
     parser.add_argument("--max_samples", type=int, default=None,
-                       help="Maximum number of samples to process from input (if a df_prompts is used)")
+                       help="Max samples to process")
     parser.add_argument("--scoring_mode", type=str, default="None",
-                       help="Scoring mode for generated structures: 'LOGP', 'None'")
+                       help="Scoring: 'LOGP' or 'None'")
     parser.add_argument("--target_valid_cifs", type=int, default=20,
-                       help="Target number of valid CIFs to generate per prompt")
+                       help="Target valid CIFs per prompt")
     
-    # Model and processing arguments
+    # Model and processing
     parser.add_argument("--model_type", choices=["PKV", "Prepend", "Slider", "Raw", "Base"], default="PKV",
-                       help="Model architecture type")
+                       help="Model architecture")
     parser.add_argument("--raw", action="store_true",
-                       help="Use raw conditioning format")
+                       help="Raw conditioning format")
     parser.add_argument("--num_workers", type=int, default=4,
-                       help="Number of workers for post-processing")
+                       help="Post-processing workers")
     parser.add_argument("--skip_postprocess", action="store_true",
-                       help="Skip CIF cleaning and validation")
-    
+                       help="Skip CIF validation")
     parser.add_argument("--verbose", action="store_true",
-                       help="Enable verbose output")
+                       help="Verbose output")
     
     args = parser.parse_args()
     
-    
-    # Basic validation and info display
+    # show model info
     print(f"Model: {args.hf_model_path}")
     model_info = MODEL_INFO.get(args.hf_model_path)
     if model_info:
         print(f"Type: {model_info['description']}")
+        if model_info['conditions'] > 0:
+            print(f"Needs {model_info['conditions']} conditions")
+            print(f"Example: {model_info.get('example_conditions', 'N/A')}")
+    else:
+        print("Warning: Unknown model")
     
+    # validate manual input
     if args.manual:
-        if not args.compositions:
-            if not args.level.startswith("level_1"):
-                parser.error("Manual mode requires --compositions for level_2, level_3, and level_4")
-
-        
-        # Simple condition validation
-        if model_info:
-            expected = model_info['conditions']
-            provided = len(args.condition_lists) if args.condition_lists else 0
-            
-            if expected == 0 and args.condition_lists:
-                print("Base model is unconditional - ignoring conditions")
-            elif expected > 0 and expected != provided:
-                example = model_info.get('example_conditions', [])
-                parser.error(f"Model needs {expected} condition list(s), got {provided}. "
-                           f"Example: --condition_lists {' '.join(example)}")
+        if not args.compositions and not args.level.startswith("level_1"):
+            parser.error("Need --compositions for level_2+")
         
         print(f"Compositions: {args.compositions}")
         if args.condition_lists:
@@ -436,46 +505,44 @@ def main():
     else:
         print(f"Input: {args.input_parquet}")
     
-    
-    # Generate prompts
-    print("\n****** Generating Prompts *******")
+    # make prompts
+    print("\nGenerating Prompts ")
     df_prompts = generate_prompts_from_args(args)
     print(f"Got {len(df_prompts)} prompts")
 
     if args.verbose:
-        print(f"\nExample prompt:\n{df_prompts.iloc[0]['Prompt']}\n")
+        print(f"\nExample:\n{df_prompts.iloc[0]['Prompt']}\n")
     
-    # Limit samples if specified
     if args.max_samples:
         df_prompts = df_prompts.head(args.max_samples)
         print(f"Limited to {len(df_prompts)} samples")
     
-    # Setup generation arguments
     gen_args = setup_generation_args(args)
     
-    # Generate CIFs
-    print("\n****** Generating CIFs ******")
+    # generate CIFs
+    print("\nGenerating CIFs ")
     df_generated = generate_cifs_with_hf_model(df_prompts, args.hf_model_path, gen_args)
     
-    # Post-process CIFs
+    # post-process
     if not args.skip_postprocess:
-        print("\n****** Post-processing CIFs ******")
+        print("\nPost-processing ")
         df_final = process_dataframe(df_generated, args.num_workers, "Generated CIF")
     else:
         df_final = df_generated
     
-    # Save results
+    # save
     output_dir = os.path.dirname(args.output_parquet)
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
     
     df_final.to_parquet(args.output_parquet, index=False)
-
     
-    print("\n****** Generation Complete ******")
-    print(f"Total structures: {len(df_final)}")
-
-    print(f"\nSaved to: {args.output_parquet}")
+    print("\nDone ")
+    print(f"Total: {len(df_final)} structures")
+    if not args.skip_postprocess and 'is_valid' in df_final.columns:
+        valid_count = df_final['is_valid'].sum() if df_final['is_valid'].dtype == bool else len(df_final)
+        print(f"Valid: {valid_count}")
+    print(f"Saved to: {args.output_parquet}")
 
 
 if __name__ == "__main__":
