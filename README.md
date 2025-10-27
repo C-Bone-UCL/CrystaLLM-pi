@@ -45,6 +45,10 @@ A few tools are used which you should setup for full functionality:
       - [1. VUN Metrics (Validity, Uniqueness, Novelty)](#1-vun-metrics-validity-uniqueness-novelty)
       - [2. Energy Above Hull (Stability)](#2-energy-above-hull-stability)
       - [3. Other metrics](#3-other-metrics)
+  - [API](#api)
+    - [Build container](1-build-the-container)
+    - [Run container](2-run-the-container)
+    - [Post to API](3-api-usage)
   - [Studies](#studies)
   - [License](#license)
   - [Contact](#contact)
@@ -420,9 +424,62 @@ python _utils/_metrics/mace_ehull.py \
 Lower E-hull values indicate higher thermodynamic stability. In theory anything below 0.1 eV/atom is metastable, here if we account for MAE of the surrogate model (See MACE-MP-0 on Matbench Discovery), we can loosen threshold to 0.157 if desired.
 
 #### 3. Other metrics
-XRD, Bandgap, Density, or challenge set benchmark metrics can also be calculated for further property analysis. If wanted, find the associated scripts in [the _metrics folder](_utils/_metrics/)
+XRD, Bandgap, Density, or challenge set benchmark metrics can also be calculated for further property analysis. If wanted, find the associated scripts in [the \_metrics folder](_utils/_metrics/)
 
 > **Environment Note**: ALIGNN-based scripts require the separate `alignn_env` environment due to dependency conflicts. Use `conda run -n alignn_env` for these tools.
+
+## API
+
+The CLI tools are available via a Containerised API.
+
+### 1. Build the Container
+
+```bash
+docker build -t crystallm-api .
+```
+
+### 2. Run the Container
+
+```bash
+mkdir -p data outputs
+
+docker run \
+  -u $(id -u):$(id -g) \
+  -p 8000:8000 \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/outputs:/app/outputs \
+  --name crystallm-api \
+  crystallm-api
+```
+
+### 3. API usage
+
+```bash
+# deduplicate
+curl -X POST "http://localhost:8000/preprocessing/deduplicate" \
+-H "Content-Type: application/json" \
+-d '{
+  "input_file": "/app/data/SLME_1K.parquet",
+  "output_parquet": "/app/data/deduplicated_data.parquet",
+  "property_columns": "[\"Bandgap (eV)\", \"Density (g/cm^3)\"]",
+  "filter_na_columns": "[\"Bandgap (eV)\"]",
+  "filter_zero_columns": "[\"Density (g/cm^3)\"]",
+  "filter_negative_columns": "[\"Bandgap (eV)\"]"
+}'
+# clean
+curl -X POST "http://localhost:8000/preprocessing/clean" \
+-H "Content-Type: application/json" \
+-d '{
+  "input_parquet": "/app/data/deduplicated_data.parquet",
+  "output_parquet": "/app/data/cleaned_data.parquet",
+  "num_workers": 8,
+  "property_columns": "[\"Bandgap (eV)\", \"Density (g/cm^3)\"]",
+  "property1_normaliser": "power_log",
+  "property2_normaliser": "linear"
+}'
+# job status
+curl -Ss -X GET "http://localhost:8000/jobs" | jq .
+```
 
 ## Studies
 
