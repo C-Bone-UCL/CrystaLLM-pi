@@ -153,6 +153,9 @@ if __name__ == "__main__":
 
 
     required_columns = ['Reduced Formula', 'CIF']
+    # if there is the 'Material ID' column, we keep it as well
+    if 'Material ID' in df.columns:
+        required_columns.append('Material ID')
     
     for col in required_columns:
         if col not in df.columns:

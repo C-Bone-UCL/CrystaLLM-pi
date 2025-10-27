@@ -13,6 +13,7 @@ import _tokenizer
 from importlib import reload
 import commentjson
 from io import StringIO
+from typing import List
 
 reload(_tokenizer)
 
@@ -384,74 +385,147 @@ def normalize_property_column(dataframe, prop_name, norm_method):
     
     if norm_method == "power_log":
         print(f"Normalizing with power log method for {prop_name} (beta = 0.8)...")
-        max_val = dataframe[prop_name].max()
-        # print(f"Max value of {prop_name}: {max_val}")
-        if max_val == 0:
-            norm_values = dataframe[prop_name]
-        else:
-            norm_values = (np.log(1 + dataframe[prop_name]) / np.log(1 + max_val)) ** 0.8
-        dataframe["norm_" + prop_name] = norm_values.round(4)
+        # use data's own max for backward compatibility
+        values_list = dataframe[prop_name].tolist()
+        norm_values = normalize_values_power_log_auto(values_list)
+        dataframe["norm_" + prop_name] = norm_values
         # print(f"Max value of power log {prop_name}: {norm_values.max()}")
         # print(f"Min value of power log {prop_name}: {norm_values.min()}")
 
     elif norm_method == "signed_log":
         print(f"Normalizing with signed log method for {prop_name}...")
-        max_val = dataframe[prop_name].max()
-        min_val = dataframe[prop_name].min()
-        # print(f"Max value of {prop_name}: {max_val}")
-        # print(f"Min value of {prop_name}: {min_val}")
-
-        def signed_log(x):
-            return np.sign(x) * np.log1p(np.abs(x))
-
-        signed_values = signed_log(dataframe[prop_name])
-        signed_max = signed_values.max()
-        signed_min = signed_values.min()
-
-        normed_values = (signed_values - signed_min) / (signed_max - signed_min)
-        normed_values = normed_values ** 0.8
-
-        # print(f"Max value of signed log {prop_name}: {normed_values.max()}")
-        # print(f"Min value of signed log {prop_name}: {normed_values.min()}")
-
-        dataframe["norm_" + prop_name] = normed_values.round(4)
+        # use data's own min/max for backward compatibility
+        values_list = dataframe[prop_name].tolist()
+        norm_values = normalize_values_signed_log_auto(values_list)
+        dataframe["norm_" + prop_name] = norm_values
 
     elif norm_method == "linear":
         print(f"Normalizing with linear method for {prop_name}...")
-        min_val = dataframe[prop_name].min()
+        # use data's own min/max but set min to 0 (backward compatibility)
         max_val = dataframe[prop_name].max()
-        # print(f"Min value of {prop_name}: {min_val}")
-        min_val = 0
-        # print(f"Setting min value of {prop_name} to 0 for linear normalization")
-
-        # print(f"Max value of {prop_name}: {max_val}")
-        if max_val - min_val == 0:
-            norm_values = dataframe[prop_name]
-        else:
-            norm_values = (dataframe[prop_name] - min_val) / (max_val - min_val)
-
-        # print(f"Max value of linear {prop_name}: {norm_values.max()}")
-        # print(f"Min value of linear {prop_name}: {norm_values.min()}")
-
-        dataframe["norm_" + prop_name] = norm_values.round(4)
+        values_list = dataframe[prop_name].tolist()
+        norm_values = normalize_values_linear(values_list, 0.0, max_val)
+        dataframe["norm_" + prop_name] = norm_values
 
     elif norm_method == "log10":
         print(f"Normalizing with log10 method for {prop_name}...")
-        # print(f"Max value of {prop_name}: {dataframe[prop_name].max()}")
-        # print(f"Min value of {prop_name}: {dataframe[prop_name].min()}")
-
-        # compute log10 and clamp invalid values to 0.0
-        vals = [np.log10(float(x)) for x in dataframe[prop_name]]
-        vals = [
-            0.0 if np.isneginf(v) or np.isnan(v) or np.isinf(v) else v
-            for v in vals
-        ]
-        dataframe["norm_" + prop_name] = np.round(vals, 4)
-
-        # print(f"Max value of log10 {prop_name}: {dataframe['norm_' + prop_name].max()}")
-        # print(f"Min value of log10 {prop_name}: {dataframe['norm_' + prop_name].min()}")
+        values_list = dataframe[prop_name].tolist()
+        norm_values = normalize_values_log10(values_list)
+        dataframe["norm_" + prop_name] = norm_values
     
     return dataframe
+
+
+def normalize_values_power_log(values: List[float], max_val: float) -> List[float]:
+    """Apply power log normalization to values using provided max_val."""
+    if max_val == 0:
+        return [round(float(v), 4) for v in values]
+    
+    norm_vals = []
+    for v in values:
+        normalized = (np.log(1 + v) / np.log(1 + max_val)) ** 0.8
+        norm_vals.append(round(float(normalized), 4))
+    return norm_vals
+
+
+def normalize_values_power_log_auto(values: List[float]) -> List[float]:
+    """Apply power log normalization using data's own max (for cleaning script)."""
+    actual_max = max(values) if values else 0.0
+    
+    if actual_max == 0:
+        return [round(float(v), 4) for v in values]
+    
+    norm_vals = []
+    for v in values:
+        normalized = (np.log(1 + v) / np.log(1 + actual_max)) ** 0.8
+        norm_vals.append(round(float(normalized), 4))
+    return norm_vals
+
+
+def normalize_values_signed_log(values: List[float], min_val: float, max_val: float) -> List[float]:
+    """Apply signed log normalization to values."""
+    def signed_log(x):
+        return np.sign(x) * np.log1p(np.abs(x))
+    
+    # calc signed log values
+    signed_values = [signed_log(v) for v in values]
+    signed_max = max(signed_values)
+    signed_min = min(signed_values)
+    
+    if signed_max - signed_min == 0:
+        return [0.0] * len(values)
+    
+    norm_vals = []
+    for sv in signed_values:
+        normalized = ((sv - signed_min) / (signed_max - signed_min)) ** 0.8
+        norm_vals.append(round(float(normalized), 4))
+    return norm_vals
+
+
+def normalize_values_signed_log_auto(values: List[float]) -> List[float]:
+    """Apply signed log normalization using data's own min/max (for cleaning script).""" 
+    def signed_log(x):
+        return np.sign(x) * np.log1p(np.abs(x))
+    
+    # calc signed log values
+    signed_values = [signed_log(v) for v in values]
+    signed_max = max(signed_values)
+    signed_min = min(signed_values)
+    
+    if signed_max - signed_min == 0:
+        return [0.0] * len(values)
+    
+    norm_vals = []
+    for sv in signed_values:
+        normalized = ((sv - signed_min) / (signed_max - signed_min)) ** 0.8
+        norm_vals.append(round(float(normalized), 4))
+    return norm_vals
+
+
+def normalize_values_linear(values: List[float], min_val: float, max_val: float) -> List[float]:
+    """Apply linear normalization to values."""
+    # for linear, always use 0 as min (matching existing behavior)
+    min_val = 0
+    
+    if max_val - min_val == 0:
+        return [0.0] * len(values)
+    
+    norm_vals = []
+    for v in values:
+        normalized = (v - min_val) / (max_val - min_val)
+        # clamp to [0, 1]
+        normalized = max(0.0, min(1.0, normalized))
+        norm_vals.append(round(float(normalized), 4))
+    return norm_vals
+
+
+def normalize_values_log10(values: List[float]) -> List[float]:
+    """Apply log10 normalization to values."""
+    norm_vals = []
+    for v in values:
+        log_val = np.log10(float(v))
+        if np.isneginf(log_val) or np.isnan(log_val) or np.isinf(log_val):
+            log_val = 0.0
+        norm_vals.append(round(float(log_val), 4))
+    return norm_vals
+
+
+def normalize_values_with_method(values: List[float], method: str, min_val: float = 0.0, max_val: float = 1.0) -> List[float]:
+    """Normalize list of values using specified method with provided min/max ranges."""
+    # round input values first
+    values = [round(float(v), 3) for v in values]
+    
+    if method == "power_log":
+        return normalize_values_power_log(values, max_val)
+    elif method == "signed_log":
+        return normalize_values_signed_log(values, min_val, max_val)
+    elif method == "linear":
+        return normalize_values_linear(values, min_val, max_val)
+    elif method == "log10":
+        return normalize_values_log10(values)
+    else:
+        # fallback to linear
+        return normalize_values_linear(values, min_val, max_val)
 
 
 def add_variable_brackets_to_cif(cif_str):

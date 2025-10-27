@@ -47,7 +47,7 @@ from _utils._generating.generate_CIFs import (
     parse_condition_vector, remove_conditionality, check_cif, score_output_logp
 )
 from _utils._generating.postprocess import process_dataframe
-from _utils import normalize_property_column
+from _utils import normalize_property_column, normalize_values_with_method
 
 TOKENIZER_DIR = "HF-cif-tokenizer"
 
@@ -59,7 +59,7 @@ MODEL_INFO = {
         "example_conditions": None, 
         "max": None,
         "min": None,
-        "normlization": None
+        "normalization": None
     },
     "c-bone/CrystaLLM-2.0_SLME": {
         "description": "Solar cell efficiency (SLME) conditioning", 
@@ -67,7 +67,7 @@ MODEL_INFO = {
         "example_conditions": ["25.0"],
         "max": 33.192,
         "min": 0.0,
-        "normlization": "linear"
+        "normalization": "linear"
     },
     "c-bone/CrystaLLM-2.0_bandgap": {
         "description": "Bandgap + stability conditioning",
@@ -75,7 +75,7 @@ MODEL_INFO = {
         "example_conditions": ["1.1", "0.0"],
         "max": [17.891, 5.418],
         "min": [0.0, 0.0],
-        "normlization": ["power_log", "linear"]
+        "normalization": ["power_log", "linear"]
     },
     "c-bone/CrystaLLM-2.0_density": {
         "description": "Density + stability conditioning",
@@ -83,7 +83,7 @@ MODEL_INFO = {
         "example_conditions": ["15.0", "0.0"],
         "max": [25.494, 0.1],
         "min": [0.0, 0.0],
-        "normlization": ["linear", "linear"]
+        "normalization": ["linear", "linear"]
     },
     "c-bone/CrystaLLM-2.0_COD-XRD": {
         "description": "Experimental XRD conditioning",
@@ -91,7 +91,7 @@ MODEL_INFO = {
         "example_conditions": ["-100"] * 20 + ["-100"] * 20,
         "max": [90.0, 100.0],
         "min": [0.0, 0.0],
-        "normlization": ["linear", "linear"]
+        "normalization": ["linear", "linear"]
     },
 }
 
@@ -102,11 +102,11 @@ def normalize_property_values(raw_values: List[List[float]], model_path: str) ->
         return raw_values
         
     model_info = MODEL_INFO.get(model_path)
-    if not model_info or not model_info.get("normlization"):
+    if not model_info or not model_info.get("normalization"):
         print("No normalization info - assuming values already normalized")
         return raw_values
 
-    norm_methods = model_info["normlization"]
+    norm_methods = model_info["normalization"]
     min_vals = model_info["min"] 
     max_vals = model_info["max"]
     
@@ -121,39 +121,15 @@ def normalize_property_values(raw_values: List[List[float]], model_path: str) ->
     normalized_values = []
     
     for i, values in enumerate(raw_values):
-        prop_name = f"prop_{i}"
         method = norm_methods[i] if i < len(norm_methods) else "linear"
         min_val = min_vals[i] if i < len(min_vals) else 0.0
         max_val = max_vals[i] if i < len(max_vals) else 1.0
         
-        # temp dataframe with anchor values for proper range
-        df_temp = pd.DataFrame({prop_name: [float(v) for v in values]})
-        df_temp = pd.concat([
-            df_temp, 
-            pd.DataFrame({prop_name: [min_val, max_val]})
-        ], ignore_index=True)
-        
-        df_normalized = normalize_property_column(df_temp, prop_name, method)
-        norm_col = f"norm_{prop_name}"
-        
-        if norm_col in df_normalized.columns:
-            # only take original values, not the anchors
-            norm_vals = df_normalized[norm_col].iloc[:len(values)].tolist()
-            norm_vals = [float(max(0.0, min(1.0, v))) for v in norm_vals]
-        else:
-            norm_vals = _linear_normalize(values, min_val, max_val)
-
-        
-        normalized_values.append([round(v, 4) for v in norm_vals])
+        # use the direct normalization function
+        norm_vals = normalize_values_with_method(values, method, min_val, max_val)
+        normalized_values.append(norm_vals)
     
     return normalized_values
-
-
-def _linear_normalize(values: List[float], min_val: float, max_val: float) -> List[float]:
-    """Simple linear normalization."""
-    if max_val - min_val == 0:
-        return [0.0] * len(values)
-    return [float(max(0.0, min(1.0, (v - min_val) / (max_val - min_val)))) for v in values]
 
 
 def validate_model_conditions(model_path: str, condition_lists: Optional[List[List[float]]]) -> None:
@@ -539,9 +515,7 @@ def main():
     
     print("\nDone ")
     print(f"Total: {len(df_final)} structures")
-    if not args.skip_postprocess and 'is_valid' in df_final.columns:
-        valid_count = df_final['is_valid'].sum() if df_final['is_valid'].dtype == bool else len(df_final)
-        print(f"Valid: {valid_count}")
+
     print(f"Saved to: {args.output_parquet}")
 
 
