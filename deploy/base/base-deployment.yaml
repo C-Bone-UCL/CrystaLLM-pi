@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crystallm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crystallm
+  template:
+    metadata:
+      labels:
+        app: crystallm
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - crystallm
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: crystallm
+        image: crystallm
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "8Gi" # this value may need to increase if application stability declines
+            cpu: "4000m"
+        env:
+          - name: HF_KEY
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: hf-token
+          - name: WANDB_KEY
+            valueFrom:
+              secretKeyRef:
+                name: wandb-token
+                key: wandb-token
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1000
+      imagePullSecrets:
+      - name: crystallm-container-pull
+
