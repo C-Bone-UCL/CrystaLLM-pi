@@ -448,6 +448,8 @@ docker run \
   -p 8000:8000 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/outputs:/app/outputs \
+  -e HF_KEY="your_hf_token_here" \ 
+  -e WANDB_KEY="your_wandb_key_here"
   --name crystallm-api \
   crystallm-api
 ```
@@ -455,30 +457,202 @@ docker run \
 ### 3. API usage
 
 ```bash
-# deduplicate
+# ==================== DATA PREPROCESSING ====================
+
+# Deduplicate and filter data
 curl -X POST "http://localhost:8000/preprocessing/deduplicate" \
--H "Content-Type: application/json" \
--d '{
-  "input_file": "/app/data/SLME_1K.parquet",
-  "output_parquet": "/app/data/deduplicated_data.parquet",
-  "property_columns": "[\"Bandgap (eV)\", \"Density (g/cm^3)\"]",
-  "filter_na_columns": "[\"Bandgap (eV)\"]",
-  "filter_zero_columns": "[\"Density (g/cm^3)\"]",
-  "filter_negative_columns": "[\"Bandgap (eV)\"]"
-}'
-# clean
+  -H "Content-Type: application/json" \
+  -d '{
+    "input_file": "/app/data/raw_data.parquet",
+    "output_parquet": "/app/data/deduplicated_data.parquet",
+    "property_columns": "[\"Bandgap (eV)\", \"Density (g/cm^3)\"]",
+    "filter_na_columns": "[\"Bandgap (eV)\"]",
+    "filter_zero_columns": "[\"Density (g/cm^3)\"]",
+    "filter_negative_columns": "[\"Bandgap (eV)\"]"
+  }'
+
+# Clean and normalize CIF data
 curl -X POST "http://localhost:8000/preprocessing/clean" \
--H "Content-Type: application/json" \
--d '{
-  "input_parquet": "/app/data/deduplicated_data.parquet",
-  "output_parquet": "/app/data/cleaned_data.parquet",
-  "num_workers": 8,
-  "property_columns": "[\"Bandgap (eV)\", \"Density (g/cm^3)\"]",
-  "property1_normaliser": "power_log",
-  "property2_normaliser": "linear"
-}'
-# job status
-curl -Ss -X GET "http://localhost:8000/jobs" | jq .
+  -H "Content-Type: application/json" \
+  -d '{
+    "input_parquet": "/app/data/deduplicated_data.parquet",
+    "output_parquet": "/app/data/cleaned_data.parquet",
+    "num_workers": 8,
+    "property_columns": "[\"Bandgap (eV)\", \"Density (g/cm^3)\"]",
+    "property1_normaliser": "power_log",
+    "property2_normaliser": "linear"
+  }'
+
+# Save dataset to HuggingFace
+curl -X POST "http://localhost:8000/preprocessing/save-dataset" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input_parquet": "/app/data/cleaned_data.parquet",
+    "output_parquet": "your-dataset-name",
+    "test_size": 0.1,
+    "valid_size": 0.1,
+    "HF_username": "your-username",
+    "save_hub": true,
+    "save_local": false
+  }'
+
+# ==================== TRAINING ====================
+
+# Train model (single GPU)
+curl -X POST "http://localhost:8000/train" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config_file": "_config_files/cg_train/ft-slme/slme_ft-PKV.jsonc",
+    "multi_gpu": false
+  }'
+
+# Train model (multi-GPU)
+curl -X POST "http://localhost:8000/train" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config_file": "_config_files/cg_train/ft-slme/slme_ft-PKV.jsonc",
+    "multi_gpu": true,
+    "nproc_per_node": 2
+  }'
+
+# ==================== GENERATION ====================
+
+# Unconditional generation
+curl -X POST "http://localhost:8000/generate/direct" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "hf_model_path": "c-bone/CrystaLLM-2.0_base",
+    "output_parquet": "/app/outputs/structures.parquet",
+    "manual": true,
+    "compositions": "LiFePO4,TiO2"
+  }'
+
+# Solar efficiency conditioning (SLME model)
+curl -X POST "http://localhost:8000/generate/direct" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "hf_model_path": "c-bone/CrystaLLM-2.0_SLME",
+    "output_parquet": "/app/outputs/structures.parquet",
+    "manual": true,
+    "compositions": "CsPbI3",
+    "condition_lists": ["0.8"]
+  }'
+
+# Bandgap conditioning (bandgap + stability)
+curl -X POST "http://localhost:8000/generate/direct" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "hf_model_path": "c-bone/CrystaLLM-2.0_bandgap",
+    "output_parquet": "/app/outputs/structures.parquet",
+    "manual": true,
+    "compositions": "Si",
+    "condition_lists": ["0.3", "0.0"]
+  }'
+
+# Generate from existing prompts file
+curl -X POST "http://localhost:8000/generate/direct" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "hf_model_path": "c-bone/CrystaLLM-2.0_bandgap",
+    "output_parquet": "/app/outputs/structures.parquet",
+    "manual": false,
+    "input_parquet": "/app/data/prompts.parquet"
+  }'
+
+# ==================== ADVANCED GENERATION PIPELINE ====================
+
+# Step 1: Create manual prompts (multi-property conditioning)
+curl -X POST "http://localhost:8000/generate/make-prompts" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "output_parquet": "/app/outputs/test_prompts.parquet",
+    "manual": true,
+    "compositions": "Na1Cl1,K2S1",
+    "condition_lists": ["0.2,0.5,1.0", "0.0"],
+    "level": "level_3"
+  }'
+
+# Create prompts with level 4 (including spacegroups)
+curl -X POST "http://localhost:8000/generate/make-prompts" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "output_parquet": "/app/outputs/prompts.parquet",
+    "manual": true,
+    "compositions": "TiO2",
+    "condition_lists": ["0.5"],
+    "level": "level_4",
+    "spacegroups": "P42/mnm"
+  }'
+
+# Create automatic prompts from HF dataset
+curl -X POST "http://localhost:8000/generate/make-prompts" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "output_parquet": "/app/outputs/dataset_prompts.parquet",
+    "manual": false,
+    "automatic": true,
+    "HF_dataset": "c-bone/mp_20_pxrd",
+    "split": "test",
+    "level": "level_2",
+    "condition_columns": "Condition Vector"
+  }'
+
+# Step 2: Generate CIFs from config
+curl -X POST "http://localhost:8000/generate/cifs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config_file": "_config_files/cg_eval/your_eval_config.jsonc"
+  }'
+
+# Optional: Evaluate CIF validity
+curl -X POST "http://localhost:8000/generate/evaluate-cifs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input_parquet": "/app/outputs/generated_cifs.parquet",
+    "num_workers": 8,
+    "save_valid_parquet": true
+  }'
+
+# Step 3: Post-process CIFs
+curl -X POST "http://localhost:8000/generate/postprocess" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input_parquet": "/app/outputs/generated_cifs.parquet",
+    "output_parquet": "/app/outputs/processed_cifs.parquet",
+    "num_workers": 4
+  }'
+
+# ==================== EVALUATION METRICS ====================
+
+# Calculate VUN metrics (Validity, Uniqueness, Novelty)
+curl -X POST "http://localhost:8000/metrics/vun" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "gen_data": "/app/outputs/generated_structures.parquet",
+    "huggingface_dataset": "c-bone/mp_20",
+    "output_csv": "/app/outputs/vun_results.csv",
+    "num_workers": 8
+  }'
+
+# Calculate Energy Above Hull (stability)
+curl -X POST "http://localhost:8000/metrics/ehull" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "post_parquet": "/app/outputs/postprocessed_structures.parquet",
+    "output_parquet": "/app/outputs/stability_results.parquet",
+    "num_workers": 4
+  }'
+
+# ==================== JOB MANAGEMENT ====================
+
+# Check job status (replace JOB_ID with actual ID from response)
+curl -X GET "http://localhost:8000/jobs/JOB_ID"
+
+# List all jobs
+curl -X GET "http://localhost:8000/jobs"
+
+# API root info
+curl -X GET "http://localhost:8000/"
 ```
 
 ## Studies
