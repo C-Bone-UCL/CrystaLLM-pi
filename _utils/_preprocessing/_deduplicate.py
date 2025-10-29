@@ -120,7 +120,7 @@ def apply_filters(df: pd.DataFrame, filter_args: Dict[str, Optional[str]]) -> pd
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Deduplicate CIF files or DataFrame tables.")
-    parser.add_argument("--input_file", type=str,
+    parser.add_argument("--input_parquet", type=str,
                         help="Path to the input file. Supported formats: .pkl, .pkl.gz, .parquet.")
     parser.add_argument("--output_parquet", "-o", type=str, required=True,
                         help="Path to the output file. Output will be in .parquet format with zstd compression.")
@@ -135,7 +135,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    input_fname = args.input_file
+    input_fname = args.input_parquet
     out_fname = args.output_parquet
 
     # Parse property columns if provided
