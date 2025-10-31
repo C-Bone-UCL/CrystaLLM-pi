@@ -532,12 +532,19 @@ def main():
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir)
         
-    df.to_parquet(args.output_parquet, index=False)
-    print(f"\nSaved {len(df)} CIFs to {args.output_parquet}")
-    if args.scoring_mode == "None":
-        print(f"Results include all generated CIFs (no validation or scoring applied).")
-    else:
-        print(f"Results include all generated CIFs ranked by {args.scoring_mode} score per prompt.")
+    try:    
+        df.to_parquet(args.output_parquet, index=False)
+        print(f"\nSaved {len(df)} CIFs to {args.output_parquet}")
+        if args.scoring_mode == "None":
+            print(f"Results include all generated CIFs (no validation or scoring applied).")
+        else:
+            print(f"Results include all generated CIFs ranked by {args.scoring_mode} score per prompt.")
+    except Exception as e:
+        # do a fallback to saving a 'fallback.parquet' file in the current directory
+        fallback_path = "fallback.parquet"
+        df.to_parquet(fallback_path, index=False)
+        print(f"\nERROR: Could not save to {args.output_parquet} due to: {e}")
+        print(f"Saved output to fallback file {fallback_path} instead.")
     
 
     # Cleanup

@@ -23,6 +23,10 @@
 
 CrystaLLM 2.0 is a Transformer-based system for generating crystalline structures as CIF files. It supports both unconditional generation and four conditional architectures that can generate structures based on target properties like bandgap, density, photovoltaic efficiency and XRD patterns.
 
+<div align="center">
+<img src="_artifacts/images/CrystaLLM 2.0 Framework.png" width="75%" style="background-color:white;"/>
+</div>
+
 ## Key Features
 
 - **Unconditional Generation**: Generate crystal structures from structural/composition priors
@@ -52,8 +56,9 @@ CrystaLLM 2.0 is a Transformer-based system for generating crystalline structure
 - Python 3.10+
 - PyTorch 2.1+
 - Conda for environment management
+- Hugging Face ans Weights & Biases accounts should be set up
 - (Optional) CUDA-compatible GPU
-- Recommended to set up a Hugging Face and Weights & Biases account
+
 
 ## Setup
 
@@ -66,7 +71,7 @@ cd CrystaLLMv2
 conda create -n CrystaLLMv2_env python=3.10
 conda activate CrystaLLMv2_env
 
-# Install dependencies
+# Install dependencies and setup package
 pip install -r requirements.txt
 pip install -e .
 ```
@@ -89,8 +94,8 @@ Create `API_keys.jsonc` in the root directory for HuggingFace and Weights & Bias
 ```jsonc
 // filepath: API_keys.jsonc
 {
-  "HF_key": "hf_xxxYYYzzz", // Your Hugging Face token
-  "wandb_key": "your_wandb_api_key_here" // Your Weights & Biases key
+  "HF_key": "your_hf_key_here", // Hugging Face token
+  "wandb_key": "your_wandb_api_key_here" // Weights & Biases key
 }
 ```
 <br>
@@ -111,10 +116,18 @@ Standard CrystaLLM/GPT-2 architecture for generative tasks. Learns underlying pa
 
 Injects property information directly into the attention mechanism's past key-values. This allows the model to steer generation based on desired properties by concatenating conditional embeddings at each transformer layer. Provides strong conditioning while maintaining straightforward implementation. Based on ghost tokens from the [Prefix Tuning Paper](https://arxiv.org/abs/2101.00190).
 
+<div align="center">
+<img src="_artifacts/images/PKV-GPT.png" width="75%" style="background-color:white;"/>
+</div>
+
 #### b. Slider-GPT 
 `--activate_conditionality="Slider"`
 
 Novel architecture where conditioning information is dynamically injected into each attention block via a 'slider' mechanism. Features two separate attention mechanisms at every token generation: one for main text and one for conditions. Attention scores are combined via weighted sum. Handles missing or unspecified conditions seamlessly with softer conditioning (weight initialized at 0 during finetuning).
+
+<div align="center">
+<img src="_artifacts/images/SliderGPT.png" width="75%" style="background-color:white;"/>
+</div>
 
 <details>
 <summary> Prepend and Raw model details (comparative baselines used in paper) </summary>
@@ -263,7 +276,7 @@ Complete pipeline for training your own models from data preprocessing to evalua
 
 ## Data Processing Pipeline
 
-### Step 1: Data Preparation
+### Step 1: Data Preparation (**Required**)
 
 Input data should be a pandas DataFrame saved as Parquet file. To train a model you should save a dataframe to a parquet file which contains:
 
@@ -279,7 +292,7 @@ Input data should be a pandas DataFrame saved as Parquet file. To train a model 
 - `<Property Columns>`: Target properties (e.g., "Bandgap (eV)", "Density (g/cm^3)")
 - `condition_vector`: Pre-computed condition vectors (for XRD studies)
 
-### Step 2: Deduplication and Filtering
+### Step 2: Deduplication and Filtering (Optional)
 
 **Script:** `_utils/_preprocessing/_deduplicate.py` - Removes duplicate structures and filters invalid entries based on chemical formula and space group, keeping the structure with lowest volume per formula unit.
 
@@ -303,7 +316,7 @@ python _utils/_preprocessing/_deduplicate.py \
 
 </details>
 
-### Step 3: CIF Cleaning and Normalization
+### Step 3: CIF Cleaning and Normalization (**Required**)
 
 **Script:** `_utils/_preprocessing/_cleaning.py` - Standardizes CIF format and normalizes properties for stable training. Adds atomic property blocks, rounds numerical values, and applies variable brackets.
 
@@ -320,7 +333,7 @@ python _utils/_preprocessing/_cleaning.py \
   --property2_normaliser "linear"
 ```
 
-> Keep a note of the lowest and highest property values for each property, so that later when you have a particular property target you can easily normalize it to the format the model expects.
+> Tip: Keep a note somewhere of the lowest and highest property values for each property, so that later when you have a particular property target you can easily normalize it to the format the model expects.
 
 **Key arguments:**
 - `--property1_normaliser` / `--property2_normaliser`: Normalization methods (`linear`, `power_log`, `signed_log`, `log10`, `None`)
@@ -329,16 +342,18 @@ python _utils/_preprocessing/_cleaning.py \
 
 **Normalization methods:**
 - `linear`: Simple min-max scaling to [0,1] range
-- `power_log`: Power transformation (β=0.8) followed by logarithmic scaling for skewed distributions
+- `power_log`: Power transformation ($\beta$=0.8) followed by logarithmic scaling for skewed distributions
 - `signed_log`: Signed logarithmic transformation for handling negative values
 - `log10`: Base-10 logarithmic scaling for properties spanning multiple orders of magnitude
 - `None`: No normalization applied
 
 </details>
 
-### Step 4: Dataset Upload to HuggingFace
+### Step 4: Dataset Upload to HuggingFace (**Required**)
 
 **Script:** `_utils/_preprocessing/_save_dataset_to_HF.py` - Converts to HuggingFace format with train/validation/test splits and uploads to HF Hub.
+
+> Important: You need to make sure that the data trained on has been passed through CIF cleaning, a quick way to make sure is check whether the CIFs in your dataframe contain brackets. If they do then text should be ready for training.
 
 <details>
 <summary> Example Usage and Args </summary>
@@ -355,9 +370,9 @@ python _utils/_preprocessing/_save_dataset_to_HF.py \
 ```
 
 **Key arguments:**
-- `--duplicates`: Prevents data leakage by splitting on Material ID
+- `--duplicates`: Prevents data leakage by splitting on Material ID (optional)
 - `--test_size` / `--valid_size`: Split ratios (set both to 0.0 for training-only)
-- `--save_hub` / `--save_local`: Upload to HF Hub and/or save locally
+- `--save_hub` / `--save_local`: Upload to HF Hub and/or save locally (specify at least one)
 
 </details>
 <br>
@@ -494,7 +509,7 @@ Applies space group symmetry operations, validates structure consistency, and co
 
 **Script:** `_utils/_metrics/VUN_metrics.py` - Essential metrics for assessing generation quality using structural analysis.
 
-**Prerequisites:** Structures must be post-processed with Reduced Formulas column included 
+**Required:** Structures must be post-processed with Reduced Formulas column included 
 
 **Metrics computed:**
 - **Validity**: Structures with correct spacegroup, reasonable bond lengths, and consistent atom multiplicities
