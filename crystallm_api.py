@@ -224,7 +224,8 @@ async def generate_direct(request: DirectGenerationRequest, background_tasks: Ba
         if request.compositions:
             cmd.extend(["--compositions", request.compositions])
         if request.condition_lists:
-            cmd.extend(["--condition_lists", ",".join(request.condition_lists)])
+            cmd.append("--condition_lists")
+            cmd.extend(request.condition_lists)
     elif request.input_parquet:
         cmd.extend(["--input_parquet", request.input_parquet])
     
