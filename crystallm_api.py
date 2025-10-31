@@ -34,7 +34,7 @@ class JobStatus(BaseModel):
 # ==================== DATA PREPROCESSING ====================
 
 class DeduplicateRequest(BaseModel):
-    input_file: str = Field(..., description="Path to input parquet file")
+    input_parquet: str = Field(..., description="Path to input parquet file")
     output_parquet: str = Field(..., description="Path to output parquet file")
     property_columns: Optional[str] = Field(None, description="JSON list of property columns, e.g., \"['Bandgap (eV)', 'Density (g/cm^3)']\"")
     filter_na_columns: Optional[str] = Field(None, description="JSON list of columns to filter NaN values")
@@ -49,7 +49,7 @@ async def deduplicate(request: DeduplicateRequest, background_tasks: BackgroundT
     
     cmd = [
         "python", "-m", "_utils._preprocessing._deduplicate",
-        "--input_file", request.input_file,
+        "--input_parquet", request.input_parquet,
         "--output_parquet", request.output_parquet
     ]
     
