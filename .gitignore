@@ -17,3 +17,4 @@ notebooks/Z_rsync.ipynb
 .exclude-rsync.txt
 data/
 outputs/
+*ignore.txt
