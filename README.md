@@ -73,6 +73,9 @@ conda activate CrystaLLMv2_env
 
 # Install dependencies and setup package
 pip install -r requirements.txt
+# material-hasher package needs to be installed via
+pip install git+https://github.com/lematerial/material-hasher.git
+# Install CrystaLLM 2.0 in editable mode
 pip install -e .
 ```
 
