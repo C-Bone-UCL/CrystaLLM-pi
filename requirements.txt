@@ -32,4 +32,6 @@ mp-api==0.45.5
 seaborn==0.13.2
 mace-torch==0.3.13
 crystal_toolkit==2025.7.31
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
 # pip install git+https://github.com/lematerial/material-hasher.git

@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: crystallm-development
+resources:
+- ../base
+- namespace.yaml
+images:
+- name: crystallm
+  newName: ghcr.io/stuart-stfc/crystallm-2.0
+  newTag: f4ab67f29c4a8bedf114f3706dca2456e7f47943
