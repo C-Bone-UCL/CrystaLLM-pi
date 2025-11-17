@@ -171,6 +171,11 @@ def extract_formula_nonreduced(cif_str):
         return match.group(2) if match.group(2) else match.group(3)
     raise Exception(f"could not extract _chemical_formula_sum value from:\n{cif_str}")
 
+def extract_reduced_formula(cif_str):
+    parser = CifParser.from_str(cif_str)
+    structure = parser.get_structures()[0]
+    return structure.reduced_formula
+
 
 def semisymmetrize_cif(cif_str):
     return re.sub(
@@ -613,3 +618,4 @@ def filter_df_to_context(
 
     mask = df[cif_column].fillna("").apply(lambda x: len(tokenizer.tokenize(x)) <= context)
     return df.loc[mask].reset_index(drop=True)
+

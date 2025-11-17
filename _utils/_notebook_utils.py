@@ -5,6 +5,13 @@ Random utility functions used in the jupyter notebooks to avoid overcluttering t
 import os
 from pathlib import Path
 import pandas as pd
+from pymatgen.io.cif import CifParser
+import re
+from pymatgen.core import Element
+from smact.data_loader import lookup_element_hhis
+from pymatgen.core import Composition
+import sys
+import json
 
 def build_challenge_dataframe(input_folder: str, output_parquet: str = "materials.parquet"):
     records = []
@@ -32,39 +39,44 @@ def build_challenge_dataframe(input_folder: str, output_parquet: str = "material
     df.to_parquet(output_parquet, index=False)
     print(f"Saved {len(df)} records to {output_parquet}")
 
+import numpy as np
+import pandas as pd
+
 def get_metrics_xrd(df, n_test, only_matched=False, verbose=True):
     mean_rmsd = df['RMS-d'].mean()
     n_matches = df['RMS-d'].notna().sum()
     percent_match = n_matches / n_test * 100
-    # a_mae is MAE of True a vs Gen a (absolute values)
-    # abs(true_a - gen_a) is diff
+
+    metrics_df = df
     
     if only_matched:
-        df = df[df['RMS-d'].notna()]
+        metrics_df = metrics_df[metrics_df['RMS-d'].notna()]
         if verbose:
-            print(f"Computing metrics only on matched structures ({len(df)} entries)")
+            print(f"Computing metrics only on matched, valid-system structures ({len(metrics_df)} entries)")
 
     else:
         if verbose:
-            print(f"Computing metrics on all (also unmatched) structures ({len(df)} entries, {n_matches} matched)")
+            matched_in_subset = metrics_df['RMS-d'].notna().sum()
+            print(f"Computing metrics on all valid-system structures ({len(metrics_df)} entries, {matched_in_subset} matched)")
 
-    a_mae = df['True a'].sub(df['Gen a']).abs().mean()
-    b_mae = df['True b'].sub(df['Gen b']).abs().mean()
-    c_mae = df['True c'].sub(df['Gen c']).abs().mean()
-    vol_mae = df['True volume'].sub(df['Gen volume']).abs().mean()
-    # also compute pearsons correlation
-    a_corr = df[['True a', 'Gen a']].corr().iloc[0, 1]
-    b_corr = df[['True b', 'Gen b']].corr().iloc[0, 1]
-    c_corr = df[['True c', 'Gen c']].corr().iloc[0, 1]
-    vol_corr = df[['True volume', 'Gen volume']].corr().iloc[0, 1]
+    a_mae = metrics_df['True a'].sub(metrics_df['Gen a']).abs().mean()
+    b_mae = metrics_df['True b'].sub(metrics_df['Gen b']).abs().mean()
+    c_mae = metrics_df['True c'].sub(metrics_df['Gen c']).abs().mean()
+    vol_mae = metrics_df['True volume'].sub(metrics_df['Gen volume']).abs().mean()
+    
+    a_corr = metrics_df[['True a', 'Gen a']].corr().iloc[0, 1] ** 2
+    b_corr = metrics_df[['True b', 'Gen b']].corr().iloc[0, 1] ** 2
+    c_corr = metrics_df[['True c', 'Gen c']].corr().iloc[0, 1] ** 2
+    vol_corr = metrics_df[['True volume', 'Gen volume']].corr().iloc[0, 1] ** 2
 
-    average_score = df['Score'].mean() if 'Score' in df.columns else float('nan')
+    average_score = metrics_df['Score'].mean() if 'Score' in metrics_df.columns else float('nan')
     
     metrics = {
         'Number of matched structures': n_matches,
         'Total number of structures': n_test,
         'Mean RMS-d': mean_rmsd,
         'Percent Matched (%)': percent_match,
+        
         'a MAE': a_mae,
         'b MAE': b_mae,
         'c MAE': c_mae,
@@ -77,9 +89,12 @@ def get_metrics_xrd(df, n_test, only_matched=False, verbose=True):
     }
 
     if verbose:
+        print("\n--- Top-Level Stats (Full Dataset) ---")
         print(f"Number of matched structures: {n_matches} / {n_test}")
         print(f"Mean RMS-d: {mean_rmsd:.4f}")
         print(f"Percent Matched (%): {percent_match:.2f}% ({n_matches}/{n_test})")
+        
+        print("\n--- Property Metrics (Valid-System Data) ---")
         print(f"a MAE: {a_mae:.4f}")
         print(f"b MAE: {b_mae:.4f}")
         print(f"c MAE: {c_mae:.4f}")
@@ -88,7 +103,7 @@ def get_metrics_xrd(df, n_test, only_matched=False, verbose=True):
         print(f"b R^2: {b_corr:.4f}")
         print(f"c R^2: {c_corr:.4f}")
         print(f"Volume R^2: {vol_corr:.4f}")
-        if 'Score' in df.columns:
+        if 'Score' in metrics_df.columns:
             print(f"Average Score: {average_score:.4f}")
 
     return metrics
@@ -494,13 +509,15 @@ def process_xrd_to_condition_vector(file_content):
     peaks = []
     for line in data_lines:
         if line.strip():
-            parts = line.strip().split('\t')
+            # Use split() to handle any whitespace (tabs or spaces)
+            parts = line.strip().split()
             if len(parts) >= 2:
                 try:
                     two_theta = float(parts[0])
                     intensity = float(parts[1])
                     peaks.append({'two_theta': two_theta, 'intensity': intensity})
                 except ValueError:
+                    # This will skip any line that can't be converted to numbers
                     continue
     
     # Sort by intensity (descending) and take top 20
@@ -539,3 +556,150 @@ def process_xrd_to_condition_vector(file_content):
     print("Theta scaled to [0,1] (0 to 90), Intensity scaled to [0,1] (relative to max in pattern), -100 for padding")
     
     return vector_str
+
+
+def extract_reduced_formula(cif_str):
+    """
+    Parses CIF string and returns the reduced formula.
+    Uses modern pymatgen 'parse_structures'
+    """
+    parser = CifParser.from_str(cif_str)
+    
+    structure = parser.parse_structures()[0]
+    
+    return structure.reduced_formula
+
+
+def parse_formula(formula_string: str) -> dict:
+    """Parse chemical formula into element counts, handling parentheses."""
+    comp = Composition(formula_string)
+    return comp.get_el_amt_dict()
+
+def hhi_scores_from_formula(formula: dict):
+    """
+    Computes material-level HHI_p and HHI_r (weighted by element mass fraction)
+    Method from: https://pubs.acs.org/doi/10.1021/cm400893e
+    """
+    masses = []
+    hhi_p_vals = []
+    hhi_r_vals = []
+
+    for symbol, count in formula.items():
+        atomic_weight = Element(symbol).atomic_mass
+    
+        hhi_data = lookup_element_hhis(symbol)
+
+        if hhi_data is None:
+            print(f"Warning: No HHI data for element {symbol} (excluded by source paper). "
+                  f"Cannot calculate HHI for material '{formula}'.", file=sys.stderr)
+            return None, None
+
+        hhi_p, hhi_r = hhi_data
+        
+        if hhi_p is None or hhi_r is None:
+            print(f"Warning: Incomplete HHI data for element {symbol}. "
+                  f"Cannot calculate HHI for material '{formula}'.", file=sys.stderr)
+            return None, None
+
+        masses.append(count * atomic_weight)
+        hhi_p_vals.append(hhi_p)
+        hhi_r_vals.append(hhi_r)
+
+    total_mass = sum(masses)
+    
+    if total_mass == 0:
+        return None, None
+        
+    hhi_p_material = sum((m / total_mass) * h for m, h in zip(masses, hhi_p_vals))
+    hhi_r_material = sum((m / total_mass) * h for m, h in zip(masses, hhi_r_vals))
+
+    return hhi_p_material, hhi_r_material
+
+def get_hhi_scores_from_cif(cif_str):
+    """
+    Wrapper function to process a single CIF string.
+    """
+    try:
+        formula_str = extract_reduced_formula(cif_str)
+        formula_dict = parse_formula(formula_str)
+        scores = hhi_scores_from_formula(formula_dict)
+    except Exception as e:
+        print(f"Error processing CIF: {e}", file=sys.stderr)
+        print(f"Problematic CIF:\n{cif_str}\n", file=sys.stderr)
+        scores = (None, None)
+    return scores
+
+
+def extract_formula(cif_str):
+    """Extract reduced formula from CIF string."""
+    try:
+        parser = CifParser.from_str(cif_str)
+        structure = parser.parse_structures()[0]
+        return structure.composition.reduced_formula
+    except Exception:
+        return "UnknownFormula"
+
+
+def build_novelty_tag(row):
+    """Build novelty tag from novelty flags."""
+    tags = []
+    
+    # Structural novelty
+    if row['is_novel'] and row['is_novel_pt']:
+        tags.append("Novel-ft-pt")
+    elif row['is_novel']:
+        tags.append("Novel-ft")
+    elif row['is_novel_pt']:
+        tags.append("Novel-pt")
+    
+    # Compositional novelty
+    if row['is_comp_novel'] and row['is_comp_novel_pt']:
+        tags.append("CompNovel-ft-pt")
+    elif row['is_comp_novel']:
+        tags.append("CompNovel-ft")
+    elif row['is_comp_novel_pt']:
+        tags.append("CompNovel-pt")
+    
+    return "__".join(tags) if tags else "NotNovel"
+
+
+def select_top_materials(df, top_n_slme=15, top_n_sustain=15, slme_threshold=25):
+    """Select top materials by SLME and sustainability."""
+    materials = {}
+    
+    # Top by SLME
+    for i, (_, row) in enumerate(df.nlargest(top_n_slme, 'predicted_slme').iterrows()):
+        formula = extract_formula(row['Generated CIF'])
+        novelty = build_novelty_tag(row)
+        name = f"{formula}__SLME-{int(row['predicted_slme'])}_top_{i+1}__{novelty}"
+        materials[name] = row['Generated CIF']
+    
+    # Top by sustainability (filtered by SLME)
+    sustain_df = df[df['predicted_slme'] > slme_threshold]
+    for i, (_, row) in enumerate(sustain_df.nsmallest(top_n_sustain, 'HHI_distance_to_0').iterrows()):
+        formula = extract_formula(row['Generated CIF'])
+        novelty = build_novelty_tag(row)
+        name = f"{formula}__Sustain-SLME-{int(row['predicted_slme'])}_top_{i+1}__{novelty}"
+        materials[name] = row['Generated CIF']
+    
+    return materials
+
+
+def export_materials(materials, output_dir):
+    """Export materials dict to CIF files in directory."""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    for name, cif_str in materials.items():
+        filepath = os.path.join(output_dir, f"{name}.cif")
+        with open(filepath, 'w') as f:
+            f.write(cif_str)
+    
+    print(f"Exported {len(materials)} materials to {output_dir}/")
+
+
+def run_material_selection(input_parquet, output_dir, top_n_slme=15, top_n_sustain=15):
+    """Main workflow: select top materials and export to CIF files."""
+    df = pd.read_parquet(input_parquet)
+    materials = select_top_materials(df, top_n_slme, top_n_sustain)
+    export_materials(materials, output_dir)
+    return materials

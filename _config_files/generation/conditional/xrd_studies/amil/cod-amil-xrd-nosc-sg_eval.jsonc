@@ -10,6 +10,6 @@
   "input_parquet": "_artifacts/cod-xrd/amil/amil-TiO2-nosc-sg_ref_prompts.parquet",
   "output_parquet": "_artifacts/cod-xrd/amil/amil-TiO2-nosc-sg_gen.parquet",
   "scoring_mode": "LOGP",
-  "target_valid_cifs": 100,
+  "target_valid_cifs": 20,
   "max_return_attempts": 100
 }

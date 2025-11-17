@@ -76,14 +76,16 @@ def build_generated_structures(df_proc):
 
 
 def extract_generated_formulas(structures):
-    """Get unique formulas from structures."""
+    """Get unique formulas from structures, using normalized reduced formulas."""
     print("Extracting unique reduced formulas from generated structures...")
     
     formulas = set()
     for struct in tqdm(structures, desc="Extracting reduced formulas"):
         if struct is not None:
             try:
-                formulas.add(struct.composition.reduced_formula)
+                # Normalize using Composition to ensure consistent formula representation
+                normalized_formula = Composition(struct.composition).reduced_formula
+                formulas.add(normalized_formula)
             except Exception:
                 continue
     
@@ -248,7 +250,14 @@ def get_novelty(df_gen, base_comps, ltol, stol, angle_tol, structures, workers):
     tasks = []
     for idx, row in df_to_check.iterrows():
         struct = structures[df_gen.index.get_loc(idx)]
-        comp_key = struct.composition.reduced_formula if struct else None
+        # Normalize composition key for robust matching
+        if struct:
+            try:
+                comp_key = Composition(struct.composition).reduced_formula
+            except Exception:
+                comp_key = None
+        else:
+            comp_key = None
         tasks.append((struct, comp_key, base_comps, ltol, stol, angle_tol))
 
     # Run novelty checks in parallel
@@ -289,23 +298,76 @@ def load_and_filter_training_data(hf_dataset, processed_data_path, num_workers, 
     return build_reference_compositions(proc_train_df, gen_formulas)
 
 def build_reference_compositions(proc_train_df, gen_formulas):
-    """Group training CIFs by composition."""
+    """Group training CIFs by composition, using normalized formula keys."""
     print("Filtering training dataset to compositions present in generated set...")
     
     base_comps = defaultdict(list)
     
-    # Filter the dataframe first for efficiency
-    relevant_train_df = proc_train_df[proc_train_df['Reduced Formula'].isin(gen_formulas)]
+    # Normalize generated formulas for matching
+    gen_formulas_normalized = set()
+    for formula in gen_formulas:
+        try:
+            normalized = Composition(formula).reduced_formula
+            gen_formulas_normalized.add(normalized)
+        except Exception:
+            continue
     
-    for _, row in tqdm(relevant_train_df.iterrows(), total=len(relevant_train_df), desc="Grouping training CIFs"):
+    # Build normalized lookup for training data
+    for _, row in tqdm(proc_train_df.iterrows(), total=len(proc_train_df), desc="Grouping training CIFs"):
         cif_string = row.get('CIF')
         comp_key = row.get('Reduced Formula')
         
         if cif_string and comp_key:
-            base_comps[comp_key].append(cif_string)
+            try:
+                # Normalize the composition key to handle different formula representations
+                normalized_key = Composition(comp_key).reduced_formula
+                
+                # Only include if matches a generated composition
+                if normalized_key in gen_formulas_normalized:
+                    base_comps[normalized_key].append(cif_string)
+            except Exception:
+                continue
             
-    print(f"Filtered training set to {len(relevant_train_df)} CIFs relevant for novelty check.")
+    total_refs = sum(len(v) for v in base_comps.values())
+    print(f"Filtered training set to {total_refs} CIFs across {len(base_comps)} compositions.")
     return base_comps
+
+# Compositional novelty
+def get_comp_novelty(df_gen, base_comps, structures):
+    """Check if compositions are novel vs training set."""
+    print("\nCompositional Novelty Metrics")
+    
+    # Only check structures that are both valid AND unique
+    df_to_check = df_gen[df_gen["is_unique"]].copy()
+    if df_to_check.empty:
+        print("No unique structures to check for compositional novelty.")
+        df_gen["is_comp_novel"] = False
+        return df_gen
+    
+    is_comp_novel_list = []
+    for idx in tqdm(df_to_check.index, desc="Checking compositional novelty"):
+        struct = structures[df_gen.index.get_loc(idx)]
+        if struct is None:
+            is_comp_novel_list.append(False)
+            continue
+        
+        # Normalize composition key for robust matching
+        try:
+            comp_key = Composition(struct.composition).reduced_formula
+        except Exception:
+            is_comp_novel_list.append(False)
+            continue
+            
+        # If this composition doesn't exist in training data, it's compositionally novel
+        is_novel = comp_key not in base_comps or len(base_comps[comp_key]) == 0
+        is_comp_novel_list.append(is_novel)
+    
+    df_gen["is_comp_novel"] = False
+    df_gen.loc[df_to_check.index, "is_comp_novel"] = is_comp_novel_list
+    
+    comp_novel_count = df_gen['is_comp_novel'].sum()
+    print(f"Found {comp_novel_count} compositionally novel structures.")
+    return df_gen
 
 # MP data for ehull calculations
 def download_mp_data(mp_data_path):
