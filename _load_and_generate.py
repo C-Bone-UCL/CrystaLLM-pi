@@ -28,6 +28,11 @@ python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-2.0_bandgap \
 # Density model - density in g/cm3, ehull in eV/atom (set ehull=0 for stable, max density ~25.5 g/cm3 was seen during training)
 python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-2.0_density \
     --manual --compositions "Os" --condition_lists "22.0" "0.0" --output_parquet results.parquet
+
+# Pairing modes for composition-condition combinations:
+# --mode cartesian (default): All combinations of all condition_lists
+# --mode paired: 1:1 mapping (need same number of compositions and condition_lists)  
+# --mode broadcast: One condition_list applied to all compositions
 """
 
 
@@ -219,7 +224,8 @@ def generate_prompts_from_args(args) -> pd.DataFrame:
             condition_lists=normalized_condition_lists,
             raw_mode=args.raw,
             level=args.level,
-            spacegroups=spacegroups
+            spacegroups=spacegroups,
+            mode=args.mode
         )
         
         print(f"Made {len(df)} prompts at {args.level}")
@@ -422,6 +428,8 @@ def main():
                        default="level_2", help="Prompt detail level")
     parser.add_argument("--spacegroups",
                        help="Comma-separated spacegroups (level_4 only)")
+    parser.add_argument("--mode", type=str, choices=["cartesian", "paired", "broadcast"], default="cartesian",
+                       help="Composition-condition pairing: cartesian (all combos), paired (1:1), broadcast (one for all)")
     
     # Generation settings
     parser.add_argument("--do_sample", type=str, default="True", 

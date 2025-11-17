@@ -269,6 +269,64 @@ Control the amount of structural information provided to guide generation:
 - `level_3`: Composition + atomic properties (these can be algorithmically generated)
 - `level_4`: Composition + Spacegroup
 
+## Composition-Condition Pairing Modes
+
+When generating with multiple compositions and conditions, control how they are combined using the `--mode` flag:
+
+### Cartesian Mode (Default)
+
+Creates all possible combinations between compositions and condition values across all condition lists.
+
+**Example:** Generate structures for 2 compositions × (2 bandgaps × 2 stabilities) = 8 total prompts
+```bash
+python _load_and_generate.py \
+    --hf_model_path "c-bone/CrystaLLM-2.0_bandgap" \
+    --manual \
+    --compositions "Si,GaAs" \
+    --condition_lists "0.5,1.5" "0.0,0.05" \
+    --mode cartesian \
+    --num_return_sequences 3 \
+    --output_parquet results.parquet
+```
+
+**Output:** Si with bandgap 0.5 eV & ehull 0.0, Si with bandgap 0.5 eV & ehull 0.05, Si with bandgap 1.5 eV & ehull 0.0, etc.
+
+### Paired Mode
+
+Maps compositions 1:1 with condition lists. Useful when each composition has specific target properties.
+
+**Example:** Generate SiO2 at 2.2 g/cm³, Al2O3 at 3.95 g/cm³, TiO2 at 4.23 g/cm³
+```bash
+python _load_and_generate.py \
+    --hf_model_path "c-bone/CrystaLLM-2.0_density" \
+    --manual \
+    --compositions "Si4O8,Al8O12,Ti4O8" \
+    --condition_lists "2.2,0.0" "3.95,0.0" "4.23,0.0" \
+    --mode paired \
+    --num_return_sequences 5 \
+    --output_parquet results.parquet
+```
+
+**Requirements:** Number of compositions must equal number of condition_lists. Each composition pairs with its corresponding condition_list.
+
+### Broadcast Mode
+
+Applies the same condition(s) to all compositions. Useful for screening multiple materials at fixed property values.
+
+**Example:** Generate 3 compositions all targeting 2.0 eV bandgap with stability
+```bash
+python _load_and_generate.py \
+    --hf_model_path "c-bone/CrystaLLM-2.0_bandgap" \
+    --manual \
+    --compositions "Si,GaAs,CdTe" \
+    --condition_lists "2.0,0.0" \
+    --mode broadcast \
+    --num_return_sequences 5 \
+    --output_parquet results.parquet
+```
+
+**Requirements:** Exactly one condition_list (which can contain multiple values like "2.0,0.0" for bandgap and ehull).
+
 </details>
 <br>
 <br>
@@ -453,12 +511,18 @@ python _utils/_generating/make_prompts.py \
   --output_parquet "dataset_prompts.parquet"
 ```
 
-**Prompt levels:**
+**Prompt levels `--level`:**
 - `level_1`: Minimal (unconditional generation)
 - `level_2`: Composition only (default)
 - `level_3`: Composition + atomic properties  
 - `level_4`: Up to space group information
-  
+
+**Composition-Condition Pairing modes `--mode` (see quick start examples for details)**
+- `cartesian`: Every condition set is applied to every composition when making prompts
+- `paired`: Need the same amount of condition sets as compositions, they get paired up in respective orders
+- `broadcast`: Need only 1 condition for any amount of compositions, applies the condition set to all the compositions
+
+
 </details>
 
 
@@ -517,7 +581,8 @@ Applies space group symmetry operations, validates structure consistency, and co
 **Metrics computed:**
 - **Validity**: Structures with correct spacegroup, reasonable bond lengths, and consistent atom multiplicities
 - **Uniqueness**: Distinct structures within the generated set (using BAWL hashing)
-- **Novelty**: Structures not present in the training dataset
+- **Novelty**: Structures not present in the reference dataset
+- **Compositional Novelty**: Reduced Formula not present in reference dataset
 
 <details>
 <summary> Example Usage </summary>
@@ -529,6 +594,9 @@ python _utils/_metrics/VUN_metrics.py \
   --output_parquet vun_results.parquet \
   --num_workers 8
 ```
+
+We can optionally set the `--check_comp_novelty` flag, which adds an `is_comp_novel` boolean column to the metrics dataframe.
+
 </details>
 
 ### Energy Above Hull (Stability)

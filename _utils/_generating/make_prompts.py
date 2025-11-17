@@ -188,7 +188,7 @@ def create_automatic_prompts(df, cif_column, level, condition_columns=None):
     df['Prompt'] = df[cif_column].apply(extract_prompt)
     return df
 
-def create_manual_prompts(compositions, condition_lists, raw_mode=False, level="level_2", spacegroups=None):
+def create_manual_prompts(compositions, condition_lists, raw_mode=False, level="level_2", spacegroups=None, mode="cartesian"):
     """Generate prompts manually from compositions and condition lists with different detail levels."""
     # Handle compositions
     if not compositions or compositions == [None]:
@@ -210,77 +210,158 @@ def create_manual_prompts(compositions, condition_lists, raw_mode=False, level="
             else:
                 raise ValueError("Number of spacegroups must match number of compositions or be exactly 1")
     
-    # Build condition vectors from all condition lists
+    # Build condition vectors based on mode
     condition_vector = []
     if condition_lists:
-        # Get all combinations of conditions across lists
-        def get_combinations(lists):
-            if not lists:
-                return ["None"]
-            if len(lists) == 1:
-                return lists[0]
-            result = []
-            for item in lists[0]:
-                for combo in get_combinations(lists[1:]):
-                    if combo == "None":
-                        result.append(item)
-                    else:
-                        result.append(f"{item}, {combo}")
-            return result
-        condition_vector = get_combinations(condition_lists)
+        if mode == "cartesian":
+            # Current behavior - all combinations
+            def get_combinations(lists):
+                if not lists:
+                    return ["None"]
+                if len(lists) == 1:
+                    return lists[0]
+                result = []
+                for item in lists[0]:
+                    for combo in get_combinations(lists[1:]):
+                        if combo == "None":
+                            result.append(item)
+                        else:
+                            result.append(f"{item}, {combo}")
+                return result
+            condition_vector = get_combinations(condition_lists)
+        
+        elif mode == "paired":
+            # 1:1 mapping - must have one condition_list per composition
+            if len(condition_lists) != len(compositions):
+                raise ValueError(
+                    f"Paired mode requires matching counts: got {len(compositions)} compositions "
+                    f"but {len(condition_lists)} condition_lists. Each composition needs exactly one condition_list."
+                )
+            # Each composition gets paired with its corresponding condition_list
+            condition_vector = None  # Signal to use paired logic
+        
+        elif mode == "broadcast":
+            # One condition_list for all compositions
+            if len(condition_lists) != 1:
+                raise ValueError(
+                    f"Broadcast mode requires exactly 1 condition_list, got {len(condition_lists)}. "
+                    f"Use one condition_list that will be applied to all compositions."
+                )
+            # Flatten the single condition_list into combinations
+            def get_combinations(lists):
+                if not lists or len(lists) == 0:
+                    return ["None"]
+                if len(lists) == 1:
+                    return lists[0]
+                result = []
+                for item in lists[0]:
+                    for combo in get_combinations(lists[1:]):
+                        if combo == "None":
+                            result.append(item)
+                        else:
+                            result.append(f"{item}, {combo}")
+                return result
+            condition_vector = get_combinations(condition_lists)
+        else:
+            raise ValueError(f"Invalid mode: {mode}. Must be one of: cartesian, paired, broadcast")
     else:
         condition_vector = ["None"]
     
     prompts = []
     conds = []
     
-    for i, comp in enumerate(compositions):
-        for cond in condition_vector:
-            if level == "level_1":
-                # Minimal, unconditional
-                base_prompt = "<bos>\ndata_["
-            
-            elif level == "level_2":
-                # Composition only
-                if comp is None:
+    # Handle paired mode differently - each composition gets its own condition_list
+    if mode == "paired" and condition_vector is None:
+        for i, comp in enumerate(compositions):
+            # Get conditions for this specific composition
+            comp_conditions = condition_lists[i]
+            for cond in comp_conditions:
+                if level == "level_1":
                     base_prompt = "<bos>\ndata_["
-                else:
-                    base_prompt = f"<bos>\ndata_[{comp}]\n"
-            
-            elif level == "level_3":
-                # Composition and atomic props
-                if comp is None:
-                    base_prompt = "<bos>\ndata_["
-                else:
-                    atomic_props = get_atomic_props_block_for_formula(comp, oxi=OXI_DEFAULT)
-                    atomic_props = add_variable_brackets_to_cif(atomic_props)
-                    base_prompt = f"<bos>\ndata_[{comp}]\n{atomic_props}\n_symmetry_space_group_name_H-M"
-            
-            elif level == "level_4":
-                # Up to spacegroup info
-                if comp is None:
-                    base_prompt = "<bos>\ndata_["
-                else:
-                    spacegroup = spacegroups[i] if spacegroups else "P1"
-                    atomic_props = get_atomic_props_block_for_formula(comp, oxi=OXI_DEFAULT)
-                    atomic_props = add_variable_brackets_to_cif(atomic_props)
-                    base_prompt = f"<bos>\ndata_[{comp}]\n{atomic_props}\n_symmetry_space_group_name_H-M [{spacegroup}]\n"
-            
-            else:
-                raise ValueError(f"Invalid level: {level}. Must be one of level_1, level_2, level_3, level_4")
-            
-            # Apply raw mode conditioning if specified
-            if raw_mode:
-                cond_str = str(cond).replace("'", "").replace(",", " ")
-                if cond_str == "None":
-                    prompt = base_prompt
-                else:
-                    prompt = f"<bos>\n[{cond_str}]\n" + base_prompt[6:]  # Remove <bos>\n from base_prompt
-            else:
-                prompt = base_prompt
                 
-            prompts.append(prompt)
-            conds.append(cond)
+                elif level == "level_2":
+                    if comp is None:
+                        base_prompt = "<bos>\ndata_["
+                    else:
+                        base_prompt = f"<bos>\ndata_[{comp}]\n"
+                
+                elif level == "level_3":
+                    if comp is None:
+                        base_prompt = "<bos>\ndata_["
+                    else:
+                        atomic_props = get_atomic_props_block_for_formula(comp, oxi=OXI_DEFAULT)
+                        atomic_props = add_variable_brackets_to_cif(atomic_props)
+                        base_prompt = f"<bos>\ndata_[{comp}]\n{atomic_props}\n_symmetry_space_group_name_H-M"
+                
+                elif level == "level_4":
+                    if comp is None:
+                        base_prompt = "<bos>\ndata_["
+                    else:
+                        spacegroup = spacegroups[i] if spacegroups else "P1"
+                        atomic_props = get_atomic_props_block_for_formula(comp, oxi=OXI_DEFAULT)
+                        atomic_props = add_variable_brackets_to_cif(atomic_props)
+                        base_prompt = f"<bos>\ndata_[{comp}]\n{atomic_props}\n_symmetry_space_group_name_H-M [{spacegroup}]\n"
+                
+                else:
+                    raise ValueError(f"Invalid level: {level}. Must be one of level_1, level_2, level_3, level_4")
+                
+                # Apply raw mode
+                if raw_mode:
+                    cond_str = str(cond).replace("'", "").replace(",", " ")
+                    if cond_str == "None":
+                        prompt = base_prompt
+                    else:
+                        prompt = f"<bos>\n[{cond_str}]\n" + base_prompt[6:]
+                else:
+                    prompt = base_prompt
+                    
+                prompts.append(prompt)
+                conds.append(cond)
+    else:
+        # Cartesian and broadcast modes use the same loop structure
+        for i, comp in enumerate(compositions):
+            for cond in condition_vector:
+                if level == "level_1":
+                    base_prompt = "<bos>\ndata_["
+                
+                elif level == "level_2":
+                    if comp is None:
+                        base_prompt = "<bos>\ndata_["
+                    else:
+                        base_prompt = f"<bos>\ndata_[{comp}]\n"
+                
+                elif level == "level_3":
+                    if comp is None:
+                        base_prompt = "<bos>\ndata_["
+                    else:
+                        atomic_props = get_atomic_props_block_for_formula(comp, oxi=OXI_DEFAULT)
+                        atomic_props = add_variable_brackets_to_cif(atomic_props)
+                        base_prompt = f"<bos>\ndata_[{comp}]\n{atomic_props}\n_symmetry_space_group_name_H-M"
+                
+                elif level == "level_4":
+                    if comp is None:
+                        base_prompt = "<bos>\ndata_["
+                    else:
+                        spacegroup = spacegroups[i] if spacegroups else "P1"
+                        atomic_props = get_atomic_props_block_for_formula(comp, oxi=OXI_DEFAULT)
+                        atomic_props = add_variable_brackets_to_cif(atomic_props)
+                        base_prompt = f"<bos>\ndata_[{comp}]\n{atomic_props}\n_symmetry_space_group_name_H-M [{spacegroup}]\n"
+                
+                else:
+                    raise ValueError(f"Invalid level: {level}. Must be one of level_1, level_2, level_3, level_4")
+                
+                # Apply raw mode
+                if raw_mode:
+                    cond_str = str(cond).replace("'", "").replace(",", " ")
+                    if cond_str == "None":
+                        prompt = base_prompt
+                    else:
+                        prompt = f"<bos>\n[{cond_str}]\n" + base_prompt[6:]
+                else:
+                    prompt = base_prompt
+                    
+                prompts.append(prompt)
+                conds.append(cond)
     
     return pd.DataFrame({'Prompt': prompts, 'condition_vector': conds})
 
@@ -313,6 +394,8 @@ if __name__ == "__main__":
     parser.add_argument("--compositions", type=str, help="Comma-separated list of compositions")
     parser.add_argument("--condition_lists", nargs='+', help="Space-separated condition lists (each list is comma-separated, will make for ex list_1 times list_2 amount of combinations of conditions for each prompts)")
     parser.add_argument("--spacegroups", type=str, help="Comma-separated list of spacegroups (required for level_4, must match compositions or be exactly 1)")
+    parser.add_argument("--mode", type=str, choices=["cartesian", "paired", "broadcast"], default="cartesian",
+                        help="Composition-condition pairing mode: cartesian (all combinations), paired (1:1 mapping), broadcast (one condition for all)")
     
     args = parser.parse_args()
     
@@ -383,8 +466,8 @@ if __name__ == "__main__":
                 if conditions:
                     condition_lists.append(conditions)
         
-        result_df = create_manual_prompts(compositions, condition_lists, args.raw, level, spacegroups)
-        print(f"\nGenerated manual prompts for {len(compositions)} compositions and {len(condition_lists)} condition lists at {level}")
+        result_df = create_manual_prompts(compositions, condition_lists, args.raw, level, spacegroups, args.mode)
+        print(f"\nGenerated manual prompts for {len(compositions)} compositions and {len(condition_lists)} condition lists at {level} ({args.mode} mode)")
         if spacegroups:
             print(f"Using spacegroups: {spacegroups}")
 
