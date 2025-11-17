@@ -24,7 +24,7 @@
 CrystaLLM 2.0 is a Transformer-based system for generating crystalline structures as CIF files. It supports both unconditional generation and four conditional architectures that can generate structures based on target properties like bandgap, density, photovoltaic efficiency and XRD patterns.
 
 <div align="center">
-<img src="images/CrystaLLM 2.0 Framework.png" width="75%" style="background-color:white;"/>
+<img src="images/Framework_github.png" width="75%" style="background-color:white;"/>
 </div>
 
 ## Key Features
@@ -120,7 +120,7 @@ Standard CrystaLLM/GPT-2 architecture for generative tasks. Learns underlying pa
 Injects property information directly into the attention mechanism's past key-values. This allows the model to steer generation based on desired properties by concatenating conditional embeddings at each transformer layer. Provides strong conditioning while maintaining straightforward implementation. Based on ghost tokens from the [Prefix Tuning Paper](https://arxiv.org/abs/2101.00190).
 
 <div align="center">
-<img src="images/PKV-GPT.png" width="75%" style="background-color:white;"/>
+<img src="images/PKV_github.png" width="75%" style="background-color:white;"/>
 </div>
 
 #### b. Slider-GPT 
@@ -129,7 +129,7 @@ Injects property information directly into the attention mechanism's past key-va
 Novel architecture where conditioning information is dynamically injected into each attention block via a 'slider' mechanism. Features two separate attention mechanisms at every token generation: one for main text and one for conditions. Attention scores are combined via weighted sum. Handles missing or unspecified conditions seamlessly with softer conditioning (weight initialized at 0 during finetuning).
 
 <div align="center">
-<img src="images/SliderGPT.png" width="75%" style="background-color:white;"/>
+<img src="images/Slider_github.png" width="75%" style="background-color:white;"/>
 </div>
 
 <details>
