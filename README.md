@@ -181,7 +181,7 @@ Each model can be used with **manual generation** (specify compositions + proper
 
 **Unconditional Generation**
 
-Generate 10 batches of 5 titanium oxide structures with composition Ti2O4 in the P4_2/mnm spacegroup using the base unconditional model with omposition + spacegroup level prompts.
+Generate Ti2O4 structures with composition + spacegroup level prompts.
 
 ```bash
 python _load_and_generate.py \
@@ -193,60 +193,61 @@ python _load_and_generate.py \
     --level level_4 \
     --num_return_sequences 5 \
     --max_return_attempts 10 \
-    --output_parquet generated_structures.parquet \
-    --verbose
+    --output_parquet generated_structures.parquet
 ```
 
-**Bandgap Conditioning (Manual)**
+**Bandgap Conditioning**
 
-Generate 10 batches of 5 for each composition/prompt pair. Titanium oxide structures (Ti2O4 and Ti4O8 compositions) with a target bandgap of 1.8 eV and thermodynamic stability (0 eV/atom above hull) using composition + spacegroup level prompts.
+Generate structures with target 1.8 eV bandgap and stability. Uses cartesian mode to create all combinations of conditions for each composition.
 
 ```bash
 python _load_and_generate.py \
     --hf_model_path "c-bone/CrystaLLM-2.0_bandgap" \
     --manual \
-    --compositions "Ti2O4, Ti4O8" \
-    --condition_lists "1.8" "0.0" \  # 1.8 eV bandgap, stable (0 eV/atom above hull)
-    --spacegroups "P4_2/mnm" \
+    --compositions "Ti2O4,Ti4O8" \
+    --condition_lists "1.8" "0.0" \
     --level level_4 \
+    --mode cartesian \
     --num_return_sequences 5 \
     --max_return_attempts 10 \
     --output_parquet generated_structures.parquet
 ```
 
-**Density Conditioning (Manual)**
+**Density Conditioning**
 
-Generates 10 batches of 5 for each composition/prompt pair. For three different compositions of silica with their associated target densities (Si4O8 with 2.143 g/cm³, Si6O12 with 1.842 g/cm³, Si8O16 with 1.796 g/cm³) at composition-only prompt level for thermodynamically stable structures.
+Generate silica polymorphs with specific target densities. Uses paired mode for 1:1 composition-density mapping.
 
 ```bash
 python _load_and_generate.py \
     --hf_model_path "c-bone/CrystaLLM-2.0_density" \
     --manual \
-    --compositions "Si4O8, Si6O12, Si8O16" \
-    --condition_lists "2.143, 1.842, 1.796" "0.0" \ # densities in g/cm³, stable
+    --compositions "Si4O8,Si6O12,Si8O16" \
+    --condition_lists "2.143,0.0" "1.842,0.0" "1.796,0.0" \
     --level level_2 \
-    --num_return_sequences 3 \
-    --max_return_attempts 5 \
+    --mode paired \
+    --num_return_sequences 5 \
     --output_parquet high_density_materials.parquet
 ```
 
-**Solar Efficiency Conditioning (Dataframe Input)**
+**Solar Efficiency**
 
-
-Generates 10 batches of 5 for each composition/prompt pair. From pre-computed prompts targeting specific photovoltaic efficiency values using the SLME-conditioned model with prepared dataframe inputs.
+Screen multiple compositions at fixed SLME target. Uses broadcast mode to apply same conditions to all compositions.
 
 ```bash
 python _load_and_generate.py \
     --hf_model_path "c-bone/CrystaLLM-2.0_SLME" \
-    --input_parquet "_artifacts/slme/slme-PKV-opt_prompt.parquet" \
+    --manual \
+    --compositions "CsPbI3,MAPbI3,FAPbI3" \
+    --condition_lists "25.0" \
+    --level level_2 \
+    --mode broadcast \
     --num_return_sequences 5 \
-    --max_return_attempts 10 \
-    --output_parquet generated_structures.parquet 
+    --output_parquet solar_screening.parquet
 ```
 
-**XRD Pattern Conditioning (Dataframe Only)**
+**XRD from Dataframe**
 
-Generates 1 batch of 5 for each composition/prompt pair. For matching target XRD diffraction patterns using the Slider model architecture with pre-processed XRD peak data as conditioning information.
+Generate from pre-processed XRD patterns. Requires prepared dataframe with XRD peak data.
 
 ```bash
 python _load_and_generate.py \
@@ -254,78 +255,23 @@ python _load_and_generate.py \
     --model_type "Slider" \
     --input_parquet "xrd_processed_prompts.parquet" \
     --num_return_sequences 5 \
-    --max_return_attempts 1 \
     --output_parquet generated_structures.parquet
 ```
 
-> **XRD Processing**: See `notebooks/X_XRD_COD.ipynb` for examples on processing experimental XRD data and creating compatible input dataframes.
+> **XRD Processing**: See `notebooks/X_XRD_COD.ipynb` for preparing XRD dataframes.
 
-## Prompt Levels
+## Configuration Options
 
-Control the amount of structural information provided to guide generation:
+**Prompt levels `--level`:**
+- `level_1`: Minimal (unconditional generation)
+- `level_2`: Composition only (default)
+- `level_3`: Composition + atomic properties  
+- `level_4`: Composition + spacegroup
 
-- `level_1`: Minimal (pure unconditional generation)
-- `level_2`: Composition only
-- `level_3`: Composition + atomic properties (these can be algorithmically generated)
-- `level_4`: Composition + Spacegroup
-
-## Composition-Condition Pairing Modes
-
-When generating with multiple compositions and conditions, control how they are combined using the `--mode` flag:
-
-### Cartesian Mode (Default)
-
-Creates all possible combinations between compositions and condition values across all condition lists.
-
-**Example:** Generate structures for 2 compositions × (2 bandgaps × 2 stabilities) = 8 total prompts
-```bash
-python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-2.0_bandgap" \
-    --manual \
-    --compositions "Si,GaAs" \
-    --condition_lists "0.5,1.5" "0.0,0.05" \
-    --mode cartesian \
-    --num_return_sequences 3 \
-    --output_parquet results.parquet
-```
-
-**Output:** Si with bandgap 0.5 eV & ehull 0.0, Si with bandgap 0.5 eV & ehull 0.05, Si with bandgap 1.5 eV & ehull 0.0, etc.
-
-### Paired Mode
-
-Maps compositions 1:1 with condition lists. Useful when each composition has specific target properties.
-
-**Example:** Generate SiO2 at 2.2 g/cm³, Al2O3 at 3.95 g/cm³, TiO2 at 4.23 g/cm³
-```bash
-python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-2.0_density" \
-    --manual \
-    --compositions "Si4O8,Al8O12,Ti4O8" \
-    --condition_lists "2.2,0.0" "3.95,0.0" "4.23,0.0" \
-    --mode paired \
-    --num_return_sequences 5 \
-    --output_parquet results.parquet
-```
-
-**Requirements:** Number of compositions must equal number of condition_lists. Each composition pairs with its corresponding condition_list.
-
-### Broadcast Mode
-
-Applies the same condition(s) to all compositions. Useful for screening multiple materials at fixed property values.
-
-**Example:** Generate 3 compositions all targeting 2.0 eV bandgap with stability
-```bash
-python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-2.0_bandgap" \
-    --manual \
-    --compositions "Si,GaAs,CdTe" \
-    --condition_lists "2.0,0.0" \
-    --mode broadcast \
-    --num_return_sequences 5 \
-    --output_parquet results.parquet
-```
-
-**Requirements:** Exactly one condition_list (which can contain multiple values like "2.0,0.0" for bandgap and ehull).
+**Composition-Condition Pairing modes `--mode`:**
+- `cartesian` (default): All combinations of compositions × conditions
+- `paired`: 1:1 mapping (equal number of compositions and condition_lists required)
+- `broadcast`: Single condition_list applied to all compositions
 
 </details>
 <br>
