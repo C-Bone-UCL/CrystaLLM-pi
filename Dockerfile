@@ -21,7 +21,7 @@ COPY . .
 RUN pip install --no-cache-dir --prefix=/install .
 
 # Stage 2: Runtime stage with CUDA
-FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 
 # Install Python 3.10
 RUN apt-get update && apt-get install -y \
@@ -41,7 +41,7 @@ COPY --from=builder /install /usr/local
 COPY --from=builder /app /app
 
 # Create directories for data and outputs
-RUN mkdir -p /app/data /app/outputs /tmp/.cache
+RUN mkdir -p /app/data /app/outputs /tmp/.cache /tmp/triton-cache
 
 ENV MPLCONFIGDIR=/app
 ENV HF_HOME=/tmp/.cache
