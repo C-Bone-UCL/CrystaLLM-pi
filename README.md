@@ -107,6 +107,8 @@ Create `API_keys.jsonc` in the root directory for HuggingFace and Weights & Bias
 
 CrystaLLM 2.0 supports one unconditional and four conditional model architectures, allowing for both standard and property-driven generation. The desired model can be selected during training using the `--activate_conditionality` flag.
 
+> **Important:** In the paper, the `PKV` method is adressed as the `Prefix attention`, and `Slider` is called the `Residual attention`. For all intents and purposes, these are the exact same. However the codebase was developed with `PKV` and `Slider`, but their respective names were changed in the paper for technical clarity.
+
 ### 1. Unconditional CrystaLLM
 Do not set the `--activate_conditionality` flag.
 
@@ -114,22 +116,22 @@ Standard CrystaLLM/GPT-2 architecture for generative tasks. Learns underlying pa
 
 ### 2. Conditional Models
 
-#### a. PKV-GPT 
+#### a. PKV-GPT (Prefix Attention)
 `--activate_conditionality="PKV"`
 
 Injects property information directly into the attention mechanism's past key-values. This allows the model to steer generation based on desired properties by concatenating conditional embeddings at each transformer layer. Provides strong conditioning while maintaining straightforward implementation. Based on ghost tokens from the [Prefix Tuning Paper](https://arxiv.org/abs/2101.00190).
 
 <div align="center">
-<img src="images/PKV_github.png" width="75%" style="background-color:white;"/>
+<img src="images/Prefix_github.png" width="75%" style="background-color:white;"/>
 </div>
 
-#### b. Slider-GPT 
+#### b. Slider-GPT (Residual Attention)
 `--activate_conditionality="Slider"`
 
 Novel architecture where conditioning information is dynamically injected into each attention block via a 'slider' mechanism. Features two separate attention mechanisms at every token generation: one for main text and one for conditions. Attention scores are combined via weighted sum. Handles missing or unspecified conditions seamlessly with softer conditioning (weight initialized at 0 during finetuning).
 
 <div align="center">
-<img src="images/Slider_github.png" width="75%" style="background-color:white;"/>
+<img src="images/Residual_github.png" width="75%" style="background-color:white;"/>
 </div>
 
 <details>
