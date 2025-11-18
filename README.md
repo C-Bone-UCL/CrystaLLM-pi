@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1> CrystaLLM 2.0 </h1>
+<h1> CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> </h1>
   <p>
     <strong>A Transformer-based model for property-guided crystal structure generation
     </strong>
@@ -14,14 +14,14 @@
  <a href="https://www.nature.com/articles/s41467-024-54639-7">
      <img alt="Based on CrystaLLM Paper" src="https://img.shields.io/badge/Based%20on-CrystaLLM%20Paper-orange.svg?style=plastic">
  </a>
- <a href="https://github.com/C-Bone-UCL/CrystaLLM-2.0/blob/main/LICENSE">
+ <a href="https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/LICENSE">
      <img alt="License" src="https://img.shields.io/badge/License-MIT-lightgrey.svg?style=plastic">
  </a>
 </p>
 
 # Overview
 
-CrystaLLM 2.0 is a Transformer-based system for generating crystalline structures as CIF files. It supports both unconditional generation and four conditional architectures that can generate structures based on target properties like bandgap, density, photovoltaic efficiency and XRD patterns.
+CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> is a Transformer-based system for generating crystalline structures as CIF files. It supports both unconditional generation and four conditional architectures that can generate structures based on target properties like bandgap, density, photovoltaic efficiency and XRD patterns.
 
 <div align="center">
 <img src="images/Framework_github.png" width="75%" style="background-color:white;"/>
@@ -64,18 +64,18 @@ CrystaLLM 2.0 is a Transformer-based system for generating crystalline structure
 
 ```bash
 # Clone the repository
-git clone https://github.com/C-Bone-UCL/CrystaLLM-2.0.git
-cd CrystaLLMv2
+git clone https://github.com/C-Bone-UCL/CrystaLLM-pi.git
+cd CrystaLLM-pi
 
 # Create virtual environment
-conda create -n CrystaLLMv2_env python=3.10
-conda activate CrystaLLMv2_env
+conda create -n CrystaLLM-pi_env python=3.10
+conda activate CrystaLLM-pi_env
 
 # Install dependencies and setup package
 pip install -r requirements.txt
 # material-hasher package needs to be installed via
 pip install git+https://github.com/lematerial/material-hasher.git
-# Install CrystaLLM 2.0 in editable mode
+# Install CrystaLLM-pi in editable mode
 pip install -e .
 ```
 
@@ -105,7 +105,7 @@ Create `API_keys.jsonc` in the root directory for HuggingFace and Weights & Bias
 
 # Model Types
 
-CrystaLLM 2.0 supports one unconditional and four conditional model architectures, allowing for both standard and property-driven generation. The desired model can be selected during training using the `--activate_conditionality` flag.
+CrystaLLM<span style="font-size: 1.2em;">&pi;</span> supports one unconditional and four conditional model architectures, allowing for both standard and property-driven generation. The desired model can be selected during training using the `--activate_conditionality` flag.
 
 > **Important:** In the paper, the `PKV` method is adressed as the `Prefix attention`, and `Slider` is called the `Residual attention`. For all intents and purposes, these are the exact same. However the codebase was developed with `PKV` and `Slider`, but their respective names were changed in the paper for technical clarity.
 
@@ -168,11 +168,11 @@ Each model can be used with **manual generation** (specify compositions + proper
 
 ## Available Pre-trained Models
 
-- `c-bone/CrystaLLM-2.0_base`: Unconditional generation - Base model
-- `c-bone/CrystaLLM-2.0_SLME`: Solar efficiency conditioning (0-33% range) - PKV model
-- `c-bone/CrystaLLM-2.0_bandgap`: Bandgap + stability conditioning (0-18 eV, 0-5 eV/atom) - PKV model
-- `c-bone/CrystaLLM-2.0_density`: Density + stability conditioning (0-25 g/cm³, 0-0.1 eV/atom) - PKV model
-- `c-bone/CrystaLLM-2.0_COD-XRD`: XRD pattern conditioning (XRD requires dataframe input) - Slider model
+- `c-bone/CrystaLLM-pi_base`: Unconditional generation - Base model
+- `c-bone/CrystaLLM-pi_SLME`: Solar efficiency conditioning (0-33% range) - PKV model
+- `c-bone/CrystaLLM-pi_bandgap`: Bandgap + stability conditioning (0-18 eV, 0-5 eV/atom) - PKV model
+- `c-bone/CrystaLLM-pi_density`: Density + stability conditioning (0-25 g/cm³, 0-0.1 eV/atom) - PKV model
+- `c-bone/CrystaLLM-pi_COD-XRD`: XRD pattern conditioning (XRD requires dataframe input) - Slider model
 
 > For XRD conditioning, you need the diffraction pattern taken with CuKα wavelength (2θ range 0-90°) and associated intensities. Currently need to manually pick out up to 20 most intense peaks which serve as conditioning information.
 
@@ -187,7 +187,7 @@ Generate Ti2O4 structures with composition + spacegroup level prompts.
 
 ```bash
 python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-2.0_base" \
+    --hf_model_path "c-bone/CrystaLLM-pi_base" \
     --model_type "Base" \
     --manual \
     --compositions "Ti2O4" \
@@ -204,7 +204,7 @@ Generate structures with target 1.8 eV bandgap and stability. Uses cartesian mod
 
 ```bash
 python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-2.0_bandgap" \
+    --hf_model_path "c-bone/CrystaLLM-pi_bandgap" \
     --manual \
     --compositions "Ti2O4,Ti4O8" \
     --condition_lists "1.8" "0.0" \
@@ -221,7 +221,7 @@ Generate silica polymorphs with specific target densities. Uses paired mode for 
 
 ```bash
 python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-2.0_density" \
+    --hf_model_path "c-bone/CrystaLLM-pi_density" \
     --manual \
     --compositions "Si4O8,Si6O12,Si8O16" \
     --condition_lists "2.143,0.0" "1.842,0.0" "1.796,0.0" \
@@ -237,7 +237,7 @@ Screen multiple compositions at fixed SLME target. Uses broadcast mode to apply 
 
 ```bash
 python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-2.0_SLME" \
+    --hf_model_path "c-bone/CrystaLLM-pi_SLME" \
     --manual \
     --compositions "CsPbI3,MAPbI3,FAPbI3" \
     --condition_lists "25.0" \
@@ -253,7 +253,7 @@ Generate from pre-processed XRD patterns. Requires prepared dataframe with XRD p
 
 ```bash
 python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-2.0_COD-XRD" \
+    --hf_model_path "c-bone/CrystaLLM-pi_COD-XRD" \
     --model_type "Slider" \
     --input_parquet "xrd_processed_prompts.parquet" \
     --num_return_sequences 5 \
@@ -578,7 +578,7 @@ XRD, Bandgap, Density, and challenge set benchmark metrics available in `_utils/
 Containerised API provides access to all CLI tools via REST endpoints.
 
 <details>
-<summary> Build and Run the CrystaLLM 2.0 API </summary>
+<summary> Build and Run the CrystaLLM-pi API </summary>
 
 ## Build and Run Container
 
@@ -656,7 +656,7 @@ curl -X POST "http://localhost:8000/train" \
 curl -X POST "http://localhost:8000/generate/direct" \
   -H "Content-Type: application/json" \
   -d '{
-    "hf_model_path": "c-bone/CrystaLLM-2.0_base",
+    "hf_model_path": "c-bone/CrystaLLM-pi_base",
     "compositions": "Ti2O4",
     "num_return_sequences": 5,
     "output_parquet": "/app/outputs/generated_structures.parquet"

@@ -1,5 +1,5 @@
 """
-Argument parsing for CrystaLLMv2 training and generation scripts.
+Argument parsing for CrystaLLM_pi training and generation scripts.
 
 Handles configuration for Transformer-based crystalline structure generation
 with support for conditional models (PKV, Prepend, Slider, Raw architectures).
@@ -11,7 +11,7 @@ import commentjson
 def parse_args():
     """Parse command-line arguments, supporting JSON config files with comments."""
 
-    parser = argparse.ArgumentParser(description="CrystaLLMv2 Training Script")
+    parser = argparse.ArgumentParser(description="CrystaLLM_pi Training Script")
     parser.add_argument("--config", type=str, default=None, help="Path to a JSON config file with comments (commentjson).")
 
     # Not used currently
@@ -79,7 +79,7 @@ def parse_args():
     parser.add_argument("--logging_steps", type=int, default=50, help="Frequency of logging training metrics.")
     parser.add_argument("--save_total_limit", type=int, default=1, help="Maximum number of checkpoints to keep.")
     parser.add_argument("--report_to", type=str, default="none", help="Reporting service (e.g. 'wandb', 'tensorboard', 'none').")
-    parser.add_argument("--wandb_project_folder", type=str, default="CrystaLLMv2", help="Project name for Weights & Biases logging.")
+    parser.add_argument("--wandb_project_folder", type=str, default="CrystaLLM_pi", help="Project name for Weights & Biases logging.")
     parser.add_argument("--pretrained_model_dir", type=str, default=None, help="Directory containing pretrained model for fine-tuning.")
     parser.add_argument("--eval_strategy", type=str, default="steps", help="Evaluation strategy during training.")
     parser.add_argument("--save_strategy", type=str, default="steps", help="Checkpoint saving strategy.")
@@ -122,7 +122,7 @@ def parse_args():
     # CodeCarbon arguments
     #######################
     parser.add_argument("--codecarbon", action="store_true", help="Enable CodeCarbon tracking for carbon emission monitoring during training.")
-    parser.add_argument("--tracker_project", type=str, default="CrystaLLMv2", help="CodeCarbon project name for emission tracking.")
+    parser.add_argument("--tracker_project", type=str, default="CrystaLLM_pi", help="CodeCarbon project name for emission tracking.")
 
 
     # Parse arguments

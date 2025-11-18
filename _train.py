@@ -1,5 +1,5 @@
 """
-Main training script for CrystaLLMv2 conditional or unconditional crystal structure generation.
+Main training script for CrystaLLM_pi conditional or unconditional crystal structure generation.
 """
 
 import os
@@ -49,7 +49,7 @@ cleanup()
 atexit.register(cleanup)
 
 def main():
-    """Main training function for CrystaLLMv2."""
+    """Main training function for CrystaLLM_pi."""
     global process_socket, process_port
 
     # Setting up environment

@@ -2,32 +2,32 @@
 """
 Load and generate CIF structures from HuggingFace CrystaLLM models.
 
-Works with all the CrystaLLM-2.0 models on Huggingface. Give real property values for manual generation and it handles the normalization automatically.
+Works with all the CrystaLLM-pi models on Huggingface. Give real property values for manual generation and it handles the normalization automatically.
 
 Models:
-- c-bone/CrystaLLM-2.0_base (unconditional)
-- c-bone/CrystaLLM-2.0_SLME (solar efficiency)  
-- c-bone/CrystaLLM-2.0_bandgap (bandgap + ehull)
-- c-bone/CrystaLLM-2.0_density (density + ehull)
-- c-bone/CrystaLLM-2.0_COD-XRD (XRD patterns, for this one you need a prepared df first)
+- c-bone/CrystaLLM-pi_base (unconditional)
+- c-bone/CrystaLLM-pi_SLME (solar efficiency)  
+- c-bone/CrystaLLM-pi_bandgap (bandgap + ehull)
+- c-bone/CrystaLLM-pi_density (density + ehull)
+- c-bone/CrystaLLM-pi_COD-XRD (XRD patterns, for this one you need a prepared df first)
 
 Usage examples:
 
 # Basic unconditional generation
-python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-2.0_base \
+python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-pi_base \
     --manual --compositions "LiFePO4,TiO2" --output_parquet results.parquet
 
 # Solar efficiency model - just give real SLME values (0-33 range is what was seen during training)  
-python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-2.0_SLME \
+python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-pi_SLME \
     --manual --compositions "CsPbI3" --condition_lists "25.0" --output_parquet results.parquet
 
 # Bandgap model - bandgap in eV, ehull in eV/atom (set ehull=0 for stable, max bandgap ~17.9 eV was seen during training)
-python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-2.0_bandgap \
+python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-pi_bandgap \
     --manual --compositions "Si" --condition_lists "1.1" "0.0" --output_parquet results.parquet
 
 # Density model - density in g/cm3, ehull in eV/atom (set ehull=0 for stable, max density ~25.5 g/cm3 was seen during training)
-python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-2.0_density \
-    --manual --compositions "Os" --condition_lists "22.0" "0.0" --output_parquet results.parquet
+python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-pi_density \
+    --manual --compositions "Os" --condition_lists "2.0" "0.0" --output_parquet results.parquet
 
 # Pairing modes for composition-condition combinations:
 # --mode cartesian (default): All combinations of all condition_lists
@@ -58,7 +58,7 @@ TOKENIZER_DIR = "HF-cif-tokenizer"
 
 # Model specs - used for auto-normalization
 MODEL_INFO = {
-    "c-bone/CrystaLLM-2.0_base": {
+    "c-bone/CrystaLLM-pi_base": {
         "description": "Unconditional generation",
         "conditions": 0,
         "example_conditions": None, 
@@ -66,7 +66,7 @@ MODEL_INFO = {
         "min": None,
         "normalization": None
     },
-    "c-bone/CrystaLLM-2.0_SLME": {
+    "c-bone/CrystaLLM-pi_SLME": {
         "description": "Solar cell efficiency (SLME) conditioning", 
         "conditions": 1,
         "example_conditions": ["25.0"],
@@ -74,7 +74,7 @@ MODEL_INFO = {
         "min": 0.0,
         "normalization": "linear"
     },
-    "c-bone/CrystaLLM-2.0_bandgap": {
+    "c-bone/CrystaLLM-pi_bandgap": {
         "description": "Bandgap + stability conditioning",
         "conditions": 2, 
         "example_conditions": ["1.1", "0.0"],
@@ -82,7 +82,7 @@ MODEL_INFO = {
         "min": [0.0, 0.0],
         "normalization": ["power_log", "linear"]
     },
-    "c-bone/CrystaLLM-2.0_density": {
+    "c-bone/CrystaLLM-pi_density": {
         "description": "Density + stability conditioning",
         "conditions": 2,
         "example_conditions": ["15.0", "0.0"],
@@ -90,7 +90,7 @@ MODEL_INFO = {
         "min": [0.0, 0.0],
         "normalization": ["linear", "linear"]
     },
-    "c-bone/CrystaLLM-2.0_COD-XRD": {
+    "c-bone/CrystaLLM-pi_COD-XRD": {
         "description": "Experimental XRD conditioning",
         "conditions": 40,
         "example_conditions": ["-100"] * 20 + ["-100"] * 20,

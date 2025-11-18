@@ -17,12 +17,10 @@ def setup_notebook_environment():
     if current_dir.name == 'notebooks':
         package_root = current_dir.parent
         os.chdir(str(package_root))
-        print(f"Navigated to package root: {package_root}")
-        
+        print(f"Navigated to package root")
         # Add to Python path
         if str(package_root) not in sys.path:
             sys.path.insert(0, str(package_root))
-            print("Added package root to Python path")
     else:
         print(f"Current directory: {current_dir}")
 
