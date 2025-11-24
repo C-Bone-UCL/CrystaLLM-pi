@@ -205,10 +205,10 @@ def main():
 
     # Print summary statistics
     finite_ehull = pd.to_numeric(df["dft_ehull"], errors="coerce")
-    mask_stable = (finite_ehull <= 0.15) & (finite_ehull != EHULL_CLIP_RANGE[0])
+    mask_stable = (finite_ehull <= 0.1) & (finite_ehull != EHULL_CLIP_RANGE[0])
     
     print(f"\nResults Summary:")
-    print(f"Number of stable entries (E_hull <= 0.15 eV): {int(mask_stable.sum())}")
+    print(f"Number of stable entries (E_hull <= 0.1 eV): {int(mask_stable.sum())}")
     
     valid_ehull = finite_ehull[(finite_ehull != EHULL_CLIP_RANGE[0]) & (finite_ehull != EHULL_CLIP_RANGE[1])]
     if not valid_ehull.empty:

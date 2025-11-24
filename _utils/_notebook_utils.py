@@ -13,7 +13,7 @@ from pymatgen.core import Composition
 import sys
 import json
 
-def build_challenge_dataframe(input_folder: str, output_parquet: str = "materials.parquet"):
+def build_challenge_dataframe(input_folder: str, output_csv: str = "materials.parquet"):
     records = []
     input_path = Path(input_folder)
     
@@ -36,8 +36,8 @@ def build_challenge_dataframe(input_folder: str, output_parquet: str = "material
     
     df = pd.DataFrame.from_records(records, columns=["Material ID", "CIF"])
     
-    df.to_parquet(output_parquet, index=False)
-    print(f"Saved {len(df)} records to {output_parquet}")
+    df.to_parquet(output_csv, index=False)
+    print(f"Saved {len(df)} records to {output_csv}")
 
 import numpy as np
 import pandas as pd
@@ -557,36 +557,27 @@ def process_xrd_to_condition_vector(file_content):
     
     return vector_str
 
-
 def extract_reduced_formula(cif_str):
-    """
-    Parses CIF string and returns the reduced formula.
-    Uses modern pymatgen 'parse_structures'
-    """
+    """Parses CIF string and returns the reduced formula."""
     parser = CifParser.from_str(cif_str)
-    
     structure = parser.parse_structures()[0]
-    
     return structure.reduced_formula
 
 
 def parse_formula(formula_string: str) -> dict:
-    """Parse chemical formula into element counts, handling parentheses."""
+    """Parse chemical formula into element counts."""
     comp = Composition(formula_string)
     return comp.get_el_amt_dict()
 
+
 def hhi_scores_from_formula(formula: dict):
-    """
-    Computes material-level HHI_p and HHI_r (weighted by element mass fraction)
-    Method from: https://pubs.acs.org/doi/10.1021/cm400893e
-    """
+    """Computes material-level HHI_p and HHI_r weighted by element mass fraction."""
     masses = []
     hhi_p_vals = []
     hhi_r_vals = []
 
     for symbol, count in formula.items():
         atomic_weight = Element(symbol).atomic_mass
-    
         hhi_data = lookup_element_hhis(symbol)
 
         if hhi_data is None:
@@ -615,10 +606,9 @@ def hhi_scores_from_formula(formula: dict):
 
     return hhi_p_material, hhi_r_material
 
+
 def get_hhi_scores_from_cif(cif_str):
-    """
-    Wrapper function to process a single CIF string.
-    """
+    """Wrapper to process a single CIF string."""
     try:
         formula_str = extract_reduced_formula(cif_str)
         formula_dict = parse_formula(formula_str)
@@ -638,6 +628,32 @@ def extract_formula(cif_str):
         return structure.composition.reduced_formula
     except Exception:
         return "UnknownFormula"
+
+
+def parse_novelty_from_tag(tag):
+    """Extract structure and composition novelty from tag string."""
+    struct_nov = []
+    comp_nov = []
+    
+    if "Novel-ft-pt" in tag:
+        struct_nov = ["ft", "pt"]
+    elif "Novel-ft" in tag:
+        struct_nov = ["ft"]
+    elif "Novel-pt" in tag:
+        struct_nov = ["pt"]
+    
+    if "CompNovel-ft-pt" in tag:
+        comp_nov = ["ft", "pt"]
+    elif "CompNovel-ft" in tag:
+        comp_nov = ["ft"]
+    elif "CompNovel-pt" in tag:
+        comp_nov = ["pt"]
+    
+    # Format as strings
+    struct_str = "-".join(struct_nov) if struct_nov else "None"
+    comp_str = "-".join(comp_nov) if comp_nov else "None"
+    
+    return struct_str, comp_str
 
 
 def build_novelty_tag(row):
@@ -664,8 +680,9 @@ def build_novelty_tag(row):
 
 
 def select_top_materials(df, top_n_slme=15, top_n_sustain=15, slme_threshold=25):
-    """Select top materials by SLME and sustainability."""
+    """Select top materials by SLME and sustainability, return materials dict and summary df."""
     materials = {}
+    summary_records = []
     
     # Top by SLME
     for i, (_, row) in enumerate(df.nlargest(top_n_slme, 'predicted_slme').iterrows()):
@@ -673,6 +690,20 @@ def select_top_materials(df, top_n_slme=15, top_n_sustain=15, slme_threshold=25)
         novelty = build_novelty_tag(row)
         name = f"{formula}__SLME-{int(row['predicted_slme'])}_top_{i+1}__{novelty}"
         materials[name] = row['Generated CIF']
+        
+        struct_nov, comp_nov = parse_novelty_from_tag(novelty)
+        summary_records.append({
+            'Reduced Formula': formula,
+            'Position': i + 1,
+            'Metric': 'SLME',
+            'Pred. SLME': row['predicted_slme'],
+            'HHI_p': row['HHI_p'],
+            'HHI_r': row['HHI_r'],
+            'HHI_dist': row['HHI_distance_to_0'],
+            'E_hull_mace (eV/atom)': row['ehull_mace_mp'],
+            'Structure Nov.': struct_nov,
+            'Composition Nov.': comp_nov
+        })
     
     # Top by sustainability (filtered by SLME)
     sustain_df = df[df['predicted_slme'] > slme_threshold]
@@ -681,8 +712,23 @@ def select_top_materials(df, top_n_slme=15, top_n_sustain=15, slme_threshold=25)
         novelty = build_novelty_tag(row)
         name = f"{formula}__Sustain-SLME-{int(row['predicted_slme'])}_top_{i+1}__{novelty}"
         materials[name] = row['Generated CIF']
+        
+        struct_nov, comp_nov = parse_novelty_from_tag(novelty)
+        summary_records.append({
+            'Reduced Formula': formula,
+            'Position': i + 1,
+            'Metric': 'HHI-SLME',
+            'Pred. SLME': row['predicted_slme'],
+            'HHI_p': row['HHI_p'],
+            'HHI_r': row['HHI_r'],
+            'HHI_dist': row['HHI_distance_to_0'],
+            'E_hull_mace (eV/atom)': row['ehull_mace_mp'],
+            'Structure Nov.': struct_nov,
+            'Composition Nov.': comp_nov
+        })
     
-    return materials
+    summary_df = pd.DataFrame(summary_records)
+    return materials, summary_df
 
 
 def export_materials(materials, output_dir):
@@ -697,9 +743,17 @@ def export_materials(materials, output_dir):
     print(f"Exported {len(materials)} materials to {output_dir}/")
 
 
-def run_material_selection(input_parquet, output_dir, top_n_slme=15, top_n_sustain=15):
-    """Main workflow: select top materials and export to CIF files."""
+def run_material_selection(input_parquet, output_dir, output_csv, top_n_slme=15, top_n_sustain=15):
+    """Main workflow: select top materials, export CIF files and summary dataframe."""
     df = pd.read_parquet(input_parquet)
-    materials = select_top_materials(df, top_n_slme, top_n_sustain)
+    materials, summary_df = select_top_materials(df, top_n_slme, top_n_sustain)
+    
     export_materials(materials, output_dir)
-    return materials
+    
+    # Ensure output directory exists
+    
+    # os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+    summary_df.to_csv(output_csv, index=False)
+    print(f"Saved summary dataframe to {output_csv}")
+    
+    return materials, summary_df
