@@ -7,10 +7,8 @@ import os
 import multiprocessing as mp
 import sys
 import json
-import time
 import re
 import warnings
-import gc
 from tqdm import tqdm
 import torch
 import pandas as pd
@@ -49,7 +47,7 @@ def check_cif(cif_str):
             return False
         
         return True
-    except:
+    except Exception:
         return False
     
 def score_output_logp(model, scores, full_sequences, sequence_idx, input_length, eos_token_id=None):
@@ -237,9 +235,7 @@ def generate_on_gpu(
     queue,
     start_idx,
     end_idx,
-    model_ckpt_dir,
     activate_conditionality,
-    num_repeats,
     global_offset=0,
     scoring_mode="None",
     target_valid_cifs=20,
@@ -251,7 +247,7 @@ def generate_on_gpu(
     model = model.to(device)
     results = []
     
-    torch.cuda.manual_seed_all(int(time.time()) + os.getpid())
+    torch.cuda.manual_seed_all(os.getpid())
     
     # Process each prompt individually
     for idx in range(start_idx, end_idx):
@@ -412,9 +408,6 @@ def main():
     
     # Set defaults
     args.num_repeats = getattr(args, 'num_repeats', 1)
-
-    # set to GPU 1, dont use GPU 0 which is used by other processes
-    # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
     
     print("Environment info")
     print(f"Available GPUs: {torch.cuda.device_count()}")
@@ -500,7 +493,7 @@ def main():
                 results.append(pool.apply_async(
                     generate_on_gpu,
                     (0, df_prompts, generation_kwargs, queue, 0, total_samples,
-                    args.model_ckpt_dir, args.activate_conditionality, args.num_repeats, 0, args.scoring_mode, args.target_valid_cifs, args.max_return_attempts)
+                    args.activate_conditionality, 0, args.scoring_mode, args.target_valid_cifs, args.max_return_attempts)
                 ))
             else:
                 for gpu_id in range(num_gpus):
@@ -510,7 +503,7 @@ def main():
                     results.append(pool.apply_async(
                         generate_on_gpu,
                         (gpu_id, df_prompts, generation_kwargs, queue, start, end,
-                        args.model_ckpt_dir, args.activate_conditionality, args.num_repeats, global_offset, args.scoring_mode, args.target_valid_cifs, args.max_return_attempts)
+                        args.activate_conditionality, global_offset, args.scoring_mode, args.target_valid_cifs, args.max_return_attempts)
                     ))
         except Exception as e:
             print(f"Generation error (check activate_conditionality setting): {e}")
@@ -549,7 +542,6 @@ def main():
 
     # Cleanup
     manager.shutdown()
-    gc.collect()
 
 if __name__ == "__main__":
     # Set start method to 'spawn' for CUDA compatibility

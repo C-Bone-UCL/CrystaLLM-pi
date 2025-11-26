@@ -106,9 +106,9 @@ def parse_args():
     parser.add_argument("--gen_max_length", type=int, default=1024, help="Maximum length of generated CIF sequences (max can be set to context length of your model).")
     parser.add_argument("--num_return_sequences", type=int, default=1, help="Number of CIF sequences to generate per sample (adjust for GPU memory).")
     parser.add_argument("--input_parquet", type=str, default=None, help="Input parquet file containing Prompts for generation, and also 'condition_vector' (normalised accoridng to pre-processing) if conditioning output.")
+    parser.add_argument("--max_samples", type=int, default=None, help="Maximum number of prompts to process from the input parquet file.")
     parser.add_argument("--output_parquet", type=str, default=None, help="Output parquet file to save generated CIF structures.")
     parser.add_argument("--max_return_attempts", type=int, default=1, help="Number of generation batches per prompt. For 'logp' mode: stops when target_valid_cifs reached or max_return_attempts hit. For 'None' mode: runs this many batches of num_return_sequences.")
-    parser.add_argument("--max_samples", type=int, default=None, help="Maximum number of samples to process from the input parquet file.")
     parser.add_argument("--scoring_mode", type=str, default="None", help="Scoring mode for ranking generated structures: 'logp' for perplexity-based ranking (validates and ranks CIFs), or 'None' for no validation/scoring.")
 
     # If scoring_mode is 'logp', the model will compute log-perplexity scores for 'target_valid_cifs' amount of valid generated CIFs to rank them.

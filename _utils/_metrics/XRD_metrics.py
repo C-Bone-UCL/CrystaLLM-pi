@@ -16,7 +16,6 @@ Additional XRD metrics:
 import os
 import argparse
 import sys
-import re
 from tqdm import tqdm
 import pandas as pd
 import numpy as np
@@ -99,7 +98,6 @@ def structure_validity(crystal, cutoff=0.5):
 
 def is_valid_bench(struct):
     """Validity check combining composition and structure validity."""
-    # Convert pymatgen structure to comp/count format
     elem_counter = Counter([specie.Z for specie in struct.species])
     elems = [(elem, elem_counter[elem]) for elem in sorted(elem_counter.keys())]
     comp, elem_counts = list(zip(*elems))
@@ -110,27 +108,6 @@ def is_valid_bench(struct):
     comp_valid = smact_validity(comp, count)
     struct_valid = structure_validity(struct)
     return comp_valid and struct_valid
-
-# def is_sensible(cif_str, length_lo=0.5, length_hi=1000., angle_lo=10., angle_hi=170.):
-#     """Check if CIF has reasonable lattice parameters."""
-#     cell_length_pattern = re.compile(r"_cell_length_[abc]\s+([\d\.]+)")
-#     cell_angle_pattern = re.compile(r"_cell_angle_(alpha|beta|gamma)\s+([\d\.]+)")
-
-#     cell_lengths = cell_length_pattern.findall(cif_str)
-#     for length_str in cell_lengths:
-#         length = float(length_str)
-#         if length < length_lo or length > length_hi:
-#             return False
-
-#     cell_angles = cell_angle_pattern.findall(cif_str)
-#     for _, angle_str in cell_angles:
-#         angle = float(angle_str)
-#         if angle < angle_lo or angle > angle_hi:
-#             return False
-
-#     return True
-
-
 
 
 def _symmetrize_cif(struct):
@@ -175,7 +152,7 @@ def _create_empty_row(true_struct, valid_num, score=None):
         "True Struct": true_cif, "Gen Struct": None, "RMS-d": None,
         "True a": None, "True b": None, "True c": None, "True volume": None,
         "Gen a": None, "Gen b": None, "Gen c": None, "Gen volume": None,
-        "Sensibles Num": valid_num, "n_matched_struct": 0
+        "Sensible Num": valid_num, "n_matched_struct": 0
     }
     
     if score is not None:
@@ -199,7 +176,7 @@ def _create_result_row(true_struct, best_gen, rms_dist, valid_num, score=None):
     row = {
         "True Struct": _symmetrize_cif(true_struct),
         "Gen Struct": gen_cif,
-        "RMS-d": rms_dist if rms_dist not in (9999.0,) else None,
+        "RMS-d": rms_dist if rms_dist != 9999.0 else None,
         "True a": true_a, "True b": true_b, "True c": true_c, "True volume": true_vol,
         "Gen a": gen_a, "Gen b": gen_b, "Gen c": gen_c, "Gen volume": gen_vol,
         "Sensible Num": valid_num
@@ -400,7 +377,7 @@ def get_match_rate_and_rms(gen_structs, true_structs, matcher, args, score_data=
     return _calculate_metrics(rms_dists, a_diffs, b_diffs, c_diffs, gen_structs), pd.DataFrame(rows)
 
 
-def get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, num_workers, df=None, has_rank_column=False, id_to_scores=None):
+def get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, num_workers, has_rank_column=False, id_to_scores=None):
     """Process generated and true CIF structures in parallel.
     
     Args:
@@ -434,10 +411,9 @@ def get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, num_workers, df=None, h
         else:
             # Original logic: take first n_gens or all if None
             subset = cifs if n_gens is None else cifs[:n_gens]
-        work_args = [(cif, LENGTH_LO, LENGTH_HI, ANGLE_LO, ANGLE_HI) for cif in subset]
-        all_work_args.extend(work_args)
-        material_boundaries.append((current_idx, current_idx + len(work_args)))
-        current_idx += len(work_args)
+        all_work_args.extend(subset)
+        material_boundaries.append((current_idx, current_idx + len(subset)))
+        current_idx += len(subset)
 
     print(f"Processing {len(all_work_args)} CIFs across {len(valid_material_ids)} materials")
 
@@ -470,11 +446,10 @@ def get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, num_workers, df=None, h
     return gen_structs, true_structs, filtered_score_data
 
 
-def _parallel_convert_generated_cif(args):
+def _parallel_convert_generated_cif(cif):
     """Convert CIF string to pymatgen Structure with sensibility pre-filtering."""
-    cif, length_lo, length_hi, angle_lo, angle_hi = args
     try:
-        if not is_sensible(cif, length_lo, length_hi, angle_lo, angle_hi):
+        if not is_sensible(cif, LENGTH_LO, LENGTH_HI, ANGLE_LO, ANGLE_HI):
             return None
         return Structure.from_str(cif, fmt="cif")
     except Exception:
@@ -578,7 +553,7 @@ if __name__ == "__main__":
     # Conservative parallelization to avoid memory issues with large structures
     max_workers = max(1, multiprocessing.cpu_count() // 4)
     args.num_workers = min(args.num_workers, max_workers)
-    gen_structs, true_structs, score_data = get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, args.num_workers, df, has_rank_column, id_to_scores)
+    gen_structs, true_structs, score_data = get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, args.num_workers, has_rank_column, id_to_scores)
     
     # Use half the workers for structure comparison to balance load
     comparison_workers = max(1, args.num_workers // 2)
@@ -593,7 +568,6 @@ if __name__ == "__main__":
         print(f"  {k}: {v:.4f}" if v is not None else f"  {k}: None")
 
     # Clean up any lingering processes
-    import multiprocessing as mp
-    for p in mp.active_children():
+    for p in multiprocessing.active_children():
         p.terminate()
         p.join()
