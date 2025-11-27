@@ -194,12 +194,13 @@ def main():
     training_args = TrainingArguments(
         output_dir=args.output_dir,
         eval_strategy=args.eval_strategy,
+        eval_steps=args.eval_steps,
         learning_rate=args.learning_rate,
         per_device_train_batch_size=args.train_batch_size,
         per_device_eval_batch_size=args.eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         logging_steps=args.logging_steps,
-        save_steps=getattr(args, 'eval_steps', 1250),  # Default to 1250 if eval_steps not defined
+        save_steps=args.eval_steps,
         save_total_limit=args.save_total_limit,
         fp16=args.fp16,
         report_to=args.report_to,

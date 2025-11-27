@@ -71,14 +71,14 @@ def parse_args():
     
     # Logging
     parser.add_argument("--output_dir", type=str, default="model_ckpts/test-model", help="Output directory for model checkpoints and logs.")
-    parser.add_argument("--logging_steps", type=int, default=50, help="Frequency of logging training metrics.")
+    parser.add_argument("--logging_steps", type=int, default=50, help="Frequency of logging training metrics")
     parser.add_argument("--save_total_limit", type=int, default=1, help="Maximum number of checkpoints to keep.")
     parser.add_argument("--report_to", type=str, default="none", help="Reporting service (e.g. 'wandb', 'tensorboard', 'none').")
     parser.add_argument("--wandb_project_folder", type=str, default="CrystaLLM_pi", help="Project name for Weights & Biases logging.")
     parser.add_argument("--pretrained_model_dir", type=str, default=None, help="Directory containing pretrained model checkpoint. Use for loading base unconditional model or another pass of conditional training.")
     parser.add_argument("--eval_strategy", type=str, default="steps", help="Evaluation strategy during training.")
     parser.add_argument("--save_strategy", type=str, default="steps", help="Checkpoint saving strategy.")
-    parser.add_argument("--eval_steps", type=int, default=50, help="Number of steps between evaluations.")
+    parser.add_argument("--eval_steps", type=int, default=50, help="Number of steps between evaluations & save points.")
     parser.add_argument("--max_steps", type=int, default=50, help="Maximum number of training steps.")
     parser.add_argument("--early_stopping_patience", type=int, default=5, help="Number of evaluation steps without improvement before stopping training.")
     parser.add_argument("--early_stopping_threshold", type=float, default=0.01, help="Minimum improvement required to reset early stopping patience.")
