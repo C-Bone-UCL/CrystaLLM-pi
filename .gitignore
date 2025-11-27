@@ -18,3 +18,4 @@ notebooks/Z_rsync.ipynb
 data/
 outputs/
 *ignore.txt
+run-tests-api.py

@@ -1,6 +1,9 @@
 """
 FastAPI wrapper for CrystaLLM-2.0 CLI utilities
 Provides REST API endpoints for all command-line tools
+#================================================================
+WARNING: This Script is in development and may contain bugs, not fully tested
+#================================================================
 """
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -199,18 +202,61 @@ async def train_model(request: TrainRequest, background_tasks: BackgroundTasks):
 # ==================== GENERATION ====================
 
 class DirectGenerationRequest(BaseModel):
-    hf_model_path: str = Field(..., description="HuggingFace model path (e.g., c-bone/CrystaLLM-2.0_base)")
+    """Request model for direct HuggingFace model generation.
+    
+    Available models:
+    - c-bone/CrystaLLM-pi_base: Unconditional generation (no conditions needed)
+    - c-bone/CrystaLLM-pi_SLME: Solar efficiency conditioning (1 value: SLME 0-33)
+    - c-bone/CrystaLLM-pi_bandgap: Bandgap + stability (2 values: bandgap eV, ehull eV/atom)
+    - c-bone/CrystaLLM-pi_density: Density + stability (2 values: density g/cm3, ehull eV/atom)
+    """
+    # Required
+    hf_model_path: str = Field(..., description="HuggingFace model path (e.g., c-bone/CrystaLLM-pi_bandgap)")
     output_parquet: str = Field(..., description="Output parquet file path")
+    
+    # Input source (one required)
     manual: bool = Field(True, description="Manual mode (specify compositions)")
-    compositions: Optional[str] = Field(None, description="Comma-separated compositions (e.g., 'LiFePO4,TiO2')")
-    condition_lists: Optional[List[str]] = Field(None, description="List of condition values (normalized 0-1)")
     input_parquet: Optional[str] = Field(None, description="Input prompts parquet (alternative to manual)")
-    level: Optional[Literal["level_1", "level_2", "level_3", "level_4"]] = Field("level_2", description="Prompt detail level")
+    
+    # Manual prompt options
+    compositions: Optional[str] = Field(None, description="Comma-separated compositions (e.g., 'LiFePO4,TiO2')")
+    condition_lists: Optional[List[str]] = Field(None, description="Real property values. Base: none, SLME: ['25.0'], bandgap: ['1.1', '0.0']")
+    level: Literal["level_1", "level_2", "level_3", "level_4"] = Field("level_2", description="Prompt detail level")
+    spacegroups: Optional[str] = Field(None, description="Comma-separated spacegroups (level_4 only)")
+    mode: Literal["cartesian", "paired", "broadcast"] = Field("cartesian", description="Composition-condition pairing mode")
+    
+    # Generation settings
+    do_sample: str = Field("True", description="Sampling mode (True/False/beam)")
+    top_k: int = Field(15, description="Top-k sampling")
+    top_p: float = Field(0.95, description="Top-p nucleus sampling")
+    temperature: float = Field(1.0, description="Sampling temperature")
+    gen_max_length: int = Field(1024, description="Max generation length")
+    num_return_sequences: int = Field(1, description="Sequences per sample")
+    max_return_attempts: int = Field(1, description="Generation attempts per sample")
+    max_samples: Optional[int] = Field(None, description="Max samples to process")
+    scoring_mode: Literal["LOGP", "None"] = Field("None", description="Scoring mode for filtering")
+    target_valid_cifs: int = Field(20, description="Target valid CIFs per prompt (with LOGP scoring)")
+    
+    # Model and processing
+    model_type: Literal["PKV", "Prepend", "Slider", "Raw", "Base"] = Field("PKV", description="Model architecture type")
+    raw: bool = Field(False, description="Use raw conditioning format")
+    num_workers: int = Field(4, description="Post-processing workers")
+    skip_postprocess: bool = Field(False, description="Skip CIF validation/postprocessing")
+    verbose: bool = Field(False, description="Verbose output")
 
 
 @app.post("/generate/direct", response_model=JobStatus)
 async def generate_direct(request: DirectGenerationRequest, background_tasks: BackgroundTasks):
-    """Direct generation using pre-trained HuggingFace models"""
+    """Direct generation using pre-trained HuggingFace models.
+    
+    Supports all CrystaLLM-pi models. Give real property values for manual generation 
+    and it handles the normalization automatically.
+    
+    Examples:
+    - Base model: {"compositions": "Si4O8,Ti2O4"}
+    - SLME model: {"compositions": "Cs1Pb1I3", "condition_lists": ["25.0"]}
+    - Bandgap or Density model: {"compositions": "Si1", "condition_lists": ["1.1", "0.0"]}
+    """
     job_id = str(uuid.uuid4())
     
     cmd = [
@@ -219,6 +265,7 @@ async def generate_direct(request: DirectGenerationRequest, background_tasks: Ba
         "--output_parquet", request.output_parquet
     ]
     
+    # Input source
     if request.manual:
         cmd.append("--manual")
         if request.compositions:
@@ -226,8 +273,37 @@ async def generate_direct(request: DirectGenerationRequest, background_tasks: Ba
         if request.condition_lists:
             cmd.append("--condition_lists")
             cmd.extend(request.condition_lists)
+        if request.spacegroups:
+            cmd.extend(["--spacegroups", request.spacegroups])
+        cmd.extend(["--level", request.level])
+        cmd.extend(["--mode", request.mode])
     elif request.input_parquet:
         cmd.extend(["--input_parquet", request.input_parquet])
+    
+    # Generation settings
+    cmd.extend(["--do_sample", request.do_sample])
+    cmd.extend(["--top_k", str(request.top_k)])
+    cmd.extend(["--top_p", str(request.top_p)])
+    cmd.extend(["--temperature", str(request.temperature)])
+    cmd.extend(["--gen_max_length", str(request.gen_max_length)])
+    cmd.extend(["--num_return_sequences", str(request.num_return_sequences)])
+    cmd.extend(["--max_return_attempts", str(request.max_return_attempts)])
+    cmd.extend(["--scoring_mode", request.scoring_mode])
+    cmd.extend(["--target_valid_cifs", str(request.target_valid_cifs)])
+    
+    if request.max_samples is not None:
+        cmd.extend(["--max_samples", str(request.max_samples)])
+    
+    # Model and processing
+    cmd.extend(["--model_type", request.model_type])
+    cmd.extend(["--num_workers", str(request.num_workers)])
+    
+    if request.raw:
+        cmd.append("--raw")
+    if request.skip_postprocess:
+        cmd.append("--skip_postprocess")
+    if request.verbose:
+        cmd.append("--verbose")
     
     background_tasks.add_task(run_command, job_id, cmd, request.output_parquet)
     
@@ -325,7 +401,7 @@ async def generate_cifs(request: GenerateCIFsRequest, background_tasks: Backgrou
 class EvaluateCIFsRequest(BaseModel):
     input_parquet: str = Field(..., description="Input parquet with generated CIFs")
     num_workers: int = Field(8, description="Number of parallel workers")
-    save_valid_parquet: bool = Field(True, description="Save valid structures")
+    save_valid_parquet: Optional[str] = Field(None, description="Path to save valid structures parquet")
 
 
 @app.post("/generate/evaluate-cifs", response_model=JobStatus)
@@ -340,7 +416,7 @@ async def evaluate_cifs(request: EvaluateCIFsRequest, background_tasks: Backgrou
     ]
     
     if request.save_valid_parquet:
-        cmd.append("--save_valid_parquet")
+        cmd.extend(["--save_valid_parquet", request.save_valid_parquet])
     
     background_tasks.add_task(run_command, job_id, cmd, None)
     
@@ -399,8 +475,8 @@ async def vun_metrics(request: VUNMetricsRequest, background_tasks: BackgroundTa
     job_id = str(uuid.uuid4())
     
     cmd = [
-        "python", "_utils/_metrics/VUN_metrics.py",
-        "--gen_data", request.gen_data,
+        "python", "-m", "_utils._metrics.VUN_metrics",
+        "--input_parquet", request.gen_data,
         "--huggingface_dataset", request.huggingface_dataset,
         "--output_csv", request.output_csv,
         "--num_workers", str(request.num_workers)
@@ -430,7 +506,7 @@ async def ehull_metrics(request: EHullMetricsRequest, background_tasks: Backgrou
     job_id = str(uuid.uuid4())
     
     cmd = [
-        "python", "_utils/_metrics/mace_ehull.py",
+        "python", "-m", "_utils._metrics.mace_ehull",
         "--post_parquet", request.post_parquet,
         "--output_parquet", request.output_parquet,
         "--num_workers", str(request.num_workers)

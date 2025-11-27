@@ -27,4 +27,8 @@ cat > "$API_KEY_FILE" << EOF
 }
 EOF
 
+# Export HuggingFace token for HF library authentication
+export HF_TOKEN="${HF_KEY}"
+export HF_HUB_TOKEN="${HF_KEY}"
+
 exec "$@"

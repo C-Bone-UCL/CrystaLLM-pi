@@ -575,7 +575,9 @@ XRD, Bandgap, Density, and challenge set benchmark metrics available in `_utils/
 
 # API
 
-Containerised API provides access to all CLI tools via REST endpoints.
+**WARNING**: Under development
+
+Containerised API provides access to all CLI tools via REST endpoints. 
 
 <details>
 <summary> Build and Run the CrystaLLM-pi API </summary>

@@ -10,6 +10,6 @@
   "num_repeats": 20000,
   // "prompt": "<bos>\ndata_[",
   // "condition_vector": "0.059, 0.05",
-  "input_parquet": "_utils/_evaluation_files/conditional_studies/slme/slme-PKV-opt_prompt.parquet",
-  "output_parquet": "_utils/_evaluation_files/conditional_studies/slme/slme-PKV-opt_gen.parquet"
+  "input_parquet": "_artifacts/slme/slme-PKV-opt_prompt.parquet",
+  "output_parquet": "test.parquet"
 }

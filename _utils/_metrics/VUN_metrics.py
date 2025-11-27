@@ -120,11 +120,11 @@ if __name__ == "__main__":
     # Load and process generated data
     gen_df_proc = load_and_process_generated_data(args.input_parquet, args.num_workers)
     
-    # # Compute Validity
-    # gen_df_proc = get_valid(gen_df_proc, args.num_workers)
+    # Compute Validity
+    gen_df_proc = get_valid(gen_df_proc, args.num_workers)
 
-    # # Compute Uniqueness
-    # gen_df_proc = get_unique(gen_df_proc, args.num_workers)
+    # Compute Uniqueness
+    gen_df_proc = get_unique(gen_df_proc, args.num_workers)
     
     # Build structures and extract formulas for novelty checks
     gen_structures = build_generated_structures(gen_df_proc)

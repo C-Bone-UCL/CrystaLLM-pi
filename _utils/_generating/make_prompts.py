@@ -62,11 +62,21 @@ API_KEY_PATH = 'API_keys.jsonc'
 DECIMAL_PLACES = 4
 OXI_DEFAULT = False
 
+def is_already_bracketed(cif_str):
+    """Check if CIF is already in cleaned bracket format (has data_[...] pattern)."""
+    if cif_str is None or pd.isna(cif_str):
+        return False
+    return bool(re.search(r'data_\[[^\]]+\]', cif_str))
+
 def augment_cif_for_prompt(cif_str):
-    """Apply the same augmentation process as in _cleaning.py for consistent formatting."""
+    """Apply augmentation for consistent formatting. Skips if already in bracket format."""
     try:
         if cif_str is None or pd.isna(cif_str):
             return None
+        
+        # If already in bracket format, return as-is (already cleaned)
+        if is_already_bracketed(cif_str):
+            return cif_str
             
         formula_units = extract_formula_units(cif_str)
         if formula_units == 0:
@@ -408,6 +418,7 @@ if __name__ == "__main__":
         if not args.level:
             parser.error("--level is required for automatic mode")
         
+        # Load data
         if args.input_df:
             df = pd.read_parquet(args.input_df)
             if args.cif_column not in df.columns:

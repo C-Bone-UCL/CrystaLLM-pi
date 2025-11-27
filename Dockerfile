@@ -14,6 +14,9 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
+# Install material-hasher from git (required for uniqueness metrics)
+RUN pip install --no-cache-dir --prefix=/install git+https://github.com/lematerial/material-hasher.git
+
 # Copy application code
 COPY . .
 
