@@ -408,21 +408,22 @@ if __name__ == "__main__":
         if not args.level:
             parser.error("--level is required for automatic mode")
         
-        # Load data
         if args.input_df:
             df = pd.read_parquet(args.input_df)
             if args.cif_column not in df.columns:
                 raise ValueError(f"Column '{args.cif_column}' not found in dataset")
             if args.split:
-                # check if split column exists
-                if 'split' not in df.columns:
+                # check if split column exists (case-insensitive)
+                split_col = None
+                for col in df.columns:
+                    if col.lower() == 'split':
+                        split_col = col
+                        break
+                if split_col is None:
                     print(f"Warning: 'split' column not found in {args.input_df}. Ignoring --split argument.")
                 else:
-                    df = df[df['split'] == args.split]
+                    df = df[df[split_col] == args.split]
             print(f"Loaded {len(df)} records from {args.input_df}")
-        else:
-            df = load_hf_dataset(args.HF_dataset, args.split)
-            print(f"Loaded {len(df)} records from {args.HF_dataset} ({args.split} split)")
         
         result_df = create_automatic_prompts(df, args.cif_column, args.level, args.condition_columns)
         print(f"\nGenerated automatic prompts at {args.level}")
