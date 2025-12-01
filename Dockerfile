@@ -14,6 +14,10 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
+# Set PATH to include installed packages for subsequent pip commands
+ENV PATH="/install/bin:$PATH"
+ENV PYTHONPATH="/install/lib/python3.10/site-packages"
+
 # Install material-hasher from git (required for uniqueness metrics)
 RUN pip install --no-cache-dir --prefix=/install git+https://github.com/lematerial/material-hasher.git
 

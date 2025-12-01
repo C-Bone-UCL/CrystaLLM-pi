@@ -281,6 +281,7 @@ def _calculate_metrics(rms_dists, a_diffs, b_diffs, c_diffs, gen_structs):
     """Calculate overall metrics from collected differences."""
     rms_array = np.array(rms_dists, dtype=object)
     match_rate = np.sum(rms_array != None) / len(gen_structs)
+    # Note, in some of the benchmarks, because we chopped off rows where tokens are above context, if we want the true match rate, we need to run the get_xrd_metrics function from _notebook_utils.py, and specfy the length of the test set, then, we get the true match rate.
     valid_rms = rms_array[rms_array != None]
     mean_rms_dist = valid_rms.mean() if len(valid_rms) > 0 else None
     n_matched = np.sum(rms_array != None)
