@@ -11,13 +11,18 @@
 <a href="https://huggingface.co/c-bone">
     <img alt="Hugging Face" src="https://img.shields.io/badge/🤗%20Hugging%20Face-Models-blue.svg?style=plastic">
 </a>
- <a href="https://www.nature.com/articles/s41467-024-54639-7">
-     <img alt="Based on CrystaLLM Paper" src="https://img.shields.io/badge/Based%20on-CrystaLLM%20Paper-orange.svg?style=plastic">
- </a>
- <a href="https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/LICENSE">
-     <img alt="License" src="https://img.shields.io/badge/License-MIT-lightgrey.svg?style=plastic">
- </a>
+<a href="https://arxiv.org/pdf/2511.21299">
+    <img alt="Preprint" src="https://img.shields.io/badge/Preprint-arXiv-red.svg?style=plastic">
+</a>
+<a href="https://www.nature.com/articles/s41467-024-54639-7">
+    <img alt="Based on CrystaLLM Paper" src="https://img.shields.io/badge/Based%20on-CrystaLLM%20Paper-orange.svg?style=plastic">
+</a>
+<a href="https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/LICENSE">
+    <img alt="License" src="https://img.shields.io/badge/License-MIT-lightgrey.svg?style=plastic">
+</a>
+
 </p>
+
 
 # Overview
 
@@ -695,6 +700,23 @@ Experimental notebooks demonstrating end-to-end pipelines are available in [`not
 Key examples:
 - **mp-20 notebook**: Pipeline for structure recovery given desired theoretical XRD
 - **SLME notebook**: Pipeline for discovery of a meterial with a desired photovoltaic
+
+# Citation
+
+Please refer to thew following when citing our work!
+["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299)
+
+```
+@misc{bone2025discoveryrecoverycrystallinematerials,
+      title={Discovery and recovery of crystalline materials with property-conditioned transformers}, 
+      author={Cyprien Bone and Matthew Walker and Kuangdai Leng and Luis M. Antunes and Ricardo Grau-Crespo and Amil Aligayev and Javier Dominguez and Keith T. Butler},
+      year={2025},
+      eprint={2511.21299},
+      archivePrefix={arXiv},
+      primaryClass={cond-mat.mtrl-sci},
+      url={https://arxiv.org/abs/2511.21299}, 
+}
+```
 
 # License
 
