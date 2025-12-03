@@ -46,7 +46,7 @@ def postprocess(cif: str) -> str:
         
         if space_group_symbol:
             cif = remove_atom_props_block(cif)
-    except (ValueError, IndexError, KeyError):
+    except Exception:
         # Skip space group processing if CIF is malformed
         pass
         

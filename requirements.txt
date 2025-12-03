@@ -7,6 +7,7 @@ datasets==3.2.0
 matplotlib==3.10.0
 torchmetrics==1.6.1
 scikit-learn==1.6.1
+joblib==1.4.2
 tqdm==4.67.1
 pyzmq==26.2.0
 omegaconf==2.3.0
