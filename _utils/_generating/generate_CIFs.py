@@ -269,6 +269,7 @@ def generate_on_gpu(
         while len(valid_cifs) < target_generations and generation_attempts < max_attempts:
             generation_attempts += 1
             
+            # print("will only generate output scores if scoring is needed")
             try:
                 # Handle different conditionality types
                 if activate_conditionality in ["PKV", "Prepend", "Slider"]:
@@ -279,21 +280,23 @@ def generate_on_gpu(
                         if values:
                             condition_tensor = torch.tensor([values], device=device)
                     
-                    with torch.no_grad():
+                    # print("will only generate output scores if scoring is needed")
+                    with torch.inference_mode():
                         outputs = model.generate(
                             input_ids=input_ids,
                             condition_values=condition_tensor,
                             return_dict_in_generate=True,
-                            output_scores=True,
+                            # only output scores if scoring is needed
+                            output_scores=(scoring_mode != "None"),
                             **generation_kwargs,
                         )
                 else:
                     # Handle Raw or unconditional generation
-                    with torch.no_grad():
+                    with torch.inference_mode():
                         outputs = model.generate(
                             input_ids=input_ids,
                             return_dict_in_generate=True,
-                            output_scores=True,
+                            output_scores=(scoring_mode != "None"),
                             **generation_kwargs,
                         )
                 

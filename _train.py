@@ -79,13 +79,27 @@ def main():
         tracker = start_codecarbon_tracker(args)
         print("CodeCarbon tracker started")
 
-    ## Handle multi-GPU and deepspeed settings
-    # check if the file exists
+    # ## Handle multi-GPU and deepspeed settings
+    # # check if the file exists
+    # if args.deepspeed_config is None:
+    #     if torch.cuda.device_count() > 1:
+    #         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    #         print(f"You have {torch.cuda.device_count()} GPUs")
+    #         print("No deepspeed config provided. Setting to use only 1 GPU")
+    # elif not os.path.isfile(args.deepspeed_config):
+    #     raise ValueError(f"Deepspeed config file {args.deepspeed_config} not found")
+    # else:
+    #     if torch.cuda.device_count() == 1:
+    #         args.deepspeed_config = None
+    #         print("Deepspeed config provided, but only 1 GPU detected. Disabling deepspeed.")
+
     if args.deepspeed_config is None:
-        if torch.cuda.device_count() > 1:
-            os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-            print(f"You have {torch.cuda.device_count()} GPUs")
-            print("No deepspeed config provided. Setting to use only 1 GPU")
+        n_gpus = torch.cuda.device_count()
+        if n_gpus > 1:
+            print(f"Using {n_gpus} GPUs with DDP (no DeepSpeed)")
+            # DDP will be handled by HuggingFace Trainer automatically
+        else:
+            print("Using single GPU")
     elif not os.path.isfile(args.deepspeed_config):
         raise ValueError(f"Deepspeed config file {args.deepspeed_config} not found")
     else:

@@ -68,6 +68,15 @@ def parse_args():
     parser.add_argument("--adam_beta2", type=float, default=0.95, help="Adam optimizer beta2 parameter for squared gradient averaging.")
     parser.add_argument("--grad_clip", type=float, default=1.0, help="Gradient clipping threshold to prevent exploding gradients.")
     parser.add_argument("--weight_decay", type=float, default=0.1, help="Weight decay regularization for transformer parameters.")
+
+    # Muon Optimizer
+    parser.add_argument("--optimizer", type=str, default="adamw", choices=["adamw", "muon"],
+    help="Optimizer type: 'adamw' (default) or 'muon' (momentum orthogonalized).")
+    parser.add_argument("--muon_lr", type=float, default=0.02,
+    help="Learning rate for Muon optimizer (hidden weights). Typically 10-100x higher than AdamW.")
+    parser.add_argument("--muon_momentum", type=float, default=0.95,
+    help="Momentum for Muon optimizer.")
+
     
     # Logging
     parser.add_argument("--output_dir", type=str, default="model_ckpts/test-model", help="Output directory for model checkpoints and logs.")
