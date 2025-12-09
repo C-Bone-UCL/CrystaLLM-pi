@@ -395,6 +395,8 @@ python _utils/_preprocessing/_save_dataset_to_HF.py \
 
 All training should be done via configuration files (`.jsonc` format). These files specify model architecture, hyperparameters, data paths, and training settings. See example configs in `_config_files/training/` and review [`_args.py`](_args.py) for all available parameters.
 
+> The `Muon` optimiser is now available for training, see [this blog post](https://kellerjordan.github.io/posts/muon/) for details. Importantly, you cannot use deepspeed when using muon. Simply do not feed a deepspeed configuration file and it will work fine (multi-GPU training still supported). Muon speeds up and stabilises training without any performance trade-offs.
+
 <details>
 <summary> Base model training CLI example </summary>
 
