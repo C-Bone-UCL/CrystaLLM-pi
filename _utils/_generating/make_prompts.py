@@ -436,6 +436,10 @@ if __name__ == "__main__":
                     df = df[df[split_col] == args.split]
             print(f"Loaded {len(df)} records from {args.input_df}")
         
+        else:
+            df = load_hf_dataset(args.HF_dataset, args.split)
+            print(f"Loaded {len(df)} records from {args.HF_dataset} ({args.split} split)")
+        
         result_df = create_automatic_prompts(df, args.cif_column, args.level, args.condition_columns)
         print(f"\nGenerated automatic prompts at {args.level}")
         print(f"Using condition columns: {args.condition_columns}" if args.condition_columns else "No condition columns used")
