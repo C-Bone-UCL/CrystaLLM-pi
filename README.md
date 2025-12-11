@@ -703,6 +703,13 @@ Key examples:
 - **mp-20 notebook**: Pipeline for structure recovery given desired theoretical XRD
 - **SLME notebook**: Pipeline for discovery of a meterial with a desired photovoltaic
 
+# Tokenizer
+
+The `HF-cif-tokenizer` already contains everything you need to train/run models out of the box. However if for some reason a user wishes to add more tokens this can be done by:
+- **Create the new vocab**: Edit the [`_create_vocab.py`](_utils/_tokenizer_utils/_create_vocab.py) file to include all the new tokens you want (if augmenting CIF with new tokens for example). Save a new `vocabulary.json` with the updated dictionary.
+- **Optional: Add Spacegroups**: If new spacegroups are required for a particualal study, these should be added to the [`spacegroups.txt`](_utils/_tokenizer_utils/spacegroups.txt) file.
+- **Build New Tokenizer**: Once the new vocabulary is ready, just run the [`_save_tokenizer_to_HF.py`](_utils/_preprocessing/_save_tokenizer_to_HF.py) script, to save it locally or to HF. Then you can update the `pretrained_tokenizer_dir` argument in the train config to point to your new tokenizer!
+
 # Citation
 
 Please refer to thew following when citing our work!

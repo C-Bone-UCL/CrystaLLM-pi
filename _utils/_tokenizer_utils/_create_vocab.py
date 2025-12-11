@@ -1,8 +1,17 @@
 """
 Create vocabulary file for the tokenizer. CIF specific vocab and syntax.
+
+If you want to add new tokens, you can put therm in the 
+respective sections in the code below.
+
+Then you run the code to get new vocabulary file., which you should plug into 
+_utils/_preprocessing/_save_tokenizer_to_HF.py
 """
 
 import json
+
+INPUT_SPACE_GROUPS_FILE = "_utils/_tokenizer_utils/spacegroups.txt"
+OUTPUT_VOCAB_FILE = "_utils/_tokenizer_utils/vocabulary.json"
 
 # generates the vocabulary for the tokenizer
 def generate_vocabulary():
@@ -63,22 +72,21 @@ def generate_vocabulary():
 
     # Add Space Groups by loading from utils/space_groups.txt
     space_groups = []
-    with open("tokenizer_dir/spacegroups.txt", "r") as f:
+    with open(INPUT_SPACE_GROUPS_FILE, "r") as f:
         for line in f:
             space_groups.append(line.strip())
     tokens.extend([sg+'_sg' for sg in space_groups])
 
     vocab = {token: i for i, token in enumerate(tokens)}
 
-    save_location = "tokenizer_dir/vocabulary.json"
     # Write to file in a json format with mapping from token to index
-    with open("save_location", "w") as f:
+    with open(OUTPUT_VOCAB_FILE, "w") as f:
         json.dump(vocab, f)
 
-    return vocab, save_location
+    return
 
 if __name__ == "__main__":
     # generate the vocabulary
-    vocab, save_location = generate_vocabulary()
-    print(f"Vocabulary generated successfully and saved to {save_location}")
+    generate_vocabulary()
+    print(f"Vocabulary generated successfully and saved to {OUTPUT_VOCAB_FILE}")
 
