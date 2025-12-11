@@ -11,7 +11,6 @@ np.random.seed(1)
 def validate_condition_values(tokenized_dataset, dataset_with_idx, parsed_condition_columns):
     """
     Helper function to validate condition values between source and tokenized datasets.
-    Can be moved to utils file if needed.
     """
     print("\nCondition Values Check")
     if not tokenized_dataset["train"]:
