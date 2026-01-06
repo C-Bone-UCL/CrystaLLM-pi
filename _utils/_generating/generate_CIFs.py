@@ -359,11 +359,6 @@ def generate_on_gpu(
                     # Break if we've reached our target
                     if len(valid_cifs) >= target_generations:
                         break
-                
-                # For 'None' scoring mode, break after first successful generation attempt
-                # since we don't need validation - just collect all sequences from the generation
-                if scoring_mode == "None" and valid_cifs:
-                    break
                         
             except Exception:
                 continue
@@ -479,14 +474,17 @@ def main():
         total_expected_generations = total_samples * target_per_prompt
     else:
         total_expected_generations = total_samples * args.target_valid_cifs
-    samples_per_gpu = total_samples // num_gpus
     
+    
+    # Determine splitting strategy
+    is_single_prompt = (total_samples == 1) and (num_gpus > 1)
+
     results = []
     # Use spawn context for CUDA safety
     ctx = mp.get_context('spawn')
     with ctx.Pool(num_gpus + 1,
-                 initializer=init_worker,
-                 initargs=(args.model_ckpt_dir, DEFAULT_TOKENIZER_DIR, args.activate_conditionality)) as pool:
+                  initializer=init_worker,
+                  initargs=(args.model_ckpt_dir, DEFAULT_TOKENIZER_DIR, args.activate_conditionality)) as pool:
         
         pool.apply_async(progress_listener, (queue, total_expected_generations))
         
@@ -498,7 +496,52 @@ def main():
                     (0, df_prompts, generation_kwargs, queue, 0, total_samples,
                     args.activate_conditionality, 0, args.scoring_mode, args.target_valid_cifs, args.max_return_attempts)
                 ))
+            
+            elif is_single_prompt:
+                # SINGLE PROMPT MODE: Split workload (attempts/targets) across GPUs
+                print("\nSingle prompt detected. Distributing workload across GPUs.")
+                
+                # Split total work among GPUs
+                base_target = args.target_valid_cifs
+                base_attempts = args.max_return_attempts
+                
+                # Calculate distribution
+                targets_per_gpu = [base_target // num_gpus] * num_gpus
+                attempts_per_gpu = [base_attempts // num_gpus] * num_gpus
+                
+                # Distribute remainders
+                for i in range(base_target % num_gpus):
+                    targets_per_gpu[i] += 1
+                for i in range(base_attempts % num_gpus):
+                    attempts_per_gpu[i] += 1
+                    
+                current_offset = 0
+                
+                for gpu_id in range(num_gpus):
+                    # Ensure at least 1 attempt if there's work to do
+                    local_attempts = max(1, attempts_per_gpu[gpu_id]) if base_attempts > 0 else 0
+                    local_target = max(1, targets_per_gpu[gpu_id]) if base_target > 0 else 0
+                    
+                    if local_attempts == 0 and local_target == 0:
+                        continue
+                    
+                    # Pass the full dataframe (1 row) to everyone, same index (0 to 1)
+                    results.append(pool.apply_async(
+                        generate_on_gpu,
+                        (gpu_id, df_prompts, generation_kwargs, queue, 0, 1,
+                         args.activate_conditionality, current_offset, args.scoring_mode, local_target, local_attempts)
+                    ))
+                    
+                    # Estimate offset increment for next worker to avoid ID collision
+                    if args.scoring_mode == "None":
+                         expected_gen = local_attempts * generation_kwargs.get("num_return_sequences", 1)
+                         current_offset += expected_gen
+                    else:
+                        current_offset += local_target
+
             else:
+                # STANDARD MODE: Split prompts across GPUs
+                samples_per_gpu = total_samples // num_gpus
                 for gpu_id in range(num_gpus):
                     start = gpu_id * samples_per_gpu
                     end = (gpu_id + 1) * samples_per_gpu if gpu_id != num_gpus - 1 else total_samples
@@ -508,6 +551,7 @@ def main():
                         (gpu_id, df_prompts, generation_kwargs, queue, start, end,
                         args.activate_conditionality, global_offset, args.scoring_mode, args.target_valid_cifs, args.max_return_attempts)
                     ))
+
         except Exception as e:
             print(f"Generation error (check activate_conditionality setting): {e}")
             pool.terminate()
