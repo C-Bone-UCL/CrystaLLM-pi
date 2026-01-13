@@ -255,7 +255,7 @@ python _load_and_generate.py \
 
 **XRD from Dataframe**
 
-Generate from pre-processed XRD patterns. Requires prepared dataframe with XRD peak data.
+Generate from pre-processed XRD patterns in a .csv. Requires that the user has processed their XRD data as described in this sections intro.
 
 ```bash
 python _load_and_generate.py \
@@ -267,8 +267,6 @@ python _load_and_generate.py \
     --num_return_sequences 5 \
     --output_parquet xrd_2_struct.parquet
 ```
-
-> **XRD Processing**: See `notebooks/X_XRD_COD.ipynb` for preparing XRD dataframes.
 
 ## Configuration Options
 
