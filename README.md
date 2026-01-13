@@ -177,7 +177,7 @@ Each model can be used with **manual generation** (specify compositions + proper
 - `c-bone/CrystaLLM-pi_SLME`: Solar efficiency conditioning (0-33% range) - PKV model
 - `c-bone/CrystaLLM-pi_bandgap`: Bandgap + stability conditioning (0-18 eV, 0-5 eV/atom) - PKV model
 - `c-bone/CrystaLLM-pi_density`: Density + stability conditioning (0-25 g/cm³, 0-0.1 eV/atom) - PKV model
-- `c-bone/CrystaLLM-pi_COD-XRD`: XRD pattern conditioning (XRD requires dataframe input) - Slider model
+- `c-bone/CrystaLLM-pi_COD-XRD`: XRD pattern conditioning (XRD requires csv input) - Slider model
 
 > For XRD conditioning, you need the diffraction pattern taken with CuKα wavelength (2θ range 0-90°) and associated intensities which must be between 0 and 100. Currently need to manually pick out up to 20 most intense peaks which serve as conditioning information, then save them to a .csv file (first col = 2theta 0-90, second col = intensity 0-100, see [`notebooks/test_rutile.csv`](notebooks/test_rutile.csv))
 
