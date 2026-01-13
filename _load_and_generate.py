@@ -2,37 +2,41 @@
 """
 Load and generate CIF structures from HuggingFace CrystaLLM models.
 
-Works with all the CrystaLLM-pi models on Huggingface. Give real property values for manual generation and it handles the normalization automatically.
+Handles normalization automatically - just provide real property values.
 
 Models:
 - c-bone/CrystaLLM-pi_base (unconditional)
 - c-bone/CrystaLLM-pi_SLME (solar efficiency)  
 - c-bone/CrystaLLM-pi_bandgap (bandgap + ehull)
 - c-bone/CrystaLLM-pi_density (density + ehull)
-- c-bone/CrystaLLM-pi_COD-XRD (XRD patterns, for this one you need a prepared df first)
+- c-bone/CrystaLLM-pi_COD-XRD (XRD patterns)
 
-Usage examples:
+NOTE: Compositions must use explicit stoichiometry (e.g., "Si1" not "Si", "Li1Fe1P1O4" not "LiFePO4").
 
-# Basic unconditional generation
-python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-pi_base \
-    --manual --compositions "LiFePO4,TiO2" --output_parquet results.parquet
+Exmple Usage (non-exhaustive):
 
-# Solar efficiency model - just give real SLME values (0-33 range is what was seen during training)  
+# Unconditional generation
+python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-pi_base --model_type Base \
+    --manual --compositions "Ti2O4" --output_parquet results.parquet
+
+# SLME
 python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-pi_SLME \
-    --manual --compositions "CsPbI3" --condition_lists "25.0" --output_parquet results.parquet
+    --manual --condition_lists "25.0" --level level_1 --output_parquet results.parquet
 
-# Bandgap model - bandgap in eV, ehull in eV/atom (set ehull=0 for stable, max bandgap ~17.9 eV was seen during training)
+# Bandgap with cartesian mode (default): one list per property, creates all combinations
+# This creates 2 prompts: (Ti2O4, bg=1.1, ehull=0.0) and (Ti2O4, bg=1.5, ehull=0.0)
 python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-pi_bandgap \
-    --manual --compositions "Si" --condition_lists "1.1" "0.0" --output_parquet results.parquet
+    --manual --compositions "Ti2O4" --condition_lists "1.1,1.5" "0.0" --output_parquet results.parquet
 
-# Density model - density in g/cm3, ehull in eV/atom (set ehull=0 for stable, max density ~25.5 g/cm3 was seen during training)
+# Bandgap/Density - paired mode: one string per composition with all property values
+# This creates 2 prompts: (Si4O8, den=2.1, ehull=0.0) and (Si6O12, den=1.8, ehull=0.0)
 python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-pi_density \
-    --manual --compositions "Os" --condition_lists "2.0" "0.0" --output_parquet results.parquet
+    --manual --compositions "Si4O8,Si6O12" --condition_lists "2.1,0.0" "1.8,0.0" \
+    --mode paired --output_parquet results.parquet
 
-# Pairing modes for composition-condition combinations:
-# --mode cartesian (default): All combinations of all condition_lists
-# --mode paired: 1:1 mapping (need same number of compositions and condition_lists)  
-# --mode broadcast: One condition_list applied to all compositions
+# XRD conditioning from CSV files
+python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-pi_COD-XRD --model_type Slider \
+    --manual --compositions "Ti2O4" --xrd_csv_files pattern.csv --output_parquet results.parquet
 """
 
 
@@ -55,6 +59,86 @@ from _utils._generating.postprocess import process_dataframe
 from _utils import normalize_property_column, normalize_values_with_method
 
 TOKENIZER_DIR = "HF-cif-tokenizer"
+
+# XRD normalization constants
+XRD_TOP_K_PEAKS = 20
+XRD_THETA_MIN, XRD_THETA_MAX = 0.0, 90.0
+XRD_INTENSITY_MIN, XRD_INTENSITY_MAX = 0.0, 100.0
+XRD_PADDING_VALUE = -100
+
+
+def is_xrd_model(model_path: str) -> bool:
+    """Check if model path indicates an XRD model."""
+    return "xrd" in model_path.lower()
+
+
+def parse_xrd_csv_to_condition_vector(csv_path: str) -> List[float]:
+    """Parse XRD CSV file to 40-value condition vector.
+    
+    CSV format: first column = 2theta (0-90), second column = intensity (0-100).
+    First row is treated as header and skipped.
+    
+    Returns list of 40 floats: 20 normalized thetas + 20 normalized intensities.
+    """
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception as e:
+        raise ValueError(f"Failed to read CSV '{csv_path}': {e}")
+    
+    if len(df.columns) < 2:
+        raise ValueError(f"CSV '{csv_path}' needs at least 2 columns (2theta, intensity), got {len(df.columns)}")
+    
+    # use first two columns regardless of names
+    two_theta_col = df.columns[0]
+    intensity_col = df.columns[1]
+    
+    peaks = []
+    for idx, row in df.iterrows():
+        try:
+            two_theta = float(row[two_theta_col])
+            intensity = float(row[intensity_col])
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"CSV '{csv_path}' row {idx + 2}: invalid numeric values - {e}")
+        
+        # validate ranges
+        if not (XRD_THETA_MIN <= two_theta <= XRD_THETA_MAX):
+            raise ValueError(
+                f"CSV '{csv_path}' row {idx + 2}: 2theta={two_theta} outside valid range [{XRD_THETA_MIN}, {XRD_THETA_MAX}]"
+            )
+        if not (XRD_INTENSITY_MIN <= intensity <= XRD_INTENSITY_MAX):
+            raise ValueError(
+                f"CSV '{csv_path}' row {idx + 2}: intensity={intensity} outside valid range [{XRD_INTENSITY_MIN}, {XRD_INTENSITY_MAX}]"
+            )
+        
+        peaks.append({"two_theta": two_theta, "intensity": intensity})
+    
+    # sort by intensity descending, take top k
+    peaks = sorted(peaks, key=lambda x: x["intensity"], reverse=True)[:XRD_TOP_K_PEAKS]
+    
+    thetas = [p["two_theta"] for p in peaks]
+    intensities = [p["intensity"] for p in peaks]
+    
+    # pad if fewer than top_k peaks
+    thetas += [XRD_PADDING_VALUE] * (XRD_TOP_K_PEAKS - len(thetas))
+    intensities += [XRD_PADDING_VALUE] * (XRD_TOP_K_PEAKS - len(intensities))
+    
+    # normalize theta to [0,1], keep padding as -100
+    scaled_thetas = [
+        round((t - XRD_THETA_MIN) / (XRD_THETA_MAX - XRD_THETA_MIN), 3) if t != XRD_PADDING_VALUE else XRD_PADDING_VALUE
+        for t in thetas
+    ]
+    
+    # normalize intensity relative to max in pattern
+    valid_intensities = [i for i in intensities if i != XRD_PADDING_VALUE]
+    max_intensity = max(valid_intensities) if valid_intensities else 1.0
+    scaled_intensities = [
+        round(i / max_intensity, 3) if i != XRD_PADDING_VALUE else XRD_PADDING_VALUE
+        for i in intensities
+    ]
+    
+    # combine: 20 thetas + 20 intensities = 40 values
+    return scaled_thetas + scaled_intensities
+
 
 # Model specs - used for auto-normalization
 MODEL_INFO = {
@@ -85,7 +169,7 @@ MODEL_INFO = {
     "c-bone/CrystaLLM-pi_density": {
         "description": "Density + stability conditioning",
         "conditions": 2,
-        "example_conditions": ["15.0", "0.0"],
+        "example_conditions": ["3.0", "0.0"],
         "max": [25.494, 0.1],
         "min": [0.0, 0.0],
         "normalization": ["linear", "linear"]
@@ -93,7 +177,7 @@ MODEL_INFO = {
     "c-bone/CrystaLLM-pi_COD-XRD": {
         "description": "Experimental XRD conditioning",
         "conditions": 40,
-        "example_conditions": ["-100"] * 20 + ["-100"] * 20,
+        "example_conditions": "See notebooks/test_rutile.csv",
         "max": [90.0, 100.0],
         "min": [0.0, 0.0],
         "normalization": ["linear", "linear"]
@@ -104,6 +188,10 @@ MODEL_INFO = {
 def normalize_property_values(raw_values: List[List[float]], model_path: str) -> List[List[float]]:
     """Normalize raw property values to [0-1] using model settings."""
     if not raw_values:
+        return raw_values
+    
+    # XRD models handle their own normalization in parse_xrd_csv_to_condition_vector
+    if is_xrd_model(model_path):
         return raw_values
         
     model_info = MODEL_INFO.get(model_path)
@@ -137,8 +225,12 @@ def normalize_property_values(raw_values: List[List[float]], model_path: str) ->
     return normalized_values
 
 
-def validate_model_conditions(model_path: str, condition_lists: Optional[List[List[float]]]) -> None:
+def validate_model_conditions(model_path: str, condition_lists: Optional[List[List[float]]], is_xrd: bool = False) -> None:
     """Check that condition count matches what the model expects."""
+    # XRD models use 40-value vectors from CSV files, skip normal validation
+    if is_xrd:
+        return
+    
     model_info = MODEL_INFO.get(model_path)
     if not model_info:
         print(f"Warning: Unknown model {model_path}")
@@ -201,19 +293,71 @@ def generate_prompts_from_args(args) -> pd.DataFrame:
     elif args.manual:
         print("Making prompts from compositions and conditions")
         
-        compositions = [comp.strip() for comp in args.compositions.split(',')]
-
-        # parse condition lists
-        raw_condition_lists = []
-        if args.condition_lists:
-            for cond_list in args.condition_lists:
-                values = [float(x.strip()) for x in cond_list.split(',')]
-                raw_condition_lists.append(values)
-
-        validate_model_conditions(args.hf_model_path, raw_condition_lists)
+        if args.compositions:
+            compositions = [comp.strip() for comp in args.compositions.split(',')]
+            if args.level == "level_1":
+                print(f"Warning: Compositions provided ('{args.compositions}') but level_1 is ab-initio. Ignoring compositions.")
+                compositions = [None]
+        else:
+            compositions = [None]
         
-        # normalise using the utility
-        normalized_condition_lists = normalize_property_values(raw_condition_lists, args.hf_model_path)
+        # check if this is an XRD model
+        xrd_mode = is_xrd_model(args.hf_model_path)
+        
+        if xrd_mode:
+            # XRD mode: require --xrd_csv_files, parse CSVs to condition vectors
+            if not args.xrd_csv_files:
+                raise ValueError(
+                    f"XRD model '{args.hf_model_path}' requires --xrd_csv_files argument.\n"
+                    "Provide CSV files with 2theta (0-90) and intensity (0-100) columns."
+                )
+            
+            # validate paired mode requirements
+            if args.mode == "paired" and len(args.xrd_csv_files) != len(compositions):
+                raise ValueError(
+                    f"Paired mode requires same number of XRD files and compositions.\n"
+                    f"Got {len(args.xrd_csv_files)} XRD files and {len(compositions)} compositions."
+                )
+            
+            print(f"Parsing {len(args.xrd_csv_files)} XRD CSV files...")
+            
+            # parse each CSV to a 40-value condition vector string
+            xrd_condition_strings = []
+            for csv_path in args.xrd_csv_files:
+                vec = parse_xrd_csv_to_condition_vector(csv_path)
+                # convert to comma-separated string for condition_vector column
+                vec_str = ", ".join(str(v) for v in vec)
+                xrd_condition_strings.append(vec_str)
+                valid_peaks = len([v for v in vec if v != XRD_PADDING_VALUE]) // 2  # divide by 2 since we count both theta and intensity
+                print(f"  {csv_path}: {valid_peaks} peaks")
+            
+            # for XRD, we format condition_lists so create_manual_prompts treats each XRD pattern as a unit
+            # structure as [[xrd1_str], [xrd2_str], ...] for paired mode (one per composition)
+            # or [[xrd1_str, xrd2_str, ...]] for cartesian/broadcast (all patterns combined)
+            if args.mode == "paired":
+                # each composition gets its own XRD pattern
+                normalized_condition_lists = [[s] for s in xrd_condition_strings]
+            else:
+                # cartesian or broadcast: all XRD patterns in one list
+                normalized_condition_lists = [xrd_condition_strings]
+        else:
+            # standard mode: parse condition lists from args
+            # New uniform format: each quoted string is one complete condition vector
+            # e.g. --condition_lists "1.8,0.0" "2.0,0.0" -> two condition vectors
+            raw_condition_lists = []
+            if args.condition_lists:
+                for cond_str in args.condition_lists:
+                    values = [float(x.strip()) for x in cond_str.split(',')]
+                    raw_condition_lists.append(values)
+
+            # validate and normalize: transpose to per-property, normalize, transpose back
+            if raw_condition_lists:
+                transposed = [list(x) for x in zip(*raw_condition_lists)]
+                validate_model_conditions(args.hf_model_path, transposed, is_xrd=False)
+                normalized_transposed = normalize_property_values(transposed, args.hf_model_path)
+                normalized_condition_lists = [list(x) for x in zip(*normalized_transposed)]
+            else:
+                normalized_condition_lists = []
         
         spacegroups = None
         if args.spacegroups:
@@ -235,32 +379,13 @@ def generate_prompts_from_args(args) -> pd.DataFrame:
         raise ValueError("Need either --input_parquet or --manual")
 
 
-def setup_generation_args(args):
-    """Package up generation settings."""
-    class GenerationArgs:
-        def __init__(self):
-            self.gen_max_length = args.gen_max_length
-            self.do_sample = args.do_sample
-            self.num_return_sequences = args.num_return_sequences
-            self.top_k = args.top_k
-            self.top_p = args.top_p
-            self.temperature = args.temperature
-            self.scoring_mode = args.scoring_mode
-            self.max_samples = args.max_samples
-            self.target_valid_cifs = args.target_valid_cifs
-            self.max_return_attempts = args.max_return_attempts
-            self.activate_conditionality = args.model_type
-    
-    return GenerationArgs()
-
-
-def generate_cifs_with_hf_model(df_prompts, hf_model_path, gen_args):
-    """Generate CIFs using HF model - uses same logic as generate_on_gpu."""
+def generate_cifs_with_hf_model(df_prompts, hf_model_path, args):
+    """Generate CIFs using HF model."""
     print(f"Generating with: {hf_model_path}")
     
     tokenizer = init_tokenizer(TOKENIZER_DIR)
     
-    model = load_hf_model(hf_model_path, gen_args.activate_conditionality)
+    model = load_hf_model(hf_model_path, args.model_type)
     if model is None:
         raise RuntimeError("Model loading failed")
     
@@ -270,7 +395,7 @@ def generate_cifs_with_hf_model(df_prompts, hf_model_path, gen_args):
     device = setup_device(0)
     model = model.to(device)
     
-    generation_kwargs = build_generation_kwargs(gen_args, tokenizer, model.config.n_positions)
+    generation_kwargs = build_generation_kwargs(args, tokenizer, model.config.n_positions)
     print(f"Generation settings: {generation_kwargs}")
     
     all_results = []
@@ -281,21 +406,21 @@ def generate_cifs_with_hf_model(df_prompts, hf_model_path, gen_args):
         valid_cifs = []
         attempts = 0
         
-        scoring_mode = gen_args.scoring_mode
-        max_attempts = gen_args.max_return_attempts
+        scoring_mode = args.scoring_mode
+        max_attempts = args.max_return_attempts
         
         if scoring_mode == "None":
             target_gens = generation_kwargs.get("num_return_sequences", 1) * max_attempts
             max_tries = max_attempts
         else:
-            target_gens = gen_args.target_valid_cifs
+            target_gens = args.target_valid_cifs
             max_tries = max_attempts
         
         while len(valid_cifs) < target_gens and attempts < max_tries:
             attempts += 1
             
             try:
-                if gen_args.activate_conditionality in ["PKV", "Prepend", "Slider"]:
+                if args.model_type in ["PKV", "Prepend", "Slider"]:
                     # conditional models need condition tensor
                     condition_tensor = None
                     if row["condition_vector"] not in (None, "None"):
@@ -335,7 +460,7 @@ def generate_cifs_with_hf_model(df_prompts, hf_model_path, gen_args):
                     
                     cif_txt = tokenizer.decode(full_sequence, skip_special_tokens=True).replace("\n\n", "\n")
                     
-                    if gen_args.activate_conditionality == "Raw":
+                    if args.model_type == "Raw":
                         cif_txt = remove_conditionality(cif_txt)
                     
                     if scoring_mode == "None":
@@ -421,7 +546,7 @@ def main():
     
     # Manual prompt options
     parser.add_argument("--compositions", 
-                       help="Comma-separated compositions (e.g., 'LiFePO4,Si,TiO2')")
+                       help="Comma-separated compositions with explicit stoichiometry (e.g., 'Li1Fe1P1O4,Si1,Ti2O4')")
     parser.add_argument("--condition_lists", nargs='+',
                        help="Real property values. Base: none, SLME: 1 value (0-33), bandgap/density: 2 values")
     parser.add_argument("--level", choices=["level_1", "level_2", "level_3", "level_4"],
@@ -430,6 +555,10 @@ def main():
                        help="Comma-separated spacegroups (level_4 only)")
     parser.add_argument("--mode", type=str, choices=["cartesian", "paired", "broadcast"], default="cartesian",
                        help="Composition-condition pairing: cartesian (all combos), paired (1:1), broadcast (one for all)")
+    
+    # XRD-specific options
+    parser.add_argument("--xrd_csv_files", nargs='+',
+                       help="CSV files with XRD peaks (first col=2theta 0-90, second col=intensity 0-100). Required for XRD models.")
     
     # Generation settings
     parser.add_argument("--do_sample", type=str, default="True", 
@@ -484,7 +613,9 @@ def main():
             parser.error("Need --compositions for level_2+")
         
         print(f"Compositions: {args.compositions}")
-        if args.condition_lists:
+        if args.xrd_csv_files:
+            print(f"XRD files: {args.xrd_csv_files}")
+        elif args.condition_lists:
             print(f"Conditions: {args.condition_lists}")
     else:
         print(f"Input: {args.input_parquet}")
@@ -501,11 +632,9 @@ def main():
         df_prompts = df_prompts.head(args.max_samples)
         print(f"Limited to {len(df_prompts)} samples")
     
-    gen_args = setup_generation_args(args)
-    
     # generate CIFs
     print("\nGenerating CIFs ")
-    df_generated = generate_cifs_with_hf_model(df_prompts, args.hf_model_path, gen_args)
+    df_generated = generate_cifs_with_hf_model(df_prompts, args.hf_model_path, args)
     
     # post-process
     if not args.skip_postprocess:

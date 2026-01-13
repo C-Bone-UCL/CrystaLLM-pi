@@ -179,16 +179,18 @@ Each model can be used with **manual generation** (specify compositions + proper
 - `c-bone/CrystaLLM-pi_density`: Density + stability conditioning (0-25 g/cm³, 0-0.1 eV/atom) - PKV model
 - `c-bone/CrystaLLM-pi_COD-XRD`: XRD pattern conditioning (XRD requires dataframe input) - Slider model
 
-> For XRD conditioning, you need the diffraction pattern taken with CuKα wavelength (2θ range 0-90°) and associated intensities. Currently need to manually pick out up to 20 most intense peaks which serve as conditioning information.
+> For XRD conditioning, you need the diffraction pattern taken with CuKα wavelength (2θ range 0-90°) and associated intensities which must be between 0 and 100. Currently need to manually pick out up to 20 most intense peaks which serve as conditioning information, then save them to a .csv file (first col = 2theta 0-90, second col = intensity 0-100, see [`notebooks/test_rutile.csv`](notebooks/test_rutile.csv))
 
 <details>
 <summary> Expand for a non-exhaustive list of how you can generate with the models using the script </summary>
 
 ## Generation Examples
 
+> **Note**: Compositions must use explicit stoichiometry (e.g., `Cs1Pb1I3` not `CsPbI3`) and only valid periodic table symbols (no acronyms like MA or FA).
+
 **Unconditional Generation**
 
-Generate Ti2O4 structures with composition + spacegroup level prompts.
+Generate 10 (2 batches of 5) Ti2O4 structures with composition + spacegroup level prompts.
 
 ```bash
 python _load_and_generate.py \
@@ -199,32 +201,33 @@ python _load_and_generate.py \
     --spacegroups "P4_2/mnm" \
     --level level_4 \
     --num_return_sequences 5 \
-    --max_return_attempts 10 \
+    --max_return_attempts 2 \
     --output_parquet generated_structures.parquet
 ```
 
 **Bandgap Conditioning**
 
-Generate structures with target 1.8 eV bandgap and stability. Uses cartesian mode to create all combinations of conditions for each composition.
+Generate structures with target bandgap and stability. Each quoted string is a complete condition vector (bandgap, ehull).
 
 ```bash
+# Creates 2 prompts: (Ti2O4, bg=1.8, ehull=0.0) and (Ti4O8, bg=1.8, ehull=0.0)
+# Using cartesian mode (default): all conditions applied to all compositions
 python _load_and_generate.py \
     --hf_model_path "c-bone/CrystaLLM-pi_bandgap" \
     --manual \
     --compositions "Ti2O4,Ti4O8" \
-    --condition_lists "1.8" "0.0" \
-    --level level_4 \
-    --mode cartesian \
+    --condition_lists "1.8,0.0" \
+    --level level_3 \
     --num_return_sequences 5 \
-    --max_return_attempts 10 \
-    --output_parquet generated_structures.parquet
+    --output_parquet semiconductors.parquet
 ```
 
 **Density Conditioning**
 
-Generate silica polymorphs with specific target densities. Uses paired mode for 1:1 composition-density mapping.
+Generate silica polymorphs with specific target densities. Uses **paired mode**: each quoted string contains all property values for one composition.
 
 ```bash
+# Creates 3 prompts: (Si4O8, den=2.143, ehull=0.0), (Si6O12, den=1.842, ehull=0.0), (Si8O16, den=1.796, ehull=0.0)
 python _load_and_generate.py \
     --hf_model_path "c-bone/CrystaLLM-pi_density" \
     --manual \
@@ -238,16 +241,14 @@ python _load_and_generate.py \
 
 **Solar Efficiency**
 
-Screen multiple compositions at fixed SLME target. Uses broadcast mode to apply same conditions to all compositions.
+Unconditionally generate with a high photovoltaic efficiency without specifying any composition
 
 ```bash
 python _load_and_generate.py \
     --hf_model_path "c-bone/CrystaLLM-pi_SLME" \
     --manual \
-    --compositions "CsPbI3,MAPbI3,FAPbI3" \
     --condition_lists "25.0" \
-    --level level_2 \
-    --mode broadcast \
+    --level level_1 \
     --num_return_sequences 5 \
     --output_parquet solar_screening.parquet
 ```
@@ -260,9 +261,11 @@ Generate from pre-processed XRD patterns. Requires prepared dataframe with XRD p
 python _load_and_generate.py \
     --hf_model_path "c-bone/CrystaLLM-pi_COD-XRD" \
     --model_type "Slider" \
-    --input_parquet "xrd_processed_prompts.parquet" \
+    --manual \
+    --compositions "Ti2O4" \
+    --xrd_csv_files "notebooks/test_rutile.csv" \
     --num_return_sequences 5 \
-    --output_parquet generated_structures.parquet
+    --output_parquet xrd_2_struct.parquet
 ```
 
 > **XRD Processing**: See `notebooks/X_XRD_COD.ipynb` for preparing XRD dataframes.
@@ -276,9 +279,15 @@ python _load_and_generate.py \
 - `level_4`: Composition + spacegroup
 
 **Composition-Condition Pairing modes `--mode`:**
-- `cartesian` (default): All combinations of compositions × conditions
-- `paired`: 1:1 mapping (equal number of compositions and condition_lists required)
-- `broadcast`: Single condition_list applied to all compositions
+
+All modes use the same format: each quoted string is a **complete condition vector** with comma-separated values.
+
+- `cartesian` (default): All conditions applied to all compositions.
+  - Example: `--condition_lists "1.8,0.0" "2.0,0.0"` with 2 compositions → 4 prompts (2×2)
+- `paired`: 1:1 mapping between compositions and conditions. Must have same count.
+  - Example: `--condition_lists "1.8,0.0" "2.0,0.0"` with 2 compositions → 2 prompts
+- `broadcast`: Single condition applied to all compositions.
+  - Example: `--condition_lists "1.8,0.0"` with 3 compositions → 3 prompts
 
 </details>
 <br>
@@ -450,7 +459,7 @@ Loads pretrained weights as starting point (or trains from scratch), adds condit
 python _utils/_generating/make_prompts.py \
   --manual \
   --compositions "Na1Cl1,K2S1" \
-  --condition_lists "0.2,0.5,1.0" "0.0" \
+  --condition_lists "0.2,0.0" "0.5,0.0" \
   --level "level_3" \
   --output_parquet "test_prompts.parquet"
 ```
@@ -472,10 +481,13 @@ python _utils/_generating/make_prompts.py \
 - `level_3`: Composition + atomic properties  
 - `level_4`: Up to space group information
 
-**Composition-Condition Pairing modes `--mode` (see quick start examples for details)**
-- `cartesian`: Every condition set is applied to every composition when making prompts
-- `paired`: Need the same amount of condition sets as compositions, they get paired up in respective orders
-- `broadcast`: Need only 1 condition for any amount of compositions, applies the condition set to all the compositions
+**Composition-Condition Pairing modes `--mode`:**
+
+Each quoted string is a **complete condition vector** (comma-separated property values).
+
+- `cartesian` (default): All conditions applied to all compositions
+- `paired`: 1:1 mapping - must have same count of conditions and compositions
+- `broadcast`: Single condition applied to all compositions
 
 
 </details>

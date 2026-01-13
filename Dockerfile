@@ -21,6 +21,9 @@ ENV PYTHONPATH="/install/lib/python3.10/site-packages"
 # Install material-hasher from git (required for uniqueness metrics)
 RUN pip install --no-cache-dir --prefix=/install git+https://github.com/lematerial/material-hasher.git
 
+# also install pip install git+https://github.com/KellerJordan/Muon
+RUN pip install --no-cache-dir --prefix=/install git+https://github.com/KellerJordan/Muon
+
 # Copy application code
 COPY . .
 

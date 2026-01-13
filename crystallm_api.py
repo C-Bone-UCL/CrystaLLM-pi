@@ -209,6 +209,7 @@ class DirectGenerationRequest(BaseModel):
     - c-bone/CrystaLLM-pi_SLME: Solar efficiency conditioning (1 value: SLME 0-33)
     - c-bone/CrystaLLM-pi_bandgap: Bandgap + stability (2 values: bandgap eV, ehull eV/atom)
     - c-bone/CrystaLLM-pi_density: Density + stability (2 values: density g/cm3, ehull eV/atom)
+    - c-bone/CrystaLLM-pi_COD-XRD: XRD pattern conditioning (provide CSV files via xrd_csv_files)
     """
     # Required
     hf_model_path: str = Field(..., description="HuggingFace model path (e.g., c-bone/CrystaLLM-pi_bandgap)")
@@ -220,7 +221,8 @@ class DirectGenerationRequest(BaseModel):
     
     # Manual prompt options
     compositions: Optional[str] = Field(None, description="Comma-separated compositions (e.g., 'LiFePO4,TiO2')")
-    condition_lists: Optional[List[str]] = Field(None, description="Real property values. Base: none, SLME: ['25.0'], bandgap: ['1.1', '0.0']")
+    condition_lists: Optional[List[str]] = Field(None, description="Condition vectors (each string = all properties). SLME: ['25.0'], bandgap/density: ['1.1,0.0']")
+    xrd_csv_files: Optional[List[str]] = Field(None, description="CSV files with XRD peaks for XRD models (first col=2theta 0-90, second col=intensity 0-100)")
     level: Literal["level_1", "level_2", "level_3", "level_4"] = Field("level_2", description="Prompt detail level")
     spacegroups: Optional[str] = Field(None, description="Comma-separated spacegroups (level_4 only)")
     mode: Literal["cartesian", "paired", "broadcast"] = Field("cartesian", description="Composition-condition pairing mode")
@@ -255,7 +257,9 @@ async def generate_direct(request: DirectGenerationRequest, background_tasks: Ba
     Examples:
     - Base model: {"compositions": "Si4O8,Ti2O4"}
     - SLME model: {"compositions": "Cs1Pb1I3", "condition_lists": ["25.0"]}
-    - Bandgap or Density model: {"compositions": "Si1", "condition_lists": ["1.1", "0.0"]}
+    - Bandgap/Density model: {"compositions": "Si1", "condition_lists": ["1.1,0.0"]}
+    - Multiple conditions: {"compositions": "Si1,Ti1", "condition_lists": ["1.1,0.0", "2.0,0.0"]}
+    - XRD model: {"compositions": "TiO2", "xrd_csv_files": ["/data/pattern.csv"]}
     """
     job_id = str(uuid.uuid4())
     
@@ -273,6 +277,9 @@ async def generate_direct(request: DirectGenerationRequest, background_tasks: Ba
         if request.condition_lists:
             cmd.append("--condition_lists")
             cmd.extend(request.condition_lists)
+        if request.xrd_csv_files:
+            cmd.append("--xrd_csv_files")
+            cmd.extend(request.xrd_csv_files)
         if request.spacegroups:
             cmd.extend(["--spacegroups", request.spacegroups])
         cmd.extend(["--level", request.level])

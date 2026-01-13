@@ -1,37 +1,33 @@
 """
-flexible prompt construction for conditional or nonconditional models, supporting both automatic extraction from existing CIF data and manual 
-specification of compositions and target properties.
+Flexible prompt construction for conditional or unconditional models, supporting automatic extraction 
+from existing CIF data and manual specification of compositions and target properties.
 
-You can do:
-- Automatic prompt generation with 4 conditioning levels (minimal uncondinitional to spacegroup info)
+Features:
+- Automatic prompt generation with 4 conditioning levels (minimal unconditional to spacegroup info)
 - Manual prompt construction with custom compositions and property conditions
-- Also supports making prompts for the raw method
+- Three pairing modes: cartesian, paired, broadcast
+- Supports raw method for text-based conditioning
+
+condition_lists format: Each quoted string is a COMPLETE condition vector (all properties for one sample).
+  e.g., --condition_lists "1.8,0.0" "2.0,0.0" gives two conditions: (prop1=1.8, prop2=0.0) and (prop1=2.0, prop2=0.0)
 
 Examples:
 
-Automatic generation from DataFrame:
-    python make_prompts.py --input_df data.parquet --automatic --level level_2 \\
-        --condition_columns bandgap density --output_parquet prompts.parquet
-
-From Hugging Face dataset:
+Automatic from HuggingFace:
     python make_prompts.py --HF_dataset "c-bone/mpdb-2prop_clean" --split test \\
         --automatic --level level_3 --output_parquet prompts.parquet
 
-Manual construction (level 2 - composition only):
-    python make_prompts.py --manual --compositions "K4Sc4P8O28,Li2O" \\
-        --condition_lists "0.2,0.5,0.1" "0.0" --level level_2 --output_parquet prompts.parquet
+Manual with cartesian mode (default - all combos):
+    python make_prompts.py --manual --compositions "Ti2O4,Ti4O8" \\
+        --condition_lists "1.8,0.0" --level level_2 --output_parquet prompts.parquet
 
-Manual construction (level 3 - composition + atomic props):
-    python make_prompts.py --manual --compositions "K4Sc4P8O28,Li2O" \\
-        --condition_lists "0.2,0.5" --level level_3 --output_parquet prompts.parquet
+Manual with paired mode (1:1 mapping):
+    python make_prompts.py --manual --compositions "Ti2O4,Ti4O8" \\
+        --condition_lists "1.8,0.0" "2.0,0.0" --mode paired --level level_2 --output_parquet prompts.parquet
 
-Manual construction (level 4 - up to spacegroup):
-    python make_prompts.py --manual --compositions "K4Sc4P8O28" \\
-        --spacegroups "P1,Pm-3m" --condition_lists "0.2,0.5" --level level_4 --output_parquet prompts.parquet
-
-Raw conditioning format:
-    python make_prompts.py --manual --compositions "K4Sc4P8O28" \\
-        --condition_lists "0.2,0.5" --raw --level level_2 --output_parquet prompts.parquet
+Manual with broadcast mode (one condition for all):
+    python make_prompts.py --manual --compositions "Ti2O4,Ti4O8,Ti8O16" \\
+        --condition_lists "1.8,0.0" --mode broadcast --level level_2 --output_parquet prompts.parquet
 """
 
 import argparse
@@ -198,6 +194,17 @@ def create_automatic_prompts(df, cif_column, level, condition_columns=None):
     df['Prompt'] = df[cif_column].apply(extract_prompt)
     return df
 
+
+def _format_condition_vectors(condition_lists):
+    """Format condition vectors as comma-separated strings.
+    
+    Each input list is already a complete condition vector (all properties for one sample).
+    E.g., [[1.8, 0.0], [2.0, 0.0]] -> ["1.8, 0.0", "2.0, 0.0"]
+    """
+    if not condition_lists:
+        return ["None"]
+    return [", ".join(str(v) for v in cond) for cond in condition_lists]
+
 def create_manual_prompts(compositions, condition_lists, raw_mode=False, level="level_2", spacegroups=None, mode="cartesian"):
     """Generate prompts manually from compositions and condition lists with different detail levels."""
     # Handle compositions
@@ -221,116 +228,93 @@ def create_manual_prompts(compositions, condition_lists, raw_mode=False, level="
                 raise ValueError("Number of spacegroups must match number of compositions or be exactly 1")
     
     # Build condition vectors based on mode
-    condition_vector = []
+    # Uniform format: each condition_list is a complete vector [prop1, prop2, ...]
+    condition_vectors = []
     if condition_lists:
         if mode == "cartesian":
-            # Current behavior - all combinations
-            def get_combinations(lists):
-                if not lists:
-                    return ["None"]
-                if len(lists) == 1:
-                    return lists[0]
-                result = []
-                for item in lists[0]:
-                    for combo in get_combinations(lists[1:]):
-                        if combo == "None":
-                            result.append(item)
-                        else:
-                            result.append(f"{item}, {combo}")
-                return result
-            condition_vector = get_combinations(condition_lists)
+            # All condition vectors applied to all compositions
+            condition_vectors = _format_condition_vectors(condition_lists)
         
         elif mode == "paired":
             # 1:1 mapping - must have one condition_list per composition
             if len(condition_lists) != len(compositions):
+                n_comps = len(compositions)
+                n_props = len(condition_lists[0]) if condition_lists else 2
+                example = ' '.join([f'"X,X"' for _ in range(n_comps)])
                 raise ValueError(
                     f"Paired mode requires matching counts: got {len(compositions)} compositions "
-                    f"but {len(condition_lists)} condition_lists. Each composition needs exactly one condition_list."
+                    f"but {len(condition_lists)} condition_lists.\n"
+                    f"Each composition needs exactly one condition_list.\n"
+                    f"Correct format: --condition_lists {example}\n"
+                    f"  (one quoted string per composition, comma-separated values within each string)"
                 )
-            # Each composition gets paired with its corresponding condition_list
-            condition_vector = None  # Signal to use paired logic
+            condition_vectors = _format_condition_vectors(condition_lists)
         
         elif mode == "broadcast":
-            # One condition_list for all compositions
             if len(condition_lists) != 1:
                 raise ValueError(
                     f"Broadcast mode requires exactly 1 condition_list, got {len(condition_lists)}. "
                     f"Use one condition_list that will be applied to all compositions."
                 )
-            # Flatten the single condition_list into combinations
-            def get_combinations(lists):
-                if not lists or len(lists) == 0:
-                    return ["None"]
-                if len(lists) == 1:
-                    return lists[0]
-                result = []
-                for item in lists[0]:
-                    for combo in get_combinations(lists[1:]):
-                        if combo == "None":
-                            result.append(item)
-                        else:
-                            result.append(f"{item}, {combo}")
-                return result
-            condition_vector = get_combinations(condition_lists)
+            condition_vectors = _format_condition_vectors(condition_lists)
         else:
             raise ValueError(f"Invalid mode: {mode}. Must be one of: cartesian, paired, broadcast")
     else:
-        condition_vector = ["None"]
+        condition_vectors = ["None"]
     
     prompts = []
     conds = []
     
-    # Handle paired mode differently - each composition gets its own condition_list
-    if mode == "paired" and condition_vector is None:
+    # Paired mode: 1:1 match between compositions and conditions
+    if mode == "paired":
         for i, comp in enumerate(compositions):
-            # Get conditions for this specific composition
-            comp_conditions = condition_lists[i]
-            for cond in comp_conditions:
-                if level == "level_1":
+            cond = condition_vectors[i]
+            
+            if level == "level_1":
+                base_prompt = "<bos>\ndata_["
+            
+            elif level == "level_2":
+                if comp is None:
                     base_prompt = "<bos>\ndata_["
-                
-                elif level == "level_2":
-                    if comp is None:
-                        base_prompt = "<bos>\ndata_["
-                    else:
-                        base_prompt = f"<bos>\ndata_[{comp}]\n"
-                
-                elif level == "level_3":
-                    if comp is None:
-                        base_prompt = "<bos>\ndata_["
-                    else:
-                        atomic_props = get_atomic_props_block_for_formula(comp, oxi=OXI_DEFAULT)
-                        atomic_props = add_variable_brackets_to_cif(atomic_props)
-                        base_prompt = f"<bos>\ndata_[{comp}]\n{atomic_props}\n_symmetry_space_group_name_H-M"
-                
-                elif level == "level_4":
-                    if comp is None:
-                        base_prompt = "<bos>\ndata_["
-                    else:
-                        spacegroup = spacegroups[i] if spacegroups else "P1"
-                        atomic_props = get_atomic_props_block_for_formula(comp, oxi=OXI_DEFAULT)
-                        atomic_props = add_variable_brackets_to_cif(atomic_props)
-                        base_prompt = f"<bos>\ndata_[{comp}]\n{atomic_props}\n_symmetry_space_group_name_H-M [{spacegroup}]\n"
-                
                 else:
-                    raise ValueError(f"Invalid level: {level}. Must be one of level_1, level_2, level_3, level_4")
-                
-                # Apply raw mode
-                if raw_mode:
-                    cond_str = str(cond).replace("'", "").replace(",", " ")
-                    if cond_str == "None":
-                        prompt = base_prompt
-                    else:
-                        prompt = f"<bos>\n[{cond_str}]\n" + base_prompt[6:]
+                    base_prompt = f"<bos>\ndata_[{comp}]\n"
+            
+            elif level == "level_3":
+                if comp is None:
+                    base_prompt = "<bos>\ndata_["
                 else:
+                    atomic_props = get_atomic_props_block_for_formula(comp, oxi=OXI_DEFAULT)
+                    atomic_props = add_variable_brackets_to_cif(atomic_props)
+                    base_prompt = f"<bos>\ndata_[{comp}]\n{atomic_props}\n_symmetry_space_group_name_H-M"
+            
+            elif level == "level_4":
+                if comp is None:
+                    base_prompt = "<bos>\ndata_["
+                else:
+                    spacegroup = spacegroups[i] if spacegroups else "P1"
+                    atomic_props = get_atomic_props_block_for_formula(comp, oxi=OXI_DEFAULT)
+                    atomic_props = add_variable_brackets_to_cif(atomic_props)
+                    base_prompt = f"<bos>\ndata_[{comp}]\n{atomic_props}\n_symmetry_space_group_name_H-M [{spacegroup}]\n"
+            
+            else:
+                raise ValueError(f"Invalid level: {level}. Must be one of level_1, level_2, level_3, level_4")
+            
+            # Apply raw mode
+            if raw_mode:
+                cond_str = str(cond).replace("'", "").replace(",", " ")
+                if cond_str == "None":
                     prompt = base_prompt
-                    
-                prompts.append(prompt)
-                conds.append(cond)
+                else:
+                    prompt = f"<bos>\n[{cond_str}]\n" + base_prompt[6:]
+            else:
+                prompt = base_prompt
+                
+            prompts.append(prompt)
+            conds.append(cond)
     else:
-        # Cartesian and broadcast modes use the same loop structure
+        # Cartesian and broadcast modes
         for i, comp in enumerate(compositions):
-            for cond in condition_vector:
+            for cond in condition_vectors:
                 if level == "level_1":
                     base_prompt = "<bos>\ndata_["
                 

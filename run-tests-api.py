@@ -448,7 +448,7 @@ class GenerationEndpointTests:
             "hf_model_path": "c-bone/CrystaLLM-pi_base",
             "output_parquet": os.path.join(self.temp_dir, "gen_out.parquet"),
             "manual": True,
-            "compositions": "SiO2,TiO2"
+            "compositions": "Si2O4,Ti2O4"
         })
         assert response.status_code == 200
         data = response.json()
@@ -463,12 +463,30 @@ class GenerationEndpointTests:
             "output_parquet": os.path.join(self.temp_dir, "gen_cond.parquet"),
             "manual": True,
             "compositions": "Si1",
-            "condition_lists": ["1.1", "0.0"],
+            "condition_lists": ["1.1,0.0"],
             "level": "level_2"
         })
         assert response.status_code == 200
         data = response.json()
         assert "--condition_lists" in data["command"]
+        
+    def test_direct_generation_with_xrd_csv_files(self):
+        """Test direct generation with XRD CSV files."""
+        response = self.client.post("/generate/direct", json={
+            "hf_model_path": "c-bone/CrystaLLM-pi_COD-XRD",
+            "output_parquet": os.path.join(self.temp_dir, "gen_xrd.parquet"),
+            "manual": True,
+            "compositions": "Ti2O4,Ti4O8",
+            "xrd_csv_files": ["/data/anatase.csv", "/data/rutile.csv"],
+            "mode": "paired",
+            "level": "level_2"
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert "--xrd_csv_files" in data["command"]
+        assert "/data/anatase.csv" in data["command"]
+        assert "/data/rutile.csv" in data["command"]
+        assert "--mode paired" in data["command"]
         
     def test_direct_generation_with_spacegroups(self):
         """Test direct generation with spacegroups (level_4)."""
@@ -477,7 +495,7 @@ class GenerationEndpointTests:
             "output_parquet": os.path.join(self.temp_dir, "gen_sg.parquet"),
             "manual": True,
             "compositions": "Ti2O4",
-            "condition_lists": ["1.8", "0.0"],
+            "condition_lists": ["1.8,0.0"],
             "spacegroups": "P4_2/mnm",
             "level": "level_4"
         })
@@ -494,7 +512,7 @@ class GenerationEndpointTests:
             "output_parquet": os.path.join(self.temp_dir, "gen_full.parquet"),
             "manual": True,
             "compositions": "Si1",
-            "condition_lists": ["1.1", "0.0"],
+            "condition_lists": ["1.1,0.0"],
             "level": "level_2",
             "mode": "cartesian",
             "do_sample": "True",
@@ -535,7 +553,7 @@ class GenerationEndpointTests:
         response = self.client.post("/generate/make-prompts", json={
             "output_parquet": os.path.join(self.temp_dir, "prompts.parquet"),
             "manual": True,
-            "compositions": "LiFePO4,NaMnO2",
+            "compositions": "Li1Fe1PO4,Na1Mn1O2",
             "level": "level_3"
         })
         assert response.status_code == 200
@@ -675,7 +693,7 @@ class CommandConstructionTests:
             "output_parquet": "/out.parquet",
             "manual": True,
             "compositions": "Ti2O4",
-            "condition_lists": ["1.82", "0.0"],
+            "condition_lists": ["1.82,0.0"],
             "spacegroups": "P4_2/mnm",
             "level": "level_4",
             "num_return_sequences": 5,
@@ -724,7 +742,7 @@ class APIGapTests:
             "output_parquet": "/out.parquet",
             "manual": True,
             "compositions": "Ti2O4",
-            "condition_lists": ["1.8", "0.0"],
+            "condition_lists": ["1.8,0.0"],
             "spacegroups": "P4_2/mnm",
             "level": "level_4",
             "num_return_sequences": 5,
@@ -743,6 +761,21 @@ class APIGapTests:
         assert "--max_return_attempts 10" in cmd, "max_return_attempts should be in command"
         assert "--temperature 1.0" in cmd, "temperature should be in command"
         assert "--model_type PKV" in cmd, "model_type should be in command"
+    
+    def test_xrd_generation_now_supported(self):
+        """XRD generation is now supported via xrd_csv_files parameter."""
+        response = self.client.post("/generate/direct", json={
+            "hf_model_path": "c-bone/CrystaLLM-pi_COD-XRD",
+            "output_parquet": "/out_xrd.parquet",
+            "manual": True,
+            "compositions": "TiO2",
+            "xrd_csv_files": ["/data/xrd_pattern.csv"],
+            "mode": "broadcast"
+        })
+        assert response.status_code == 200
+        cmd = response.json()["command"]
+        assert "--xrd_csv_files" in cmd, "xrd_csv_files should be in command"
+        assert "/data/xrd_pattern.csv" in cmd, "XRD file path should be in command"
         
     def test_missing_xrd_preprocessing_endpoint(self):
         """XRD calculation preprocessing exists in CLI but not API.
@@ -1062,7 +1095,7 @@ class IntegrationTests:
             "output_parquet": f"{self.output_dir}/prompts.parquet",
             "manual": True,
             "compositions": "Li1Fe1PO4,Na1Mn1O2,Si1O2",
-            "condition_lists": ["0.5", "0.0"],
+            "condition_lists": ["0.5,0.0"],
             "level": "level_2"
         })
         assert response.status_code == 200
@@ -1159,7 +1192,7 @@ class IntegrationTests:
             "output_parquet": f"{self.output_dir}/pipeline_generated.parquet",
             "manual": True,
             "compositions": "Si1,Ge1,Ga1As1",
-            "condition_lists": ["1.5", "0.0"],
+            "condition_lists": ["1.5,0.0"],
             "level": "level_2",
             "num_return_sequences": 3,
             "max_return_attempts": 2,
@@ -1263,6 +1296,7 @@ def run_all_tests(suite: APITestSuite, run_integration: bool = False, verbose: b
     gen_tests = GenerationEndpointTests(suite.client, suite.temp_dir, test_data)
     suite.run_test("direct_generation_manual_mode", gen_tests.test_direct_generation_manual_mode)
     suite.run_test("direct_generation_with_conditions", gen_tests.test_direct_generation_with_conditions)
+    suite.run_test("direct_generation_with_xrd_csv_files", gen_tests.test_direct_generation_with_xrd_csv_files)
     suite.run_test("direct_generation_with_spacegroups", gen_tests.test_direct_generation_with_spacegroups)
     suite.run_test("direct_generation_with_all_params", gen_tests.test_direct_generation_with_all_params)
     suite.run_test("direct_generation_input_parquet_mode", gen_tests.test_direct_generation_input_parquet_mode)
@@ -1287,6 +1321,7 @@ def run_all_tests(suite: APITestSuite, run_integration: bool = False, verbose: b
     # API gap tests (document missing features)
     gap_tests = APIGapTests(suite.client, suite.temp_dir)
     suite.run_test("direct_generation_all_parameters_now_supported", gap_tests.test_direct_generation_all_parameters_now_supported)
+    suite.run_test("xrd_generation_now_supported", gap_tests.test_xrd_generation_now_supported)
     suite.run_test("missing_xrd_preprocessing_endpoint", gap_tests.test_missing_xrd_preprocessing_endpoint)
     suite.run_test("missing_xrd_metrics_endpoint", gap_tests.test_missing_xrd_metrics_endpoint)
     suite.run_test("missing_property_metrics_endpoint", gap_tests.test_missing_property_metrics_endpoint)
