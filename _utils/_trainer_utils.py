@@ -366,6 +366,11 @@ def setup_scheduler(args, model):
     if args.optimizer == "muon":
         hidden_matrix_params = []  # 2D weights in transformer blocks (Muon)
         adamw_params = []          # Embeddings, lm_head, 1D params (AdamW)
+        cond_params = []           # Conditioning module params (AdamW with cond_lr)
+
+        # Keywords that identify conditioning module parameters
+        cond_keywords = ["slider", "conditioning", "prefix_embedding"]
+        use_cond_separation = args.activate_conditionality in ["PKV", "Prepend", "Slider"]
 
         for name, param in model.named_parameters():
             if not param.requires_grad:
@@ -373,8 +378,11 @@ def setup_scheduler(args, model):
             
             name_lower = name.lower()
             
+            # First check if this is a conditioning parameter (separate from Muon entirely)
+            if use_cond_separation and any(k in name_lower for k in cond_keywords):
+                cond_params.append(param)
             # AdamW for: embeddings, lm_head, and 1D params
-            if "embed" in name_lower:
+            elif "embed" in name_lower:
                 adamw_params.append(param)
             elif "lm_head" in name_lower:
                 adamw_params.append(param)
@@ -386,12 +394,11 @@ def setup_scheduler(args, model):
                 # This includes q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj
                 hidden_matrix_params.append(param)
 
-        print(f"Muon params: {len(hidden_matrix_params)}, AdamW params: {len(adamw_params)}")
+        print(f"Muon params: {len(hidden_matrix_params)}, AdamW params: {len(adamw_params)}, Conditioning params: {len(cond_params)}")
         
         is_distributed = dist.is_initialized() and dist.get_world_size() > 1
         
-        
-        # MuonWithAuxAdam uses Nesterov momentum by default (better than SGD-momentum)
+        # Build parameter groups: Muon for 2D transformer weights, AdamW for rest
         param_groups = [
             dict(params=hidden_matrix_params, lr=args.muon_lr, momentum=args.muon_momentum,
                  weight_decay=args.weight_decay, use_muon=True),
@@ -399,6 +406,17 @@ def setup_scheduler(args, model):
                  betas=(args.adam_beta1, args.adam_beta2), eps=1e-8,
                  weight_decay=args.weight_decay, use_muon=False),
         ]
+        
+        # Add conditioning params as separate AdamW group with cond_lr
+        if cond_params:
+            cond_lr = args.cond_lr if args.cond_lr is not None else args.learning_rate
+            cond_wd = args.cond_wd if args.cond_wd is not None else args.weight_decay
+            param_groups.append(
+                dict(params=cond_params, lr=cond_lr,
+                     betas=(args.adam_beta1, args.adam_beta2), eps=1e-8,
+                     weight_decay=cond_wd, use_muon=False)
+            )
+            print(f"Conditioning params use AdamW with lr={cond_lr}, wd={cond_wd}")
         
         if is_distributed:
             optimizer = MuonWithAuxAdam(param_groups)
