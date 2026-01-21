@@ -48,6 +48,13 @@ def cleanup():
 cleanup()
 atexit.register(cleanup)
 
+# Enable TF32 and cudnn optimizations when CUDA is available
+if torch.cuda.is_available():
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+    torch.backends.cudnn.benchmark = True
+    torch.set_float32_matmul_precision('high')
+
 def main():
     """Main training function for CrystaLLM_pi."""
     global process_socket, process_port
@@ -234,6 +241,10 @@ def main():
         remove_unused_columns=False,
         eval_on_start=eval_on_start,
         gradient_checkpointing=False,
+        dataloader_num_workers=8,
+        dataloader_pin_memory=True,
+        dataloader_prefetch_factor=2,
+        ddp_find_unused_parameters=False,
     )
 
     # Integrate deepspeed config if provided

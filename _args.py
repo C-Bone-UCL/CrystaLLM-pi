@@ -132,12 +132,18 @@ def parse_args():
 
     # Parse arguments
     args = parser.parse_args()
-    # Load JSON config if provided
+    
+    # Load JSON config if provided, but CLI args take precedence
     if args.config:
         with open(args.config, "r") as f:
             config_data = commentjson.load(f)
-        for key, value in config_data.items():
-            if hasattr(args, key):
-                setattr(args, key, value)
+        
+        # Set config values as new defaults and re-parse to let CLI take precedence
+        parser.set_defaults(**config_data)
+        args = parser.parse_args()
+
+    # Normalize activate_conditionality: treat "None" string as Python None
+    if str(args.activate_conditionality).lower() in ("none", "null", ""):
+        args.activate_conditionality = None
 
     return args

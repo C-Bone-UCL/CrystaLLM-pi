@@ -23,6 +23,12 @@ DEFAULT_TOKENIZER_DIR = "HF-cif-tokenizer"
 # Global warning filters
 warnings.filterwarnings("ignore", category=UserWarning)
 
+# Enable TF32 and cudnn optimizations when CUDA is available
+if torch.cuda.is_available():
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+    torch.backends.cudnn.benchmark = True
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _tokenizer import CustomCIFTokenizer
 from _models import PKVGPT, PrependGPT, SliderGPT
@@ -126,14 +132,12 @@ def get_model_class(conditionality_type):
         return GPT2LMHeadModel
 
 def get_model_max_length(model_ckpt_dir, activate_conditionality):
-    """Get model's max length from config by loading temp model."""
-    model_class = get_model_class(activate_conditionality)
-    
+    """Get model's max length from config.json without loading the full model."""
+    config_path = os.path.join(model_ckpt_dir, "config.json")
     try:
-        temp_model = model_class.from_pretrained(model_ckpt_dir, low_cpu_mem_usage=True)
-        n_positions = temp_model.config.n_positions
-        del temp_model
-        return n_positions
+        with open(config_path, "r") as f:
+            config = json.load(f)
+        return config.get("n_positions", DEFAULT_MAX_LENGTH)
     except Exception:
         return DEFAULT_MAX_LENGTH
 
@@ -209,15 +213,44 @@ def get_material_id(row, count, offset=0):
     else:
         return f"Generated_{count + offset + 1}"
 
-def init_worker(model_ckpt_dir, pretrained_tokenizer_dir, activate_conditionality):
+
+def _normalize_scoring_mode(mode):
+    """Normalize scoring mode to 'none' or 'logp'."""
+    if mode is None or str(mode).lower() in ("none", "null", ""):
+        return "none"
+    return str(mode).lower()
+
+
+def init_worker(model_ckpt_dir, pretrained_tokenizer_dir, activate_conditionality, base_seed=1):
     global model, tokenizer
     
     tokenizer = init_tokenizer(pretrained_tokenizer_dir)
-    
-    # Load model based on conditionality type
     model_class = get_model_class(activate_conditionality)
-    model = model_class.from_pretrained(model_ckpt_dir).eval()
+    
+    # Determine dtype: prefer bfloat16, fall back to float16 if unsupported
+    if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+        dtype = torch.bfloat16
+    elif torch.cuda.is_available():
+        dtype = torch.float16
+    else:
+        dtype = torch.float32
+    
+    # Try loading with SDPA attention, fall back to default
+    try:
+        model = model_class.from_pretrained(
+            model_ckpt_dir, torch_dtype=dtype, attn_implementation="sdpa"
+        ).eval()
+    except Exception:
+        model = model_class.from_pretrained(model_ckpt_dir, torch_dtype=dtype).eval()
+    
     model.resize_token_embeddings(len(tokenizer))
+    
+    # Deterministic seeding per worker
+    gpu_id = int(os.environ.get("LOCAL_RANK", 0))
+    worker_seed = base_seed + gpu_id
+    torch.manual_seed(worker_seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(worker_seed)
 
 def progress_listener(queue, total):
     pbar = tqdm(total=total, desc="Generating CIFs...")
@@ -237,9 +270,10 @@ def generate_on_gpu(
     end_idx,
     activate_conditionality,
     global_offset=0,
-    scoring_mode="None",
+    scoring_mode="none",
     target_valid_cifs=20,
     max_return_attempts=2,
+    base_seed=1,
 ):
     global model, tokenizer
     
@@ -247,7 +281,14 @@ def generate_on_gpu(
     model = model.to(device)
     results = []
     
-    torch.cuda.manual_seed_all(os.getpid())
+    # Deterministic seeding per GPU
+    worker_seed = base_seed + gpu_id
+    torch.manual_seed(worker_seed)
+    torch.cuda.manual_seed_all(worker_seed)
+    
+    # Normalize scoring mode
+    scoring_mode = _normalize_scoring_mode(scoring_mode)
+    need_scores = (scoring_mode != "none")
     
     # Process each prompt individually
     for idx in range(start_idx, end_idx):
@@ -257,8 +298,8 @@ def generate_on_gpu(
         valid_cifs = []
         generation_attempts = 0
         
-        # For 'None' scoring mode, generate num_return_sequences * MAX_GENERATION_ATTEMPTS without validation
-        if scoring_mode == "None":
+        # For 'none' scoring mode, generate num_return_sequences * MAX_GENERATION_ATTEMPTS without validation
+        if not need_scores:
             target_generations = generation_kwargs.get("num_return_sequences", 1) * max_return_attempts
             max_attempts = max_return_attempts
         else:
@@ -269,7 +310,6 @@ def generate_on_gpu(
         while len(valid_cifs) < target_generations and generation_attempts < max_attempts:
             generation_attempts += 1
             
-            # print("will only generate output scores if scoring is needed")
             try:
                 # Handle different conditionality types
                 if activate_conditionality in ["PKV", "Prepend", "Slider"]:
@@ -280,14 +320,12 @@ def generate_on_gpu(
                         if values:
                             condition_tensor = torch.tensor([values], device=device)
                     
-                    # print("will only generate output scores if scoring is needed")
                     with torch.inference_mode():
                         outputs = model.generate(
                             input_ids=input_ids,
                             condition_values=condition_tensor,
                             return_dict_in_generate=True,
-                            # only output scores if scoring is needed
-                            output_scores=(scoring_mode != "None"),
+                            output_scores=need_scores,
                             **generation_kwargs,
                         )
                 else:
@@ -296,7 +334,7 @@ def generate_on_gpu(
                         outputs = model.generate(
                             input_ids=input_ids,
                             return_dict_in_generate=True,
-                            output_scores=(scoring_mode != "None"),
+                            output_scores=need_scores,
                             **generation_kwargs,
                         )
                 
@@ -321,7 +359,7 @@ def generate_on_gpu(
                     if activate_conditionality == "Raw":
                         cif_txt = remove_conditionality(cif_txt)
                     
-                    if scoring_mode == "None":
+                    if not need_scores:
                         # No validation or scoring - just collect all CIFs
                         mid = get_material_id(row, len(valid_cifs), global_offset)
                         
@@ -338,7 +376,7 @@ def generate_on_gpu(
                         is_consistent = check_cif(cif_txt)
                         
                         if is_consistent:
-                            if scoring_mode.upper() == "LOGP":
+                            if scoring_mode == "logp":
                                 score = score_output_logp(model, outputs.scores, outputs.sequences, seq_idx, input_ids.shape[1], tokenizer.eos_token_id)
                             else:
                                 score = 0.0
@@ -365,13 +403,13 @@ def generate_on_gpu(
         
         # Process results based on scoring mode
         if valid_cifs:
-            if scoring_mode == "None":
+            if not need_scores:
                 # No ranking for unscored mode
                 results.extend(valid_cifs)
             else:
                 # Rank all CIFs for this prompt by score 
                 # For LOGP (perplexity): lower perplexity = better (reverse=False)
-                if scoring_mode.upper() == "LOGP":
+                if scoring_mode == "logp":
                     ranked_cifs = sorted(valid_cifs, key=lambda x: x["score"] if not np.isnan(x["score"]) and not np.isinf(x["score"]) else float('inf'), reverse=False)
                 
                 for rank, cif_data in enumerate(ranked_cifs, 1):
@@ -456,20 +494,25 @@ def main():
     
     print(f"\nGeneration Strategy")
     print(f"Number of condition-prompt pairs: {total_samples}")
-    if args.scoring_mode == "None":
+    
+    # Normalize scoring mode and set base seed
+    scoring_mode = _normalize_scoring_mode(args.scoring_mode)
+    base_seed = getattr(args, 'seed', 1)
+    
+    if scoring_mode == "none":
         target_per_prompt = generation_kwargs.get("num_return_sequences", 1) * args.max_return_attempts
         print(f"Target CIFs per prompt: {target_per_prompt} (no validation/scoring)")
         print(f"Will save all generated CIFs without validation or ranking")
     else:
         print(f"Target valid CIFs per prompt: {args.target_valid_cifs}")
-        print(f"Will save all CIFs ranked by {args.scoring_mode} score (up to {args.target_valid_cifs} per prompt)")
+        print(f"Will save all CIFs ranked by {scoring_mode} score (up to {args.target_valid_cifs} per prompt)")
     
 
     # Setup multiprocessing
     manager = mp.Manager()
     queue = manager.Queue()
     # Progress tracking: calculate expected generations based on scoring mode
-    if args.scoring_mode == "None":
+    if scoring_mode == "none":
         target_per_prompt = generation_kwargs.get("num_return_sequences", 1) * args.max_return_attempts
         total_expected_generations = total_samples * target_per_prompt
     else:
@@ -484,7 +527,7 @@ def main():
     ctx = mp.get_context('spawn')
     with ctx.Pool(num_gpus + 1,
                   initializer=init_worker,
-                  initargs=(args.model_ckpt_dir, DEFAULT_TOKENIZER_DIR, args.activate_conditionality)) as pool:
+                  initargs=(args.model_ckpt_dir, DEFAULT_TOKENIZER_DIR, args.activate_conditionality, base_seed)) as pool:
         
         pool.apply_async(progress_listener, (queue, total_expected_generations))
         
@@ -494,7 +537,7 @@ def main():
                 results.append(pool.apply_async(
                     generate_on_gpu,
                     (0, df_prompts, generation_kwargs, queue, 0, total_samples,
-                    args.activate_conditionality, 0, args.scoring_mode, args.target_valid_cifs, args.max_return_attempts)
+                    args.activate_conditionality, 0, scoring_mode, args.target_valid_cifs, args.max_return_attempts, base_seed)
                 ))
             
             elif is_single_prompt:
@@ -529,11 +572,11 @@ def main():
                     results.append(pool.apply_async(
                         generate_on_gpu,
                         (gpu_id, df_prompts, generation_kwargs, queue, 0, 1,
-                         args.activate_conditionality, current_offset, args.scoring_mode, local_target, local_attempts)
+                         args.activate_conditionality, current_offset, scoring_mode, local_target, local_attempts, base_seed)
                     ))
                     
                     # Estimate offset increment for next worker to avoid ID collision
-                    if args.scoring_mode == "None":
+                    if scoring_mode == "none":
                          expected_gen = local_attempts * generation_kwargs.get("num_return_sequences", 1)
                          current_offset += expected_gen
                     else:
@@ -549,7 +592,7 @@ def main():
                     results.append(pool.apply_async(
                         generate_on_gpu,
                         (gpu_id, df_prompts, generation_kwargs, queue, start, end,
-                        args.activate_conditionality, global_offset, args.scoring_mode, args.target_valid_cifs, args.max_return_attempts)
+                        args.activate_conditionality, global_offset, scoring_mode, args.target_valid_cifs, args.max_return_attempts, base_seed)
                     ))
 
         except Exception as e:
@@ -575,10 +618,10 @@ def main():
     try:    
         df.to_parquet(args.output_parquet, index=False)
         print(f"\nSaved {len(df)} CIFs to {args.output_parquet}")
-        if args.scoring_mode == "None":
+        if scoring_mode == "none":
             print(f"Results include all generated CIFs (no validation or scoring applied).")
         else:
-            print(f"Results include all generated CIFs ranked by {args.scoring_mode} score per prompt.")
+            print(f"Results include all generated CIFs ranked by {scoring_mode} score per prompt.")
     except Exception as e:
         # do a fallback to saving a 'fallback.parquet' file in the current directory
         fallback_path = "fallback.parquet"
