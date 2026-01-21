@@ -4,13 +4,14 @@ Script to save a custom CIF tokenizer to a local directory and optionally push i
 
 import logging
 from typing import Optional
-from _tokenizer import CustomCIFTokenizer
 from huggingface_hub import login
 import os
 import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import load_api_keys
+from _tokenizer import CustomCIFTokenizer
+
 
 logger = logging.getLogger(__name__)
 
