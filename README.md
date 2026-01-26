@@ -11,6 +11,9 @@
 <a href="https://huggingface.co/c-bone">
     <img alt="Hugging Face" src="https://img.shields.io/badge/🤗%20Hugging%20Face-Models-blue.svg?style=plastic">
 </a>
+<a href="https://huggingface.co/spaces/LeMaterial/LeMat-GenBench">
+    <img alt="Benchmark" src="https://img.shields.io/badge/🤗%20LeMat%20Bench-Unconditional%20Benchmark-lightblue.svg?style=plastic">
+</a>
 <a href="https://arxiv.org/pdf/2511.21299">
     <img alt="Preprint" src="https://img.shields.io/badge/Preprint-arXiv-red.svg?style=plastic">
 </a>
