@@ -534,8 +534,14 @@ def main():
     # Required args
     parser.add_argument("--hf_model_path", required=True,
                        help="HuggingFace model path")
-    parser.add_argument("--output_parquet", required=True,
+    
+
+    # require either or
+    output_group = parser.add_mutually_exclusive_group(required=True)
+    output_group.add_argument("--output_parquet", default=None,
                        help="Output parquet file")
+    output_group.add_argument("--output_cif_dir", default=None,
+                       help="Output directory for individual CIF files (optional)")
     
     # Input source
     prompt_group = parser.add_mutually_exclusive_group(required=True)
@@ -643,17 +649,32 @@ def main():
     else:
         df_final = df_generated
     
-    # save
-    output_dir = os.path.dirname(args.output_parquet)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
+    if args.output_cif_dir:
+        # save individual CIF files
+        os.makedirs(args.output_cif_dir, exist_ok=True)
+        for idx, row in df_final.iterrows():
+            mid = row.get("Material ID", f"Generated_{idx + 1}")
+            cif_txt = row["Generated CIF"]
+            cif_path = os.path.join(args.output_cif_dir, f"{mid}.cif")
+            with open(cif_path, 'w') as f:
+                f.write(cif_txt)
+        print(f"\nDone ")
+        print(f"Total: {len(df_final)} structures")
+        print(f"Saved CIF files to: {args.output_cif_dir}")
+        
     
-    df_final.to_parquet(args.output_parquet, index=False)
-    
-    print("\nDone ")
-    print(f"Total: {len(df_final)} structures")
+    else:
+        # save
+        output_dir = os.path.dirname(args.output_parquet)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        
+        df_final.to_parquet(args.output_parquet, index=False)
+        
+        print("\nDone ")
+        print(f"Total: {len(df_final)} structures")
 
-    print(f"Saved to: {args.output_parquet}")
+        print(f"Saved to: {args.output_parquet}")
 
 
 if __name__ == "__main__":

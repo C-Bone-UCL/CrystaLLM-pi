@@ -192,6 +192,7 @@ Each model can be used with **manual generation** (specify compositions + proper
 ## Generation Examples
 
 > **Note**: Compositions must use explicit stoichiometry (e.g., `Cs1Pb1I3` not `CsPbI3`) and only valid periodic table symbols (no acronyms like MA or FA).
+> **Outputs**: Outputs can either be saved as a dataframe in a `.parquet` using the `--output_parquet` flag, or as individual CIFs in a directory using the `--output_cif_dir` flag.
 
 **Unconditional Generation**
 
@@ -270,7 +271,7 @@ python _load_and_generate.py \
     --compositions "Ti2O4" \
     --xrd_csv_files "notebooks/test_rutile.csv" \
     --num_return_sequences 5 \
-    --output_parquet xrd_2_struct.parquet
+    --output_cif_dir xrd_2_struct/
 ```
 
 ## Configuration Options
