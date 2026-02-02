@@ -83,6 +83,8 @@ conda activate CrystaLLM-pi_env
 pip install -r requirements.txt
 # material-hasher package needs to be installed via
 pip install git+https://github.com/lematerial/material-hasher.git
+# muon optimizer (addition in development, install required)
+pip install git+https://github.com/KellerJordan/Muon
 # Install CrystaLLM-pi in editable mode
 pip install -e .
 ```
