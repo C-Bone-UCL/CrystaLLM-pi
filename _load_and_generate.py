@@ -56,7 +56,7 @@ from _utils._generating.generate_CIFs import (
     parse_condition_vector, remove_conditionality, check_cif, score_output_logp
 )
 from _utils._generating.postprocess import process_dataframe
-from _utils import normalize_property_column, normalize_values_with_method
+from _utils import normalize_property_column, normalize_values_with_method, extract_formula_nonreduced
 
 TOKENIZER_DIR = "HF-cif-tokenizer"
 
@@ -653,8 +653,12 @@ def main():
         # save individual CIF files
         os.makedirs(args.output_cif_dir, exist_ok=True)
         for idx, row in df_final.iterrows():
-            mid = row.get("Material ID", f"Generated_{idx + 1}")
             cif_txt = row["Generated CIF"]
+            formula_nonreduced = extract_formula_nonreduced(cif_txt)
+            formula_nonreduced.replace(" ", "_")
+            mid = row.get("Material ID", f"Generated_{idx + 1}")
+            if formula_nonreduced:
+                mid = f"{formula_nonreduced}_{mid}"
             cif_path = os.path.join(args.output_cif_dir, f"{mid}.cif")
             with open(cif_path, 'w') as f:
                 f.write(cif_txt)
