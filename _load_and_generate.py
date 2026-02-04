@@ -582,7 +582,7 @@ def main():
     parser.add_argument("--max_return_attempts", type=int, default=1,
                        help="Generation attempts per sample")
     parser.add_argument("--max_samples", type=int, default=None,
-                       help="Max samples to process")
+                       help="Max samples to process from prompts")
     parser.add_argument("--scoring_mode", type=str, default="None",
                        help="Scoring: 'LOGP' or 'None'")
     parser.add_argument("--target_valid_cifs", type=int, default=20,
@@ -655,7 +655,7 @@ def main():
         for idx, row in df_final.iterrows():
             cif_txt = row["Generated CIF"]
             formula_nonreduced = extract_formula_nonreduced(cif_txt)
-            formula_nonreduced.replace(" ", "_")
+            formula_nonreduced = formula_nonreduced.replace(" ", "_")
             mid = row.get("Material ID", f"Generated_{idx + 1}")
             if formula_nonreduced:
                 mid = f"{formula_nonreduced}_{mid}"
