@@ -582,7 +582,7 @@ def main():
     parser.add_argument("--max_return_attempts", type=int, default=1,
                        help="Generation attempts per sample")
     parser.add_argument("--max_samples", type=int, default=None,
-                       help="Max samples to process from prompts")
+                       help="Max samples to process")
     parser.add_argument("--scoring_mode", type=str, default="None",
                        help="Scoring: 'LOGP' or 'None'")
     parser.add_argument("--target_valid_cifs", type=int, default=20,
