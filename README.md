@@ -174,7 +174,7 @@ Key examples:
 
 # LeMaterial Benchmark
 
-CrystaLLM-$\pi$ was evaluated on the [LeMaterial GenBench](https://huggingface.co/spaces/LeMaterial/LeMat-GenBench) ranked in the top-5 models on the default MSUN+SUN (January 2026).
+CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> was evaluated on the [LeMaterial GenBench](https://huggingface.co/spaces/LeMaterial/LeMat-GenBench) ranked in the top-5 models on the default MSUN+SUN (January 2026).
 
 ### Key Takeaways
 
