@@ -161,6 +161,30 @@ Baseline approach where numerical condition values are converted to text and app
 <br>
 <br>
 
+# Paper Studies
+
+Experimental notebooks demonstrating end-to-end pipelines for all experiments carried out in the paper are available in [`notebooks/`](notebooks/) with files starting with `X_`.
+
+Key examples:
+- **MP-20 XRD notebook**: Pipeline for structure recovery given desired theoretical XRD
+- **SLME notebook**: Pipeline for discovery of a material with a desired photovoltaic
+
+<br>
+<br>
+
+# LeMaterial Benchmark
+
+CrystaLLM-$\pi$ was evaluated on the [LeMaterial GenBench](https://huggingface.co/spaces/LeMaterial/LeMat-GenBench) ranked in the top-5 models on the default MSUN+SUN (January 2026).
+
+### Key Takeaways
+
+* **High-Fidelity Interpolation**: The model is in the top performers at generating structures that are closer to their relaxed equilibrium state than continuous generative models. (Relaxation RMSD)
+* **Structural Diversity**: While the model replicates the training distribution with high precision (see distribution metrics), it maintains high element and - likely due to the large training set.
+* **Tuning Exploration**: Lower novelty is a byproduct of high-fidelity distribution matching. To move away from the base distribution, users can increase the `temperature` parameter at inference or explore property conditioned options (like the SLME study)
+
+<br>
+<br>
+
 # Quick Start
 
 Use with pre-trained models from HuggingFace Hub for direct crystal structure generation. The `_load_and_generate.py` script handles downloading models to generating valid CIF structures with desired properties.
@@ -710,14 +734,6 @@ curl -X GET "http://localhost:8000/jobs"
 
 </details>
 <br>
-
-# Studies
-
-Experimental notebooks demonstrating end-to-end pipelines are available in [`notebooks/`](notebooks/) with files starting with `X_`. 
-
-Key examples:
-- **mp-20 notebook**: Pipeline for structure recovery given desired theoretical XRD
-- **SLME notebook**: Pipeline for discovery of a meterial with a desired photovoltaic
 
 # Tokenizer
 
