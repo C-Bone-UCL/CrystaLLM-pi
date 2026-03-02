@@ -19,3 +19,4 @@ data/
 outputs/
 *ignore.txt
 __amil_xrd__/
+.env

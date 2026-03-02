@@ -364,8 +364,9 @@ if __name__ == "__main__":
     
     # Input source arguments (mutually exclusive)
     input_group = parser.add_mutually_exclusive_group(required=False)
-    input_group.add_argument("--input_df", type=str, help="Path to input DataFrame (parquet file)")
+    input_group.add_argument("--input_parquet", type=str, help="Path to input DataFrame (parquet file)")
     input_group.add_argument("--HF_dataset", type=str, help="Hugging Face dataset identifier")
+
     parser.add_argument("--split", type=str, help="Dataset split to use (required for HF datasets)")
     
     # Mode selection (need to specify)
@@ -403,8 +404,8 @@ if __name__ == "__main__":
             parser.error("--level is required for automatic mode")
         
         # Load data
-        if args.input_df:
-            df = pd.read_parquet(args.input_df)
+        if args.input_parquet:
+            df = pd.read_parquet(args.input_parquet)
             if args.cif_column not in df.columns:
                 raise ValueError(f"Column '{args.cif_column}' not found in dataset")
             if args.split:
@@ -415,10 +416,10 @@ if __name__ == "__main__":
                         split_col = col
                         break
                 if split_col is None:
-                    print(f"Warning: 'split' column not found in {args.input_df}. Ignoring --split argument.")
+                    print(f"Warning: 'split' column not found in {args.input_parquet}. Ignoring --split argument.")
                 else:
                     df = df[df[split_col] == args.split]
-            print(f"Loaded {len(df)} records from {args.input_df}")
+            print(f"Loaded {len(df)} records from {args.input_parquet}")
         
         else:
             df = load_hf_dataset(args.HF_dataset, args.split)

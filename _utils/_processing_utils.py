@@ -304,13 +304,23 @@ def load_mp_api_key(key_file: str) -> str:
 
 # make a function that loads key dictionary from API_keys.jsonc
 def load_api_keys(key_file: str = "API_keys.jsonc") -> dict:
-    """Load API keys from JSONC file."""
+    """Load API keys from file, or from environment variables as fallback."""
+    key_file = os.getenv("API_KEY_PATH", key_file)
     try:
         with open(key_file, "r") as f:
             data = commentjson.load(f)
         return data
-    except Exception as e:
-        raise RuntimeError(f"Failed to read API keys from '{key_file}': {e}")
+    except Exception as file_error:
+        hf_key = os.getenv("HF_KEY") or os.getenv("HF_TOKEN") or os.getenv("HF_HUB_TOKEN")
+        wandb_key = os.getenv("WANDB_KEY") or os.getenv("WANDB_API_KEY")
+        if hf_key and wandb_key:
+            return {
+                "HF_key": hf_key,
+                "wandb_key": wandb_key,
+            }
+        raise RuntimeError(
+            f"Failed to read API keys from '{key_file}' and no env fallback found: {file_error}"
+        )
 
 
 

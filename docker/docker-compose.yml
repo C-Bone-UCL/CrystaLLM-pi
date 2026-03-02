@@ -1,0 +1,28 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: crystallm-api:local
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../data:/app/data
+      - ../outputs:/app/outputs
+      - ../tests/fixtures:/app/tests/fixtures:ro
+    environment:
+      HF_KEY: ${HF_KEY:-}
+      WANDB_KEY: ${WANDB_KEY:-}
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-0,1}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+      HOME: /tmp/crystallm_runtime
+      HF_HOME: /tmp/crystallm_runtime/.cache/huggingface
+      HF_HUB_CACHE: /tmp/crystallm_runtime/.cache/huggingface/hub
+      HF_ASSETS_CACHE: /tmp/crystallm_runtime/.cache/huggingface/assets
+      XDG_CACHE_HOME: /tmp/crystallm_runtime/.cache
+      TORCH_HOME: /tmp/crystallm_runtime/.cache/torch
+      TMPDIR: /tmp/crystallm_runtime/.tmp
+      API_RUNTIME_ROOT: /tmp/crystallm_runtime
+    user: "${UID:?Set UID (or put UID in .env)}:${GID:?Set GID with 'export GID=$(id -g)' (or put GID in .env)}"
+    gpus: ${DOCKER_GPUS:-all}
+    restart: unless-stopped

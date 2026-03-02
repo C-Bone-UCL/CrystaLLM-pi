@@ -35,4 +35,5 @@ mace-torch==0.3.13
 crystal_toolkit==2025.7.31
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
+powerxrd==3.0.0
 # pip install git+https://github.com/lematerial/material-hasher.git
