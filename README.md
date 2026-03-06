@@ -118,7 +118,6 @@ Create `API_keys.jsonc` in the root directory for HuggingFace and Weights & Bias
   "HF_key": "your_hf_key_here", // Hugging Face token
   "wandb_key": "your_wandb_api_key_here" // Weights & Biases key
 }
-
 ```
 
 <br>
@@ -255,10 +254,10 @@ python _load_and_generate.py \
 
 **Mapped Lists (Bandgap Conditioning)**
 
-Provide parallel lists to generate multiple specific structures at once. Each condition vector (bandgap, ehull) directly corresponds to the respective formula.
+Provide parallel lists to generate multiple specific structures at once. Each condition vector (bandgap, E_hull) directly corresponds to the respective formula.
 
 ```bash
-# Maps: (TiO2, Z=2, bg=1.8, ehull=0.0) and (SiO2, Z=4, bg=5.0, ehull=0.0)
+# Maps: (TiO2, Z=2, bg=1.8, E_hull=0.0) and (SiO2, Z=4, bg=5.0, E_hull=0.0)
 python _load_and_generate.py \
     --hf_model_path "c-bone/CrystaLLM-pi_bandgap" \
     --reduced_formula_list "TiO2,SiO2" \
@@ -271,7 +270,7 @@ python _load_and_generate.py \
 
 **Early-Stopping Z-Search (Density Conditioning)**
 
-Automatically search from Z=1 to Z=4 to find valid structures. Because `scoring_mode` is None, the worker uses **early stopping**—it will halt the search and return immediately once it satisfies the `--target_valid_cifs`.
+Automatically search from Z=1 to Z=4 to find valid structures. Because `scoring_mode` is None, the worker stops the search and return a structure once it satisfies the `--target_valid_cifs`.
 
 ```bash
 python _load_and_generate.py \
@@ -302,7 +301,7 @@ python _load_and_generate.py \
 
 **Solar Efficiency (Level 1)**
 
-Unconditionally generate with a high photovoltaic efficiency. (Note: Level 1 generation requires a dummy formula to initialize the prompt pipeline).
+Unconditionally generate with a high photovoltaic efficiency.
 
 ```bash
 python _load_and_generate.py \
@@ -330,7 +329,7 @@ python _load_and_generate.py \
 
 **Raw XRD Conditioned Output (with Wavelength Conversion)**
 
-Provide raw peaks from a different radiation source (e.g., MoKa at 0.71073 Å). The pipeline automatically converts and scales the patterns dynamically.
+Provide peaks from a different radiation source (e.g., MoKa at 0.71073 Å). The pipeline automatically converts patterns to expected format.
 
 ```bash
 python _load_and_generate.py \
@@ -358,7 +357,11 @@ python _load_and_generate.py \
 
 * `--z_list "X,Y"`: Provide a comma-separated list of exact stoichiometric multipliers mapping 1:1 to your reduced formulas.
 * `--search_zs`: Trigger an automated sweep from Z=1 to Z=4 for each formula.
-* *Tip:* Combine `--search_zs` with `--target_valid_cifs X` and it will loop through Z until it finds a valid CIF. If on top of that you add the logp perplexity scoring, itll generate for each Z and for all the Zs with a valid CIFs, it will return the models single most confident prediction for the reduced formula.
+* *Tip:* Combine `--search_zs` with `--target_valid_cifs X` and it will loop through Z until it finds a valid CIF. If on top of that you add the logp perplexity scoring, itll generate for each Z. For all the Zs with a valid CIFs, it will return the models single most confident prediction for the reduced formula.
+
+**Perplexity Scoring (LogP)**
+
+* For each generation which passes basic chemical validity checks, we compute transition scores for the token sequence to the perplexity score. Lower perplexity values indicate higher model confidence in the generated sequence according to its learned probability distribution. [See Blog Post for more info](https://apxml.com/courses/how-to-build-a-large-language-model/chapter-21-intrinsic-evaluation-metrics/interpreting-perplexity-scores)
 
 </details>
 
@@ -404,7 +407,6 @@ python _utils/_preprocessing/_deduplicate.py \
   --filter_na_columns "['Bandgap (eV)']" \
   --filter_zero_columns "['Density (g/cm^3)']" \
   --filter_negative_columns "['Bandgap (eV)']"
-
 ```
 
 **Key arguments:**
@@ -430,7 +432,6 @@ python _utils/_preprocessing/_cleaning.py \
   --property_columns "['Bandgap (eV)', 'Density (g/cm^3)']" \
   --property1_normaliser "power_log" \
   --property2_normaliser "linear"
-
 ```
 
 > Tip: Keep a note somewhere of the lowest and highest property values for each property, so that later when you have a particular property target you can easily normalize it to the format the model expects.
@@ -469,7 +470,6 @@ python _utils/_preprocessing/_save_dataset_to_HF.py \
   --HF_username "your-username" \
   --save_hub \
   --save_local
-
 ```
 
 **Key arguments:**
@@ -498,14 +498,12 @@ Train the unconditional base models from scratch:
 
 ```bash
 python _train.py --config _config_files/training/unconditional/lematerial-small.jsonc
-
 ```
 
 **Multi-GPU Training:**
 
 ```bash
 torchrun --nproc_per_node=2 _train.py --config your_config.jsonc
-
 ```
 
 </details>
@@ -523,14 +521,12 @@ Fine-tune pretrained base models for property-guided generation:
 
 ```bash
 python _train.py --config _config_files/training/conditional/ft-slme/slme_ft-PKV-opt.jsonc
-
 ```
 
 **Multi-GPU:**
 
 ```bash
 torchrun --nproc_per_node=2 _train.py --config _config_files/training/conditional/ft-slme/slme_ft-PKV-opt.jsonc
-
 ```
 
 Loads pretrained weights as starting point (or trains from scratch), adds conditional architecture layers, and uses split optimizer with different learning rates for conditioning vs base layers.
@@ -558,7 +554,6 @@ python _utils/_generating/make_prompts.py \
   --condition_lists "0.2,0.0" "0.5,0.0" \
   --level "level_3" \
   --output_parquet "test_prompts.parquet"
-
 ```
 
 **Automatic Prompts from Dataset:**
@@ -571,7 +566,6 @@ python _utils/_generating/make_prompts.py \
   --level "level_2" \
   --condition_columns "Condition Vector" \
   --output_parquet "dataset_prompts.parquet"
-
 ```
 
 **Prompt levels `--level`:**
@@ -601,7 +595,6 @@ Each quoted string is a **complete condition vector** (comma-separated property 
 ```bash
 python _utils/_generating/generate_CIFs.py \
   --config _config_files/generation/pkv_generation.jsonc
-
 ```
 
 > You can generate with arguments from the CLI, but it's easier to use the config file. You can find a lot of examples in [`_config_files/generation`](_config_files/generation)
@@ -613,8 +606,6 @@ python _utils/_generating/generate_CIFs.py \
 * **scoring_mode:** if set to `None`, then we just generate sequences * attempts number of CIFs per Prompt/Condition pair. If set to `LOGP`, we use a perplexity based scoring method (See Note)
 * **num_return_sequences:** Batch size for generation (adjust for GPU mem.)
 * **max_return_attempts:** Total generation for each Prompt/Condition pair = max_return_attempts * num_return_sequences
-
-> Perplexity Scoring (LOGP) method: For each generation which passes basic sensibility checks and formula-structure consistency (composition tags vs actual unit cell), we compute transition scores for the token sequence, calculating the perplexity score. Lower perplexity values indicate higher model confidence in the generated sequence according to its learned probability distribution. For each prompt, we continue generation attempts until obtaining `target_valid_cifs` number of CIFs that pass validation (unless we reach the `max_attempts` number of attempts. Then the outputs are ranked by perplexity (given in an additional `Score` column) and we can filter to the most confident one for example.
 
 </details>
 
@@ -630,10 +621,9 @@ python _utils/_generating/postprocess.py \
   --input_parquet "generated_cifs.parquet" \
   --output_parquet "processed_cifs.parquet" \
   --num_workers 4
-
 ```
 
-Applies space group symmetry operations, validates structure consistency, and computes basic properties (density, volume, reduced formulas).
+Convcerts LLM outputs to standard Pymatgen style CIF format.
 
 </details>
 
@@ -664,7 +654,6 @@ python _utils/_metrics/VUN_metrics.py \
   --huggingface_dataset "c-bone/mp_20" \
   --output_parquet vun_results.parquet \
   --num_workers 8
-
 ```
 
 We can optionally set the `--check_comp_novelty` flag, which adds an `is_comp_novel` boolean column to the metrics dataframe.
@@ -687,7 +676,7 @@ python _utils/_metrics/mace_ehull.py \
   --num_workers 4
 ```
 
-Lower E-hull values indicate higher thermodynamic stability. Structures with E-hull < 0.1 eV/atom are typically considered experimentally synthesizable. (We can extend to 0.157 eV/atom if we want to account for MAE in energy predictions of this MACE model)
+Lower E_hull values indicate higher thermodynamic stability. Structures with E_hull < 0.1 eV/atom are typically considered experimentally synthesizable. (We can extend to 0.157 eV/atom if we want to account for MAE in energy predictions of this MACE model)
 
 </details>
 
@@ -725,7 +714,6 @@ docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi
 
 # Optional: run Docker without sudo, but you need to re-login or reboot for membership to apply
 sudo usermod -aG docker $USER
-
 ```
 
 Setup (first time bringing container up, if requirements.txt or dockerfile or system dependencies are changed):
@@ -763,7 +751,6 @@ make api-up-dev-build
 
 ## Production mode
 make api-up-build
-
 ```
 
 ### Usage Modes (CLI)
@@ -884,16 +871,10 @@ curl -X POST "http://localhost:8000/generate/direct" \
 
 ### API Training GPU Selection
 
-* `/train` now auto-selects launcher based on visible GPUs inside the container:
-* 1 GPU (or CPU): uses `python -m _train`
-* 2+ GPUs: uses `torchrun --nproc_per_node=<visible_gpus>`
-
-
-* You can force behavior in requests too for training:
+* You can force behavior in requests for training:
 * `"multi_gpu": false` forces single-process launch
 * `"multi_gpu": true` requests torchrun (only used when 2+ GPUs are visible)
 * `"nproc_per_node": N` caps torchrun workers when multi-GPU is active
-
 
 * For generate, all available GPUs are used
 
@@ -1001,5 +982,3 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 # Contact
 
 For questions or support, please contact cyprien.bone.24@ucl.ac.uk or raise an issue on the GitHub page.
-
-```
