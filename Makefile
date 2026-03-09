@@ -1,3 +1,6 @@
+export UID := $(shell id -u)
+export GID := $(shell id -g)
+
 COMPOSE_BASE = docker compose -f docker/docker-compose.yml
 COMPOSE_DEV = docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml
 PYTHON_ENV = conda run --no-capture-output -n crystallmv2_venv
