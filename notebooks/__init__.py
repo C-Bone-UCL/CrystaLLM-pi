@@ -21,6 +21,7 @@ def setup_notebook_environment():
         # Add to Python path
         if str(package_root) not in sys.path:
             sys.path.insert(0, str(package_root))
+            
     else:
         print(f"Current directory: {current_dir}")
 
