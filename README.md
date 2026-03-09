@@ -982,3 +982,6 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 # Contact
 
 For questions or support, please contact cyprien.bone.24@ucl.ac.uk or raise an issue on the GitHub page.
+
+# Acknowledgments
+This work has been supported by UKRI funding (EP/Y000552/1 and EP/Y014405/1).
