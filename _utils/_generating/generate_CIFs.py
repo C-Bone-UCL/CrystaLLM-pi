@@ -61,45 +61,72 @@ def check_cif(cif_str):
     except Exception:
         return False
     
-def score_output_logp(model, scores, full_sequences, sequence_idx, input_length, eos_token_id=None):
-    """Score output based on perplexity of generated tokens up to EOS if present."""
-    if scores is None or len(scores) == 0:
-        return float('inf')
-    
-    transition_scores = model.compute_transition_scores(
-        full_sequences, scores, normalize_logits=True
-    )
-    
-    if transition_scores.dim() == 2:
-        generated_scores = transition_scores[sequence_idx]
-    else:
-        generated_scores = transition_scores[0] if transition_scores.dim() > 1 else transition_scores
-    
-    original_sequence = full_sequences[sequence_idx]
+def _score_transition_slice(generated_scores, original_sequence, input_length, eos_token_id=None):
+    """Score one generated sequence from a precomputed transition-score row."""
     scoring_length = len(original_sequence)
-    
+
     if eos_token_id is not None:
         eos_positions = (original_sequence == eos_token_id).nonzero(as_tuple=True)[0]
         if eos_positions.numel() > 0:
             scoring_length = int(eos_positions[0])
-    
+
     max_score_idx = min(scoring_length - 1, len(generated_scores) - 1)
     if max_score_idx < 0:
         return float('inf')
-    
+
     generated_only_scores = generated_scores[input_length:max_score_idx + 1]
-    
+
     if len(generated_only_scores) == 0:
         return float('inf')
-    
+
     if torch.isnan(generated_only_scores).any() or torch.isinf(generated_only_scores).any():
         valid_scores = generated_only_scores[~(torch.isnan(generated_only_scores) | torch.isinf(generated_only_scores))]
         if len(valid_scores) == 0:
             return float('inf')
         generated_only_scores = valid_scores
-    
+
     mean_log_prob = torch.mean(generated_only_scores).item()
     return np.exp(-mean_log_prob)
+
+def score_output_logp(model, scores, full_sequences, sequence_idx, input_length, eos_token_id=None):
+    """Score one generated output based on transition scores up to EOS if present."""
+    batch_scores = score_outputs_logp(
+        model=model,
+        scores=scores,
+        full_sequences=full_sequences,
+        input_length=input_length,
+        eos_token_id=eos_token_id,
+    )
+    return batch_scores[sequence_idx]
+
+
+def score_outputs_logp(model, scores, full_sequences, input_length, eos_token_id=None):
+    """Score every generated output in a batch with one transition-score pass."""
+    if scores is None or len(scores) == 0:
+        if full_sequences is None:
+            return [float('inf')]
+        n_sequences = full_sequences.shape[0] if hasattr(full_sequences, "shape") else len(full_sequences)
+        return [float('inf')] * n_sequences
+
+    transition_scores = model.compute_transition_scores(
+        full_sequences, scores, normalize_logits=True
+    )
+
+    if transition_scores.dim() == 1:
+        transition_scores = transition_scores.unsqueeze(0)
+
+    scored_outputs = []
+    for sequence_idx, original_sequence in enumerate(full_sequences):
+        scored_outputs.append(
+            _score_transition_slice(
+                generated_scores=transition_scores[sequence_idx],
+                original_sequence=original_sequence,
+                input_length=input_length,
+                eos_token_id=eos_token_id,
+            )
+        )
+
+    return scored_outputs
         
 
 def init_tokenizer(pretrained_tokenizer_dir):
@@ -344,6 +371,16 @@ def generate_on_gpu(
                             output_scores=need_scores,
                             **generation_kwargs,
                         )
+
+                batch_scores = None
+                if need_scores:
+                    batch_scores = score_outputs_logp(
+                        model=model,
+                        scores=outputs.scores,
+                        full_sequences=outputs.sequences,
+                        input_length=input_ids.shape[1],
+                        eos_token_id=tokenizer.eos_token_id,
+                    )
                 
                 for seq_idx, output_seq in enumerate(outputs.sequences):
                     if torch.isnan(output_seq).any() or torch.isinf(output_seq).any():
@@ -376,7 +413,7 @@ def generate_on_gpu(
                         is_consistent = check_cif(cif_txt)
                         if is_consistent:
                             # Bypass slow logp scoring if we just want a fast validity check
-                            score = score_output_logp(model, outputs.scores, outputs.sequences, seq_idx, input_ids.shape[1], tokenizer.eos_token_id) if need_scores else -100
+                            score = batch_scores[seq_idx] if need_scores else -100
                             
                             mid = get_material_id(row, len(valid_cifs), global_offset)
                             valid_cifs.append({

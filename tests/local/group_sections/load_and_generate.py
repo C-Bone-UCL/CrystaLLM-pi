@@ -96,23 +96,61 @@ class LoadAndGenerateTests:
             output_cif_dir=None,
         )
 
-        try:
-            canonical = _direct_gen_utils.canonicalize_reduced_formulas(["TiO2"])
-            property_map = {"TiO2": {"xrd": xrd_file, "sg": "P4_2/mnm", "cond": None}}
-            specs = _direct_gen_utils.build_reduced_formula_specs(canonical, {"TiO2": [2]}, property_map, is_xrd=True, xrd_wavelength=1.54056)
-            
-            df_prompts = _load_and_generate.generate_prompts_from_specs(specs, args)
-            assert len(df_prompts) == 1, "Smoke test should create exactly one prompt"
+        canonical = _direct_gen_utils.canonicalize_reduced_formulas(["TiO2"])
+        property_map = {"TiO2": {"xrd": xrd_file, "sg": "P4_2/mnm", "cond": None}}
+        specs = _direct_gen_utils.build_reduced_formula_specs(canonical, {"TiO2": [2]}, property_map, is_xrd=True, xrd_wavelength=1.54056)
+        
+        df_prompts = _load_and_generate.generate_prompts_from_specs(specs, args)
+        assert len(df_prompts) == 1, "Smoke test should create exactly one prompt"
 
-            df_generated = _load_and_generate.generate_cifs_with_hf_model(
-                df_prompts=df_prompts,
-                hf_model_path=args.hf_model_path,
-                args=args,
+        df_generated = _load_and_generate.generate_cifs_with_hf_model(
+            df_prompts=df_prompts,
+            hf_model_path=args.hf_model_path,
+            args=args,
+        )
+        assert "generated_cif" in df_generated.columns or "Generated CIF" in df_generated.columns
+        assert len(df_generated) >= 1, "Smoke generation should return at least one row"
+
+    def test_direct_generation_logp_smoke(self):
+        """Run the README LOGP ranked Z-search flow and verify it emits a ranked CIF parquet."""
+        output_parquet = os.path.join(self.temp_dir, "readme_logp_base_sio2.parquet")
+        cmd = [
+            sys.executable,
+            os.path.join(script_dir, "_load_and_generate.py"),
+            "--hf_model_path", "c-bone/CrystaLLM-pi_base",
+            "--reduced_formula_list", "SiO2",
+            "--search_zs",
+            "--scoring_mode", "LOGP",
+            "--target_valid_cifs", "3",
+            "--num_return_sequences", "10",
+            "--output_parquet", output_parquet,
+            "--skip_postprocess",
+        ]
+
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise AssertionError(
+                f"README LOGP smoke generation failed with code {proc.returncode}\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
             )
-            assert "generated_cif" in df_generated.columns or "Generated CIF" in df_generated.columns
-            assert len(df_generated) >= 1, "Smoke generation should return at least one row"
-        except Exception as e:
-            print(f"Mattergen-XRD smoke generation failed (acceptable in offline/limited env): {e}")
+
+        assert os.path.exists(output_parquet), "Expected README LOGP smoke test to write a parquet output"
+
+        df_generated = pd.read_parquet(output_parquet)
+        assert len(df_generated) >= 1, "README LOGP smoke generation should return at least one row"
+        assert "Generated CIF" in df_generated.columns, "Expected Generated CIF output column"
+        assert "score" in df_generated.columns, "Expected LOGP score column in output"
+        assert "reduced_formula_target" in df_generated.columns, "Expected reduced formula metadata in output"
+
+        generated_cifs = df_generated["Generated CIF"].dropna().astype(str)
+        assert not generated_cifs.empty, "Expected at least one non-empty CIF"
+        assert generated_cifs.str.contains("data_").all(), "Generated outputs should look like CIF text"
+        assert generated_cifs.str.contains("_atom_site_type_symbol").all(), "Generated CIF should include atomic site data"
+
+        finite_scores = pd.to_numeric(df_generated["score"], errors="coerce")
+        finite_scores = finite_scores[finite_scores.notna()]
+        assert not finite_scores.empty, "Expected finite LOGP scores"
+        assert finite_scores.is_monotonic_increasing, "LOGP-ranked outputs should be sorted by score"
+        assert set(df_generated["reduced_formula_target"].dropna()) == {"SiO2"}, "Expected SiO2-only output for this README example"
 
     def test_multi_gpu_single_prompt_worker_resolution(self):
         """Single prompt should still enable multi-GPU when forced and GPUs are visible."""

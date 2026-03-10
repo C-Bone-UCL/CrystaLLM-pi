@@ -12,7 +12,7 @@ class GenerationPipelineTests:
         from _utils._generating.generate_CIFs import (
             init_tokenizer, setup_device, check_cif, get_model_class,
             build_generation_kwargs, remove_conditionality, parse_condition_vector,
-            get_material_id, build_output_df, score_output_logp,
+            get_material_id, build_output_df, score_output_logp, score_outputs_logp,
             DEFAULT_MAX_LENGTH, TOKENIZER_PAD_TOKEN, DEFAULT_TOKENIZER_DIR
         )
         
@@ -33,8 +33,17 @@ class GenerationPipelineTests:
     
     def test_score_output_logp(self):
         """Test perplexity scoring function."""
-        from _utils._generating.generate_CIFs import score_output_logp
+        from _utils._generating.generate_CIFs import score_output_logp, score_outputs_logp
         import torch
+
+        class MockModel:
+            def __init__(self, transition_scores):
+                self.transition_scores = transition_scores
+                self.calls = 0
+
+            def compute_transition_scores(self, full_sequences, scores, normalize_logits=True):
+                self.calls += 1
+                return self.transition_scores
         
         # Test with None/empty scores
         result_none = score_output_logp(None, None, None, 0, 0)
@@ -42,6 +51,36 @@ class GenerationPipelineTests:
         
         result_empty = score_output_logp(None, [], None, 0, 0)
         assert result_empty == float('inf'), "Empty scores should return inf"
+
+        full_sequences = torch.tensor([
+            [10, 11, 12, 99],
+            [20, 21, 99, 0],
+        ])
+        transition_scores = torch.tensor([
+            [0.0, -0.2, -0.4, -0.8],
+            [0.0, -0.5, -1.0, -2.0],
+        ])
+        mock_model = MockModel(transition_scores)
+        batch_scores = score_outputs_logp(
+            mock_model,
+            scores=[torch.tensor([0.0])],
+            full_sequences=full_sequences,
+            input_length=1,
+            eos_token_id=99,
+        )
+
+        assert mock_model.calls == 1, "Batch scoring should compute transition scores once"
+        assert len(batch_scores) == 2, "Batch scoring should return one score per sequence"
+
+        single_score = score_output_logp(
+            mock_model,
+            scores=[torch.tensor([0.0])],
+            full_sequences=full_sequences,
+            sequence_idx=1,
+            input_length=1,
+            eos_token_id=99,
+        )
+        assert single_score == batch_scores[1], "Single score helper should match batch scoring"
     
     def test_generation_kwargs_edge_cases(self):
         """Test generation kwargs with edge cases."""

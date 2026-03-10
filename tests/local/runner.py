@@ -164,6 +164,7 @@ def main():
         suite.run_test("hf_model_loading", load_gen_tests.test_hf_model_loading)
         suite.run_test("prompt_generation_from_args", load_gen_tests.test_prompt_generation_from_args)
         suite.run_test("mattergen_xrd_generation_smoke", load_gen_tests.test_mattergen_xrd_generation_smoke)
+        suite.run_test("direct_generation_logp_smoke", load_gen_tests.test_direct_generation_logp_smoke)
         suite.run_test("multi_gpu_single_prompt_worker_resolution", load_gen_tests.test_multi_gpu_single_prompt_worker_resolution)
         suite.run_test("scoring_mode_normalization_helper", load_gen_tests.test_scoring_mode_normalization_helper)
         suite.run_test("reduced_formula_prompt_expansion", load_gen_tests.test_reduced_formula_prompt_expansion)
