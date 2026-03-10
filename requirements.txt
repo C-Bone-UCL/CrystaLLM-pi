@@ -15,7 +15,7 @@ pyyaml==6.0.2
 smact==3.0.1
 matminer==0.9.3
 loralib==0.1.2
-wandb==0.19.2
+wandb==0.25.0
 codecarbon==2.8.2
 psutil==6.1.1
 pymatgen==2025.1.9
