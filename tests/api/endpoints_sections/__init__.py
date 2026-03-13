@@ -8,6 +8,7 @@ from .metrics import MetricsEndpointTests
 from .command_construction import CommandConstructionTests
 from .api_gaps import APIGapTests
 from .pipeline import PipelineIntegrationTests
+from .virtualiser import VirtualiserEndpointTests
 
 __all__ = [
     "RootEndpointTests",
@@ -19,4 +20,5 @@ __all__ = [
     "CommandConstructionTests",
     "APIGapTests",
     "PipelineIntegrationTests",
+    "VirtualiserEndpointTests",
 ]

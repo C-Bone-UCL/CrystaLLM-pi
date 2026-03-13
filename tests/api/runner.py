@@ -15,6 +15,7 @@ from tests.api.endpoints import (
     CommandConstructionTests,
     APIGapTests,
     PipelineIntegrationTests,
+    VirtualiserEndpointTests,
 )
 
 def run_all_tests(suite: APITestSuite, run_integration: bool = False, verbose: bool = False):
@@ -75,6 +76,13 @@ def run_all_tests(suite: APITestSuite, run_integration: bool = False, verbose: b
     metrics_tests = MetricsEndpointTests(suite.client, suite.temp_dir, test_data, mode="smoke")
     suite.run_test("vun_metrics", metrics_tests.test_vun_metrics)
     suite.run_test("ehull_metrics", metrics_tests.test_ehull_metrics)
+
+    # Virtualiser endpoint tests
+    virtualiser_tests = VirtualiserEndpointTests(suite.client, suite.temp_dir, test_data, mode="smoke")
+    suite.run_test("virtualise_inline_pairs", virtualiser_tests.test_virtualise_with_inline_pairs)
+    suite.run_test("virtualise_config_file", virtualiser_tests.test_virtualise_with_config_file)
+    suite.run_test("virtualise_missing_pairs_and_config", virtualiser_tests.test_virtualise_missing_pairs_and_config)
+    suite.run_test("virtualise_missing_required_fields", virtualiser_tests.test_virtualise_missing_required_fields)
     
     # Command construction tests
     cmd_tests = CommandConstructionTests(suite.client, suite.temp_dir)

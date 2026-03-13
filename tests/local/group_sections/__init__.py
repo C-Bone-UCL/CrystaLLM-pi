@@ -11,6 +11,7 @@ from .evaluation_pipeline import EvaluationPipelineTests
 from .data_utils import DataUtilsTests
 from .integration import IntegrationTests
 from .load_and_generate import LoadAndGenerateTests
+from .virtualiser import VirtualiserTests
 
 __all__ = [
     "DataProcessingTests",
@@ -25,4 +26,5 @@ __all__ = [
     "DataUtilsTests",
     "IntegrationTests",
     "LoadAndGenerateTests",
+    "VirtualiserTests",
 ]

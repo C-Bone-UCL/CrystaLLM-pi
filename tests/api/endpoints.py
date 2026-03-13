@@ -9,6 +9,7 @@ from tests.api.endpoints_sections import MetricsEndpointTests
 from tests.api.endpoints_sections import CommandConstructionTests
 from tests.api.endpoints_sections import APIGapTests
 from tests.api.endpoints_sections import PipelineIntegrationTests
+from tests.api.endpoints_sections import VirtualiserEndpointTests
 
 __all__ = [
     "RootEndpointTests",
@@ -20,4 +21,5 @@ __all__ = [
     "CommandConstructionTests",
     "APIGapTests",
     "PipelineIntegrationTests",
+    "VirtualiserEndpointTests",
 ]
