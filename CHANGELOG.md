@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v1.2.0] - 2026-03-13
+
+### Features and Enhancements
+
+- **Virtual Crystal Generator**: Added `_utils/_virtualiser/` subpackage implementing the `crystal_virtualiser` tool (developed by Dr Ricardo Grau-Crespo). Post-generation utility that converts ordered CIF structures from the model into disordered virtual crystals with promoted symmetry. Element pairs are replaced with fractional occupancies matching the global composition ratio, and the structure is refined to its higher-symmetry parent using spglib via pymatgen.
+- **New API Endpoint**: `POST /virtualise` exposes the virtualiser via the REST API, accepting either inline `virtual_pairs` or a YAML config file path.
+
+### Repo Structure and Testing
+
+- New local test section `VirtualiserTests` covering pair fraction calculation, structure virtualisation, symmetry promotion, config loading, and full CIF output.
+- New API test section `VirtualiserEndpointTests` with smoke tests for inline pairs, config file mode, and validation errors.
+
+### Documentation
+
+- New **Virtual Crystal Generation** section under Quick Start in the README with CLI usage and an end-to-end example.
+- Two new API quickstart examples for the `/virtualise` endpoint (inline pairs and config file modes).
+
+---
+
 ## [v1.1.0] - 2026-03-02
 
 ### Features and Enhancements

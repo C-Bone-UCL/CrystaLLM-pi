@@ -20,6 +20,7 @@ from _utils._api_utils.training import register_training_routes
 from _utils._api_utils.generation import register_generation_routes
 from _utils._api_utils.metrics import register_metrics_routes
 from _utils._api_utils.jobs import register_jobs_routes
+from _utils._api_utils.virtualiser import register_virtualiser_routes
 
 
 app = FastAPI(
@@ -298,6 +299,7 @@ register_preprocessing_routes(app, _create_pending_job, run_command)
 register_training_routes(app, _create_pending_job, run_command)
 register_generation_routes(app, _create_pending_job, run_command)
 register_metrics_routes(app, _create_pending_job, run_command)
+register_virtualiser_routes(app, _create_pending_job, run_command)
 register_jobs_routes(app, _load_job, _list_jobs, _cancel_job)
 
 
@@ -329,6 +331,9 @@ async def root():
             "metrics": [
                 "/metrics/vun",
                 "/metrics/ehull",
+            ],
+            "virtualiser": [
+                "/virtualise",
             ],
             "jobs": [
                 "/jobs",
