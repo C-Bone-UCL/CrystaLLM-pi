@@ -6,22 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [v1.2.0] - 2026-03-13
+## [v1.2.0] - 2026-03-16
 
 ### Features and Enhancements
 
-- **Virtual Crystal Generator**: Added `_utils/_virtualiser/` subpackage implementing the `crystal_virtualiser` tool (developed by Dr Ricardo Grau-Crespo). Post-generation utility that converts ordered CIF structures from the model into disordered virtual crystals with promoted symmetry. Element pairs are replaced with fractional occupancies matching the global composition ratio, and the structure is refined to its higher-symmetry parent using spglib via pymatgen.
-- **New API Endpoint**: `POST /virtualise` exposes the virtualiser via the REST API, accepting either inline `virtual_pairs` or a YAML config file path.
+- **Virtual Crystal Generator**: For disordered material (partial occupancy) generation support. Added `_utils/_virtualiser/` subpackage implementing the `crystal_virtualiser` tool (developed by [Dr Ricardo Grau-Crespo](https://github.com/rgraucrespo)). Post-generation utility that converts ordered CIF structures from the model into disordered virtual crystals with promoted symmetry. Element pairs are replaced with fractional occupancies matching the global composition ratio, and the structure is refined to its higher-symmetry parent using spglib via pymatgen. Included passing tests, API endpoints, README update with examples.
 
-### Repo Structure and Testing
-
-- New local test section `VirtualiserTests` covering pair fraction calculation, structure virtualisation, symmetry promotion, config loading, and full CIF output.
-- New API test section `VirtualiserEndpointTests` with smoke tests for inline pairs, config file mode, and validation errors.
-
-### Documentation
-
-- New **Virtual Crystal Generation** section under Quick Start in the README with CLI usage and an end-to-end example.
-- Two new API quickstart examples for the `/virtualise` endpoint (inline pairs and config file modes).
+### Efficiency improvements & Dependency Changes
+- **In Generation Script**: Fixed redundant transition scoring calls in generate with perplexity ranking, improves generation speed without affecting any outputs or score outputs (backwards compatible)
+- **W&B Update**: To v0.25.0
 
 ---
 

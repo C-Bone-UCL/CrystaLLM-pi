@@ -367,18 +367,12 @@ python _load_and_generate.py \
 
 <br>
 
-## Virtual Crystal Generation (Post-processing)
+# Virtual Crystal Generation (Post-processing)
 
-After generating ordered CIF structures, you can convert them to **disordered virtual crystals** using the `crystal_virtualiser` utility. This replaces specified element pairs with fractional occupancies at shared sites and promotes the structure to its higher-symmetry parent — useful for comparing against experimental diffraction data or feeding disordered structures into further analysis.
+After generating ordered CIF structures, you can convert them to **disordered virtual crystals** using the [`crystal_virtualiser`](_utils/_virtualiser/crystal_virtualiser.py) utility. This replaces specified element pairs with fractional occupancies at shared sites and promotes the structure to its higher-symmetry parent with spglib. Useful for comparing against experimental diffraction data or estimating a disordered structure candidate.
 
-**Script:** `_utils/_virtualiser/crystal_virtualiser.py`
-
-**What it does:**
-
-1. Reads an ordered CIF (e.g. from `_load_and_generate.py`)
-2. Replaces each site of a specified element pair with a mixed occupancy matching the global composition ratio
-3. Promotes the structure to its higher-symmetry parent using spglib via pymatgen
-4. Writes the resulting virtual crystal as a CIF
+<details>
+<summary>Example Usage and Config</summary>
 
 **Config file (YAML):**
 
@@ -403,11 +397,13 @@ python _load_and_generate.py \
     --output_cif_dir outputs/
 
 # Virtualise the result
-python -m _utils._virtualiser.crystal_virtualiser \
+python _utils/_virtualiser/crystal_virtualiser.py \
     --in outputs/Mg3ZnO4.cif \
     --config config.yaml \
     --out outputs/Mg3ZnO4_virtual.cif
 ```
+
+</details>
 
 <br>
 
@@ -913,7 +909,7 @@ curl -X POST "http://localhost:8000/generate/direct" \
 
 ### Virtualise a generated CIF (inline element pairs)
 
-Convert an ordered CIF to a disordered virtual crystal with promoted symmetry. The `virtual_pairs` field specifies which element pairs to merge into mixed-occupancy sites.
+Convert an ordered CIF to a disordered virtual crystal using inline matching pairs arrays:
 
 ```bash
 curl -X POST "http://localhost:8000/virtualise" \
@@ -929,7 +925,7 @@ curl -X POST "http://localhost:8000/virtualise" \
 
 ### Virtualise a generated CIF (YAML config file)
 
-Alternatively, supply a YAML config file (useful when virtualising several pairs or reusing settings):
+Alternatively, supply a YAML config file:
 
 ```bash
 curl -X POST "http://localhost:8000/virtualise" \
