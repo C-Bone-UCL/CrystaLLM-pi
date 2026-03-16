@@ -367,6 +367,50 @@ python _load_and_generate.py \
 
 <br>
 
+## Virtual Crystal Generation (Post-processing)
+
+After generating ordered CIF structures, you can convert them to **disordered virtual crystals** using the `crystal_virtualiser` utility. This replaces specified element pairs with fractional occupancies at shared sites and promotes the structure to its higher-symmetry parent — useful for comparing against experimental diffraction data or feeding disordered structures into further analysis.
+
+**Script:** `_utils/_virtualiser/crystal_virtualiser.py`
+
+**What it does:**
+
+1. Reads an ordered CIF (e.g. from `_load_and_generate.py`)
+2. Replaces each site of a specified element pair with a mixed occupancy matching the global composition ratio
+3. Promotes the structure to its higher-symmetry parent using spglib via pymatgen
+4. Writes the resulting virtual crystal as a CIF
+
+**Config file (YAML):**
+
+```yaml
+symprec: 0.003
+angle_tolerance: 0.5
+virtual_pairs:
+  - [Mg, Zn]
+```
+
+**Example:**
+
+```bash
+# Generate an ordered structure
+python _load_and_generate.py \
+    --hf_model_path "c-bone/CrystaLLM-pi_base" \
+    --reduced_formula_list "Mg3ZnO4" \
+    --z_list "1" \
+    --num_return_sequences 10 \
+    --scoring_mode "LOGP" \
+    --target_valid_cifs 1 \
+    --output_cif_dir outputs/
+
+# Virtualise the result
+python -m _utils._virtualiser.crystal_virtualiser \
+    --in outputs/Mg3ZnO4.cif \
+    --config config.yaml \
+    --out outputs/Mg3ZnO4_virtual.cif
+```
+
+<br>
+
 # Training, Generating & Evaluating from Scratch
 
 Complete pipeline for training your own models from data preprocessing to evaluation. All training and generation parameters and options are defined in [`_args.py`](_args.py). Training & generating should be done via configuration files (`.jsonc` format) which specify all necessary parameters.
@@ -864,6 +908,36 @@ curl -X POST "http://localhost:8000/generate/direct" \
     "scoring_mode": "LOGP",
     "temperature": 1.0,
     "output_parquet": "/app/outputs/xrd_mattergen_logp.parquet"
+  }'
+```
+
+### Virtualise a generated CIF (inline element pairs)
+
+Convert an ordered CIF to a disordered virtual crystal with promoted symmetry. The `virtual_pairs` field specifies which element pairs to merge into mixed-occupancy sites.
+
+```bash
+curl -X POST "http://localhost:8000/virtualise" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input_cif": "/app/outputs/Mg3ZnO4.cif",
+    "output_cif": "/app/outputs/Mg3ZnO4_virtual.cif",
+    "virtual_pairs": [["Mg", "Zn"]],
+    "symprec": 0.003,
+    "angle_tolerance": 0.5
+  }'
+```
+
+### Virtualise a generated CIF (YAML config file)
+
+Alternatively, supply a YAML config file (useful when virtualising several pairs or reusing settings):
+
+```bash
+curl -X POST "http://localhost:8000/virtualise" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input_cif": "/app/outputs/FeSbO4_ordered.cif",
+    "output_cif": "/app/outputs/FeSbO4_virtual.cif",
+    "config_file": "/app/data/virtualiser_config.yaml"
   }'
 ```
 

@@ -19,6 +19,7 @@ from tests.local.groups import (
     EvaluationPipelineTests,
     IntegrationTests,
     LoadAndGenerateTests,
+    VirtualiserTests,
 )
 
 DEVICE = None
@@ -75,6 +76,7 @@ def main():
         eval_pipeline_tests = EvaluationPipelineTests(suite.temp_dir, test_data)
         load_gen_tests = LoadAndGenerateTests(suite.temp_dir, test_data)
         integration_tests = IntegrationTests(suite.temp_dir, test_data)
+        virtualiser_tests = VirtualiserTests(suite.temp_dir, test_data)
         
         # Execute tests
         print("Running CrystaLLM-pi Comprehensive Test Suite...")
@@ -178,7 +180,18 @@ def main():
         suite.run_test("minimal_training_loop", integration_tests.test_minimal_training_loop)
         suite.run_test("conditional_training_loop", integration_tests.test_conditional_training_loop)
         suite.run_test("generation_after_training", integration_tests.test_generation_after_training)
-        
+
+        # Virtualiser tests
+        print("\n🔬 Virtualiser Tests:")
+        suite.run_test("virtualiser_import", virtualiser_tests.test_import)
+        suite.run_test("virtualiser_pair_fractions", virtualiser_tests.test_compute_pair_fractions)
+        suite.run_test("virtualiser_pair_fractions_absent", virtualiser_tests.test_compute_pair_fractions_absent_element)
+        suite.run_test("virtualiser_virtualise_structure", virtualiser_tests.test_virtualise_structure)
+        suite.run_test("virtualiser_preserves_composition", virtualiser_tests.test_virtualise_structure_preserves_composition)
+        suite.run_test("virtualiser_promote_symmetry", virtualiser_tests.test_promote_symmetry)
+        suite.run_test("virtualiser_load_config", virtualiser_tests.test_load_config)
+        suite.run_test("virtualiser_full_pipeline_to_cif", virtualiser_tests.test_full_pipeline_to_cif)
+
         # Report results
         success = suite.report_results()
         return 0 if success else 1
