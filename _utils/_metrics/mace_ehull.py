@@ -123,7 +123,8 @@ def main():
                        help="Path to input .parquet file with CIF column")
     parser.add_argument("--output_parquet", required=True, 
                        help="Path to output .parquet file")
-    parser.add_argument("--mp_data", default="mp_computed_structure_entries.json.gz",
+    parser.add_argument("--mp_data",
+                       default=os.path.join(os.environ.get("API_RUNTIME_ROOT", "/tmp"), "mp_computed_structure_entries.json.gz"),
                        help="Path to MP computed structure entries JSON.gz file (will download if missing)")
     parser.add_argument("--cif_column", default="Generated CIF", 
                        help="Name of CIF column in parquet file")
