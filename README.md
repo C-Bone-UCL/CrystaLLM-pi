@@ -763,11 +763,11 @@ Setup (first time bringing container up, if requirements.txt or dockerfile or sy
 
 ## In command line
 ### Copy the template to your local, git-ignored .env file (only edit the .env)
-cp docker/.env.example .env
+cp docker/.env.example docker/.env
 
 ### inject your current host machine's UID and GID into the .env file
-sed -i "s/^UID=.*/UID=$(id -u)/" .env
-sed -i "s/^GID=.*/GID=$(id -g)/" .env
+sed -i "s/^UID=.*/UID=$(id -u)/" docker/.env
+sed -i "s/^GID=.*/GID=$(id -g)/" docker/.env
 
 ## In the .env file
 ### pick GPUs exposed to the API container
@@ -997,7 +997,7 @@ make api-apptainer-build
 make api-down
 
 # Export the keys Apptainer needs
-set -a; source <(grep -E '^(HF_KEY|WANDB_KEY)=' .env); set +a
+set -a; source <(grep -E '^(HF_KEY|WANDB_KEY)=' docker/.env); set +a
 
 # warning about api_keys.jsonc is harmless here
 make api-apptainer-run
