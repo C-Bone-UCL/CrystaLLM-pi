@@ -3,6 +3,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      network: host
     image: crystallm-api:local
     ports:
       - "8000:8000"

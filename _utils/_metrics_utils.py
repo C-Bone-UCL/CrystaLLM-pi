@@ -403,7 +403,7 @@ def download_mp_data(mp_data_path):
         return
     
     print("MP data file not found. Downloading from matbench_discovery...")
-    url = "https://figshare.com/ndownloader/files/40344436" 
+    url = "https://ndownloader.figshare.com/files/40344436"
     
     print("Downloading MP computed structure entries...")
     print("File size: ~170 MB compressed...")
