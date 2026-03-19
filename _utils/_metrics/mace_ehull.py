@@ -135,6 +135,13 @@ def main():
                        help="Batch size for processing")
     
     args = parser.parse_args()
+
+    # Auto-migrate legacy data file to the new directory if needed
+    old_file = "mp_computed_structure_entries.json.gz"
+    if os.path.exists(old_file) and not os.path.exists(args.mp_data):
+        os.makedirs(os.path.dirname(args.mp_data), exist_ok=True)
+        os.rename(old_file, args.mp_data)
+        print(f"Notice: Auto-migrated legacy data file to {args.mp_data}")
     
     # Download MP data if it doesn't exist
     download_mp_data(args.mp_data)
