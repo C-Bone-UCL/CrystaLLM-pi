@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v1.2.1] - 2026-03-24
+
+### Features and Enhancements
+
+- **Slider direct-generation fallback without XRD files**: Updated `_load_and_generate.py` so Slider models (including `c-bone/CrystaLLM-pi_Mattergen-XRD` and `c-bone/CrystaLLM-pi_COD-XRD`) can run even when `--xrd_files` arent provided. These seem to be better than the base model even for conditionless generation.
+
+---
+
 ## [v1.2.0] - 2026-03-16
 
 ### Features and Enhancements

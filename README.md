@@ -204,7 +204,7 @@ The script automatically:
 4. **Generates structures** using the appropriate conditional model architecture (automatically inferred).
 5. **Validates & Ranks** outputs based on structural integrity and optional LogP perplexity scoring.
 
-Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). XRD models support direct experimental peak conditioning via `--xrd_files`.
+Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). Slider models (COD-XRD, Mattergen-XRD) support direct peak conditioning via `--xrd_files`, and can also run without `--xrd_files` by using missing conditioning values.
 
 ## Available Pre-trained Models
 
@@ -217,11 +217,13 @@ Each model can be used by providing a list of reduced formulas (`--reduced_formu
 
 <br>
 
-> For XRD conditioning, you must provide **pre-picked peak data** (not raw continuous diffraction profiles) in `.csv`, `.xy`, `.txt`, or `.dat` formats via the `--xrd_files` argument. Many open-source programs do this (e.g., [fityk](https://fityk.nieto.pl/) for academic use). This is because different XRD profiles can require different processing parameters, so automating this step is quite difficult.
+> For true XRD conditioning, provide **pre-picked peak data** (not raw continuous diffraction profiles) in `.csv`, `.xy`, `.txt`, or `.dat` formats via `--xrd_files`. Many open-source programs do this (e.g., [fityk](https://fityk.nieto.pl/) for academic use). This is because different XRD profiles can require different processing parameters, so automating this step is quite difficult.
 > 
 > The internal preprocessing engine will automatically convert your picked peaks to the expected CuKa wavelength (if you provide your instrument's primary radiation wavelength via `--xrd_wavelength`), filter valid ranges, normalize intensities, and select the top peaks for model conditioning.
 >
 > If there are redundant peaks due to additional radiation sources, these need to be removed as well (eg. if sample irradiated with K-alpha1 and K-alpha2, remove K-alpha2 peaks)
+>
+> If `--xrd_files` is omitted for a Slider model, generation still runs with missing conditioning values
 
 ## Generation Examples
 
@@ -341,6 +343,22 @@ python _load_and_generate.py \
     --scoring_mode "LOGP" \
     --target_valid_cifs 3 \
     --num_return_sequences 5 \
+    --output_cif_dir xrd_2_struct/
+```
+
+**Slider with No XRD Inputs**
+
+Run a Slider model without providing `--xrd_files`. This uses missing conditioning values and seems to work better than the base model for conditionless generation.
+
+```bash
+python _load_and_generate.py \
+    --hf_model_path "c-bone/CrystaLLM-pi_Mattergen-XRD" \
+    --reduced_formula_list "NaCl" \
+    --search_zs \
+    --num_return_sequences 5 \
+    --max_return_attempts 1 \
+    --target_valid_cifs 1 \
+    --scoring_mode "logp" \
     --output_cif_dir xrd_2_struct/
 ```
 
@@ -904,6 +922,23 @@ curl -X POST "http://localhost:8000/generate/direct" \
     "scoring_mode": "LOGP",
     "temperature": 1.0,
     "output_parquet": "/app/outputs/xrd_mattergen_logp.parquet"
+  }'
+```
+
+### Direct generation (Mattergen-XRD without xrd_files)
+
+```bash
+curl -X POST "http://localhost:8000/generate/direct" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "hf_model_path": "c-bone/CrystaLLM-pi_Mattergen-XRD",
+    "reduced_formula_list": "NaCl",
+    "search_zs": true,
+    "num_return_sequences": 5,
+    "max_return_attempts": 1,
+    "target_valid_cifs": 1,
+    "scoring_mode": "logp",
+    "output_parquet": "/app/outputs/mattergen_no_xrd.parquet"
   }'
 ```
 

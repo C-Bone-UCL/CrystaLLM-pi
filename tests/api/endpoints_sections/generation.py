@@ -153,6 +153,27 @@ class GenerationEndpointTests(IntegrationMixin):
         assert "--scoring_mode LOGP" in cmd
         assert "--target_valid_cifs 5" in cmd
 
+    def test_direct_generation_mattergen_xrd_without_xrd_files(self):
+        """Mattergen-XRD should still dispatch without xrd_files for missing Slider conditioning."""
+        if self._should_skip_integration():
+            return
+
+        output_parquet = self._test_output("gen_mattergen_xrd_no_xrd.parquet")
+        response = self.client.post("/generate/direct", json={
+            "hf_model_path": "c-bone/CrystaLLM-pi_Mattergen-XRD",
+            "output_parquet": output_parquet,
+            "reduced_formula_list": "TiO2",
+            "z_list": "2",
+            "num_return_sequences": 2,
+            "target_valid_cifs": 1,
+        })
+        data = self._wait_and_assert(response, job_name="generate_mattergen_xrd_no_xrd", timeout=600)
+        cmd = data["command"]
+        assert "c-bone/CrystaLLM-pi_Mattergen-XRD" in cmd
+        assert "--reduced_formula_list TiO2" in cmd
+        assert "--z_list 2" in cmd
+        assert "--xrd_files" not in cmd
+
     def test_direct_generation_raw_xrd_conversion(self):
         """Test direct generation handles raw XRD files and wavelength conversion."""
         if self._should_skip_integration():

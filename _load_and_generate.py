@@ -24,7 +24,6 @@ from _utils._generating.postprocess import process_dataframe
 from _utils import extract_formula_nonreduced
 from _utils._direct_gen_utils import (
     MODEL_INFO,
-    is_xrd_model,
     get_hf_model_max_length,
     resolve_multi_gpu_workers,
     parse_reduced_formula_list_arg,
@@ -213,11 +212,14 @@ def main():
             if len(z_list) != n_formulas:
                 raise ValueError(f"Expected {n_formulas} Z integers, got {len(z_list)}.")
         
-        is_xrd = is_xrd_model(args.hf_model_path)
-        if is_xrd and not args.xrd_files:
-            raise ValueError("XRD model requires --xrd_files mapped to formulas.")
+        is_slider_model = model_info["model_type"] == "Slider"
+        if is_slider_model and not args.xrd_files:
+            print(
+                "\nWarning: Slider model selected without --xrd_files. "
+                "Generation will run with missing conditioning values."
+            )
 
-        if args.condition_lists and not is_xrd:
+        if args.condition_lists and not is_slider_model:
             formula_cond_map = build_formula_condition_map(canonical_formulas, args.condition_lists, args.hf_model_path)
         else:
             formula_cond_map = {}
@@ -242,7 +244,7 @@ def main():
                 if not active_formulas: break
                 print(f"\nSearching Z={z} for {len(active_formulas)} formulas...")
                 z_mapping = {f: [z] for f in active_formulas}
-                specs = build_reduced_formula_specs(active_formulas, z_mapping, property_map, is_xrd, args.xrd_wavelength)
+                specs = build_reduced_formula_specs(active_formulas, z_mapping, property_map, is_slider_model, args.xrd_wavelength)
                 df_prompts = generate_prompts_from_specs(specs, args)
                 
                 worker_count = resolve_multi_gpu_workers(args, len(df_prompts))
@@ -274,7 +276,7 @@ def main():
             else:
                 z_mapping = {f: [z] for f, z in zip(canonical_formulas, z_list)} if args.z_list else {f: [1] for f in canonical_formulas}
 
-            specs = build_reduced_formula_specs(canonical_formulas, z_mapping, property_map, is_xrd, args.xrd_wavelength)
+            specs = build_reduced_formula_specs(canonical_formulas, z_mapping, property_map, is_slider_model, args.xrd_wavelength)
             
             df_prompts = generate_prompts_from_specs(specs, args)
 

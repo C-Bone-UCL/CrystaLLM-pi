@@ -462,7 +462,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_parquet", required=True, help="Path to .parquet file with generated structures")
     parser.add_argument("--num_gens", default=0, type=int, help="Max generations per structure (0=all)")
-    parser.add_argument("--num_workers", type=int, default=1, help="Workers for parallel processing")
+    parser.add_argument("--num_workers", type=int, default=2, help="Workers for parallel processing")
     parser.add_argument("--output_parquet", required=True, type=str, help="Output path for statistics")
     parser.add_argument("--ref_parquet", default=None, type=str, help="Override true CIFs from this DB")
     parser.add_argument("--validity_check", type=str, choices=["diffcsp", "crystallm", "none"], default="diffcsp", help="Validity check to use: 'diffcsp' for smact+structure (benchmark), 'crystallm' for to avoid overly strict checks")
@@ -479,12 +479,8 @@ if __name__ == "__main__":
     # Load generated CIFs
     df = pd.read_parquet(args.input_parquet)
 
-    if len(df) > 100000 and args.num_workers != 1:
-        args.num_workers = max(1, multiprocessing.cpu_count() // 6)
-    else:
-        args.num_workers = max(1, multiprocessing.cpu_count() // 3)
-
-    print(f"Using {args.num_workers} workers for parallel processing (based on input size)")
+    args.num_workers = max(1, args.num_workers)
+    print(f"Using {args.num_workers} workers")
     
     # Check if score column exists
     has_score_column = "score" in df.columns
@@ -551,14 +547,9 @@ if __name__ == "__main__":
         print(f"Using true CIFs from input parquet")
 
     # Process structures and compute metrics
-    # Conservative parallelization to avoid memory issues with large structures
-    max_workers = max(1, multiprocessing.cpu_count() // 4)
-    args.num_workers = min(args.num_workers, max_workers)
     gen_structs, true_structs, score_data = get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, args.num_workers, has_rank_column, id_to_scores)
-    
-    # Use half the workers for structure comparison to balance load
-    comparison_workers = max(1, args.num_workers // 2)
-    metrics, stats_df = get_match_rate_and_rms(gen_structs, true_structs, struct_matcher, args, score_data, comparison_workers)
+
+    metrics, stats_df = get_match_rate_and_rms(gen_structs, true_structs, struct_matcher, args, score_data, args.num_workers)
 
     # Save and display results
     stats_df.to_parquet(args.output_parquet, index=False)

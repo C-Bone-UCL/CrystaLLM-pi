@@ -88,7 +88,7 @@ class LoadAndGenerateTests:
             max_return_attempts=1,
             max_samples=1,
             scoring_mode="None",
-            target_valid_cifs=1,
+            target_valid_cifs=0,
             num_workers=1,
             skip_postprocess=True,
             verbose=False,
@@ -108,8 +108,62 @@ class LoadAndGenerateTests:
             hf_model_path=args.hf_model_path,
             args=args,
         )
-        assert "generated_cif" in df_generated.columns or "Generated CIF" in df_generated.columns
-        assert len(df_generated) >= 1, "Smoke generation should return at least one row"
+        assert len(df_generated) >= 1, (
+            "Smoke generation returned no rows. "
+            "This test now runs with target_valid_cifs=0, so empty output usually means generation failed rather than filtering."
+        )
+        assert "Generated CIF" in df_generated.columns, (
+            f"Expected 'Generated CIF' column, got columns={list(df_generated.columns)}"
+        )
+
+    def test_mattergen_xrd_allows_missing_xrd_inputs(self):
+        """Mattergen-XRD should run without xrd_files by passing missing conditioning."""
+        import _load_and_generate
+        from _utils import _direct_gen_utils
+
+        canonical = _direct_gen_utils.canonicalize_reduced_formulas(["TiO2"])
+        property_map = {"TiO2": {"xrd": None, "sg": None, "cond": None}}
+        specs = _direct_gen_utils.build_reduced_formula_specs(
+            canonical,
+            {"TiO2": [2]},
+            property_map,
+            is_xrd=True,
+            xrd_wavelength=1.54056,
+        )
+        assert specs[0]["condition_vector"] is None
+
+        output_parquet = os.path.join(self.temp_dir, "mattergen_no_xrd.parquet")
+        original_argv = sys.argv[:]
+        original_generate = _load_and_generate.generate_cifs_with_hf_model
+
+        def _fake_generate(df_prompts, hf_model_path, args, worker_count=1):
+            rows = []
+            for _, row in df_prompts.iterrows():
+                rows.append({
+                    "Material ID": f"{row['Material ID']}_1",
+                    "Generated CIF": "data_test\n_atom_site_type_symbol",
+                })
+            return pd.DataFrame(rows)
+
+        try:
+            _load_and_generate.generate_cifs_with_hf_model = _fake_generate
+            sys.argv = [
+                "_load_and_generate.py",
+                "--hf_model_path", "c-bone/CrystaLLM-pi_Mattergen-XRD",
+                "--reduced_formula_list", "TiO2",
+                "--z_list", "2",
+                "--output_parquet", output_parquet,
+                "--skip_postprocess",
+            ]
+            _load_and_generate.main()
+
+            assert os.path.exists(output_parquet), "Expected output parquet without XRD inputs"
+            df = pd.read_parquet(output_parquet)
+            assert len(df) == 1
+            assert "Generated CIF" in df.columns
+        finally:
+            sys.argv = original_argv
+            _load_and_generate.generate_cifs_with_hf_model = original_generate
 
     def test_direct_generation_logp_smoke(self):
         """Run the README LOGP ranked Z-search flow and verify it emits a ranked CIF parquet."""
