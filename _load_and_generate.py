@@ -43,7 +43,7 @@ DO_SAMPLE = "True"
 TOP_K = 15
 TOP_P = 0.95
 GEN_MAX_LENGTH = 1024
-DEFAULT_Z_LIST = [1, 2, 3, 4]
+DEFAULT_Z_LIST = [1, 2, 3, 4, 6]
 
 def _postprocess_non_empty_cifs(df: pd.DataFrame, num_workers: int, column_name: str = "Generated CIF") -> pd.DataFrame:
     """Postprocess only non-empty CIF rows and preserve original row order."""
