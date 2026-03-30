@@ -215,6 +215,7 @@ def main():
     
     suite = APITestSuite(args.hf_key, args.wandb_key, args.docker_url)
     suite.setup()
+    fatal_error = None
     
     try:
         run_all_tests(suite, run_integration=args.integration, verbose=args.verbose)
@@ -222,10 +223,14 @@ def main():
         print(f"\nFatal error during tests: {e}")
         import traceback
         traceback.print_exc()
+        fatal_error = e
     finally:
         suite.cleanup()
-    
-    return suite.report_results()
+
+    exit_code = suite.report_results()
+    if fatal_error is not None:
+        return 1
+    return exit_code
 
 
 if __name__ == "__main__":
