@@ -526,7 +526,7 @@ def run_generation_pool(
 
                 # Map the goal back to the correct parameter for the worker
                 l_target = local_goal if check_validity else 0
-                l_attempts = max_return_attempts if not check_validity else local_goal
+                l_attempts = local_goal
 
                 results.append(pool.apply_async(
                     generate_on_gpu,
@@ -629,7 +629,14 @@ def main():
     
     target_valid_cifs = getattr(args, 'target_valid_cifs', 0)
     check_validity = (scoring_mode != "none") or (target_valid_cifs > 0)
-    
+
+    if target_valid_cifs == 1 and args.max_return_attempts > 1:
+        print(
+            f"note: target_valid_cifs=1 (default): early-stop fires after the first valid CIF per prompt. "
+            f"With max_return_attempts={args.max_return_attempts}, the remaining attempts are discarded. "
+            f"To collect all generated CIFs without early-stopping, pass --target_valid_cifs 0."
+        )
+
     if not check_validity:
         target_per_prompt = generation_kwargs.get("num_return_sequences", 1) * args.max_return_attempts
         print(f"Target CIFs per prompt: {target_per_prompt} (Indiscriminate Batch)")
