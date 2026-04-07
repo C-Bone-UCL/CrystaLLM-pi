@@ -12,127 +12,81 @@ import argparse
 import os
 import sys
 import pandas as pd
-import numpy as np
 
 from datasets import Dataset, DatasetDict
 from huggingface_hub import login
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from _utils import load_api_keys
+from _utils import load_api_keys, assign_split_labels
 
 # Default configuration
 DEFAULT_TEST_SIZE = 0.0
 DEFAULT_VALID_SIZE = 0.0
 HF_KEY_PATH = 'API_keys.jsonc'
 
-def create_dataset_splits(df, test_size, valid_size, duplicates_mode=False):
+
+def _normalize_object_columns_for_hf(df):
+    """Keep list-like columns intact and normalize numpy array cells to Python lists."""
+    object_columns = df.select_dtypes(include=["object"]).columns
+    for col in object_columns:
+        sample = df[col].dropna().head(32)
+        if sample.empty:
+            continue
+
+        if sample.map(lambda x: hasattr(x, "tolist") and not isinstance(x, list)).any():
+            df[col] = df[col].map(lambda x: x.tolist() if hasattr(x, "tolist") and not isinstance(x, list) else x)
+
+    return df
+
+
+def _create_datasetdict_from_split_column(df):
+    """Build DatasetDict from an existing Split column."""
+    print("Splitting dataset according to the 'Split' column")
+
+    split_series = df["Split"].astype(str).str.lower()
+    available_splits = set(split_series.unique())
+    splits = {}
+
+    if "train" in available_splits:
+        df_train = df[split_series == "train"].drop(columns=["Split"]).reset_index(drop=True)
+        splits["train"] = Dataset.from_pandas(df_train)
+
+    if "val" in available_splits:
+        df_valid = df[split_series == "val"].drop(columns=["Split"]).reset_index(drop=True)
+        splits["validation"] = Dataset.from_pandas(df_valid)
+
+    if "test" in available_splits:
+        df_test = df[split_series == "test"].drop(columns=["Split"]).reset_index(drop=True)
+        splits["test"] = Dataset.from_pandas(df_test)
+
+    if "train" not in splits:
+        raise ValueError("Split column must contain at least one 'train' row")
+
+    if len(splits) > 1:
+        train_features = splits["train"].features
+        for split_name in list(splits):
+            if split_name != "train":
+                splits[split_name] = splits[split_name].cast(train_features)
+
+    return DatasetDict(splits)
+
+def create_dataset_splits(df, test_size, valid_size, duplicates_mode=False, seed=1):
     """Create train/val/test splits from DataFrame."""
-    if duplicates_mode:
-        if 'Material ID' not in df.columns:
-            raise ValueError("When using duplicates mode, the 'Material ID' column must be present")
-        
-        print("Duplicates mode enabled: ensuring materials are not split across train/val/test sets")
-        unique_materials = df['Material ID'].unique()
-        np.random.seed(1)
-        np.random.shuffle(unique_materials)
-        
-        n_materials = len(unique_materials)
-        
-        # All data to training if no splits requested
-        if test_size == 0.0 and valid_size == 0.0:
-            df_train = df.reset_index(drop=True)
-            return DatasetDict({
-                'train': Dataset.from_pandas(df_train)
-            })
-        
-        if test_size > 0:
-            # Calculate splits based on total materials
-            n_test = int(n_materials * test_size)
-            n_valid = int(n_materials * valid_size)
-            n_train = n_materials - n_test - n_valid
-        else:
-            n_test = 0
-            n_valid = int(n_materials * valid_size)
-            n_train = n_materials - n_valid
-        
-        train_materials = unique_materials[:n_train]
-        valid_materials = unique_materials[n_train:n_train + n_valid]
-        test_materials = unique_materials[n_train + n_valid:] if test_size > 0 else []
-        
-        df_train = df[df['Material ID'].isin(train_materials)].reset_index(drop=True)
-        df_valid = df[df['Material ID'].isin(valid_materials)].reset_index(drop=True)
-        
-        if test_size > 0:
-            df_test = df[df['Material ID'].isin(test_materials)].reset_index(drop=True)
-            return DatasetDict({
-                'train': Dataset.from_pandas(df_train),
-                'validation': Dataset.from_pandas(df_valid),
-                'test': Dataset.from_pandas(df_test)
-            })
-        else:
-            return DatasetDict({
-                'train': Dataset.from_pandas(df_train),
-                'validation': Dataset.from_pandas(df_valid)
-            })
-    
-    elif 'Split' in df.columns:
-        print("Splitting dataset according to the 'Split' column")
-        
-        # Check which splits are actually present
-        available_splits = df['Split'].unique()
-        
-        splits = {}
-        
-        if 'train' in available_splits:
-            df_train = df[df['Split'] == 'train'].drop(columns=['Split']).reset_index(drop=True)
-            splits['train'] = Dataset.from_pandas(df_train)
-            print('Train columns:', df_train.columns.tolist())
-        
-        if 'val' in available_splits:
-            df_valid = df[df['Split'] == 'val'].drop(columns=['Split']).reset_index(drop=True)
-            splits['validation'] = Dataset.from_pandas(df_valid)
-        
-        if 'test' in available_splits:
-            df_test = df[df['Split'] == 'test'].drop(columns=['Split']).reset_index(drop=True)
-            splits['test'] = Dataset.from_pandas(df_test)
-        
-        return DatasetDict(splits)
-    
-    else:
-        # Random splitting
-        dataset = Dataset.from_pandas(df)
-        
-        # No splits requested, return everything as training data
-        if test_size == 0.0 and valid_size == 0.0:
-            return DatasetDict({
-                'train': dataset
-            })
-        
-        # Test set only
-        if valid_size == 0.0 and test_size > 0:
-            dataset = dataset.train_test_split(test_size=test_size, seed=1)
-            return DatasetDict({
-                'train': dataset['train'],
-                'test': dataset['test']
-            })
-        
-        # Validation set only
-        if test_size == 0.0 and valid_size > 0:
-            dataset = dataset.train_test_split(test_size=valid_size, seed=1)
-            return DatasetDict({
-                'train': dataset['train'],
-                'validation': dataset['test']
-            })
-        
-        # Both validation and test sets
-        if test_size > 0 and valid_size > 0:
-            dataset = dataset.train_test_split(test_size=valid_size + test_size, seed=1)
-            test_valid = dataset['test'].train_test_split(test_size=test_size/(test_size + valid_size), seed=1)
-            return DatasetDict({
-                'train': dataset['train'],
-                'validation': test_valid['train'],
-                'test': test_valid['test']
-            })
+    if 'Split' in df.columns:
+        return _create_datasetdict_from_split_column(df)
+
+    if test_size == 0.0 and valid_size == 0.0:
+        return DatasetDict({'train': Dataset.from_pandas(df.reset_index(drop=True))})
+
+    df_with_split = df.copy()
+    df_with_split['Split'] = assign_split_labels(
+        dataframe=df_with_split,
+        test_size=test_size,
+        valid_size=valid_size,
+        duplicates_mode=duplicates_mode,
+        seed=seed,
+    )
+    return _create_datasetdict_from_split_column(df_with_split)
 
 
 if __name__ == "__main__":
@@ -145,6 +99,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_hub", action="store_true", help="Save the dataset to Hugging Face Hub")
     parser.add_argument("--HF_username", type=str, default='c-bone', help="Hugging Face username")
     parser.add_argument("--duplicates", action="store_true", help="Prevent data leakage by splitting on Material ID (was done for thermo dataset as there were 2 entries per material)")
+    parser.add_argument("--split_seed", type=int, default=1, help="Seed for deterministic split assignment")
 
     args = parser.parse_args()
 
@@ -159,11 +114,11 @@ if __name__ == "__main__":
     if not required_columns.issubset(df.columns):
         raise ValueError(f"The input dataframe must contain the columns: {required_columns}")
     
-    # Convert DataFrame to strings for HF compatibility
-    df = df.astype(str)
+    # Minimal dtype normalization for Arrow conversion while preserving list-array columns.
+    df = _normalize_object_columns_for_hf(df)
 
     # Create dataset splits
-    dataset = create_dataset_splits(df, args.test_size, args.valid_size, args.duplicates)
+    dataset = create_dataset_splits(df, args.test_size, args.valid_size, args.duplicates, args.split_seed)
 
     # Save locally if requested
     if args.save_local:

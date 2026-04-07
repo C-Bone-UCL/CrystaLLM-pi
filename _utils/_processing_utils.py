@@ -31,6 +31,57 @@ logger = logging.getLogger(__name__)
 # Adapted from original CrystaLLM repo: https://github.com/lantunes/CrystaLLM
 
 
+def assign_split_labels(dataframe, test_size, valid_size, duplicates_mode=False, seed=1):
+    """Assign deterministic train/val/test labels for a dataframe."""
+    if test_size < 0 or valid_size < 0 or (test_size + valid_size) >= 1.0:
+        raise ValueError("test_size and valid_size must be >= 0 and sum to < 1")
+
+    n_rows = len(dataframe)
+    labels = np.full(n_rows, "train", dtype=object)
+
+    if test_size == 0.0 and valid_size == 0.0:
+        return pd.Series(labels, index=dataframe.index)
+
+    rng = np.random.default_rng(seed)
+
+    if duplicates_mode:
+        if "Material ID" not in dataframe.columns:
+            raise ValueError("When using duplicates mode, the 'Material ID' column must be present")
+
+        unique_materials = dataframe["Material ID"].astype(str).unique()
+        rng.shuffle(unique_materials)
+
+        n_materials = len(unique_materials)
+        n_test = int(n_materials * test_size)
+        n_valid = int(n_materials * valid_size)
+        n_train = n_materials - n_test - n_valid
+
+        train_materials = set(unique_materials[:n_train])
+        valid_materials = set(unique_materials[n_train:n_train + n_valid])
+        test_materials = set(unique_materials[n_train + n_valid:]) if n_test > 0 else set()
+
+        mat_series = dataframe["Material ID"].astype(str)
+        labels[mat_series.isin(list(valid_materials)).to_numpy()] = "val"
+        if test_materials:
+            labels[mat_series.isin(list(test_materials)).to_numpy()] = "test"
+    else:
+        indices = np.arange(n_rows)
+        rng.shuffle(indices)
+
+        n_test = int(n_rows * test_size)
+        n_valid = int(n_rows * valid_size)
+
+        if n_test > 0:
+            labels[indices[-n_test:]] = "test"
+
+        valid_start = n_rows - n_test - n_valid
+        valid_end = n_rows - n_test if n_test > 0 else n_rows
+        if n_valid > 0:
+            labels[indices[valid_start:valid_end]] = "val"
+
+    return pd.Series(labels, index=dataframe.index)
+
+
 def get_unit_cell_volume(a, b, c, alpha_deg, beta_deg, gamma_deg):
     alpha_rad = math.radians(alpha_deg)
     beta_rad = math.radians(beta_deg)
@@ -240,6 +291,10 @@ def round_numbers(cif_str, decimal_places=4):
         number = float(number_str)
         # Check if number of digits after decimal point is less than 'decimal_places'
         if len(number_str.split('.')[-1]) <= decimal_places:
+            # Whole-number floats like 1.0 should be written as integers to match
+            # pretraining format (e.g. occupancy 1.0 -> 1).
+            if number_str.split('.')[-1] == '0' and number == int(number):
+                return str(int(number))
             return number_str
         rounded = round(number, decimal_places)
         return format(rounded, '.{}f'.format(decimal_places))
@@ -304,13 +359,23 @@ def load_mp_api_key(key_file: str) -> str:
 
 # make a function that loads key dictionary from API_keys.jsonc
 def load_api_keys(key_file: str = "API_keys.jsonc") -> dict:
-    """Load API keys from JSONC file."""
+    """Load API keys from file, or from environment variables as fallback."""
+    key_file = os.getenv("API_KEY_PATH", key_file)
     try:
         with open(key_file, "r") as f:
             data = commentjson.load(f)
         return data
-    except Exception as e:
-        raise RuntimeError(f"Failed to read API keys from '{key_file}': {e}")
+    except Exception as file_error:
+        hf_key = os.getenv("HF_KEY") or os.getenv("HF_TOKEN") or os.getenv("HF_HUB_TOKEN")
+        wandb_key = os.getenv("WANDB_KEY") or os.getenv("WANDB_API_KEY")
+        if hf_key and wandb_key:
+            return {
+                "HF_key": hf_key,
+                "wandb_key": wandb_key,
+            }
+        raise RuntimeError(
+            f"Failed to read API keys from '{key_file}' and no env fallback found: {file_error}"
+        )
 
 
 
@@ -587,6 +652,15 @@ def add_variable_brackets_to_cif(cif_str):
                        (value_stripped.startswith('"') and value_stripped.endswith('"')):
                         value_stripped = value_stripped[1:-1].strip()
                     value = "'[" + value_stripped + "]'"
+                elif key == "_symmetry_space_group_name_H-M":
+                    # Strip surrounding quotes (CIF spec requires quoting values with spaces,
+                    # e.g. 'P 1'), then remove internal spaces so the tokenizer can match
+                    # the space group as a single token (P1_sg not P + space + 1).
+                    if (value_stripped.startswith("'") and value_stripped.endswith("'")) or \
+                       (value_stripped.startswith('"') and value_stripped.endswith('"')):
+                        value_stripped = value_stripped[1:-1].strip()
+                    value_stripped = value_stripped.replace(" ", "")
+                    value = "[" + value_stripped + "]"
                 else:
                     if not ((value_stripped.startswith("[") and value_stripped.endswith("]")) or
                             (value_stripped.startswith("'") and value_stripped.endswith("'")) or

@@ -121,7 +121,7 @@ def parse_args():
     parser.add_argument("--scoring_mode", type=str, default="None", help="Scoring mode for ranking generated structures: 'logp' for perplexity-based ranking (validates and ranks CIFs), or 'None' for no validation/scoring.")
 
     # If scoring_mode is 'logp', the model will compute log-perplexity scores for 'target_valid_cifs' amount of valid generated CIFs to rank them.
-    parser.add_argument("--target_valid_cifs", type=int, default=20, help="Target number of valid CIFs per prompt (only used with scoring_mode='logp'). Generation continues until this target or max_return_attempts is reached.")
+    parser.add_argument("--target_valid_cifs", type=int, default=1, help="Target number of valid CIFs per prompt (only used with scoring_mode='logp'). Generation continues until this target or max_return_attempts is reached.")
 
 
     # CodeCarbon arguments

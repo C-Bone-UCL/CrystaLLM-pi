@@ -6,5 +6,5 @@ resources:
 - namespace.yaml
 images:
 - name: crystallm
-  newName: ghcr.io/stuart-stfc/crystallm-2.0
+  newName: ghcr.io/stuart-stfc/crystallm-pi
   newTag: f4ab67f29c4a8bedf114f3706dca2456e7f47943

@@ -1,0 +1,12 @@
+{
+  "activate_conditionality": "None",
+  "gen_max_length": 1024,
+  "top_k": 50,
+  "top_p": 0.95,
+  "temperature": 1.0,
+  "model_ckpt_dir": "model_ckpts/alex_mp_20_base_4/checkpoint-360000",
+  "num_return_sequences": 20,
+  "max_return_attempts": 125,
+  "input_parquet": "_post_paper_files/lemat-bench/an-init_prompt.parquet",
+  "output_parquet": ""
+}

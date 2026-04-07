@@ -72,6 +72,9 @@ def process_dataframe(df: pd.DataFrame, num_workers: int, column_name: str) -> p
     """
     Process CIF columns with validation, possibly in parallel, and display a progress bar.
     """
+    if df.empty:
+        return df
+
     # Check if column exists
     if column_name not in df.columns:
         raise ValueError(f"Column '{column_name}' not found in DataFrame. Available columns: {list(df.columns)}")

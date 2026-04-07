@@ -6,6 +6,8 @@ import sys
 import warnings
 from typing import Dict
 import pandas as pd
+warnings.filterwarnings("ignore", category=UserWarning, module="pymatgen")
+
 
 # Add project root to path for internal imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))

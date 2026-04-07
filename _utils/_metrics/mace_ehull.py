@@ -123,7 +123,9 @@ def main():
                        help="Path to input .parquet file with CIF column")
     parser.add_argument("--output_parquet", required=True, 
                        help="Path to output .parquet file")
-    parser.add_argument("--mp_data", default="mp_computed_structure_entries.json.gz",
+    # set default to known writeable path
+    parser.add_argument("--mp_data",
+                       default="data/mp_computed_structure_entries.json.gz",
                        help="Path to MP computed structure entries JSON.gz file (will download if missing)")
     parser.add_argument("--cif_column", default="Generated CIF", 
                        help="Name of CIF column in parquet file")
@@ -133,6 +135,13 @@ def main():
                        help="Batch size for processing")
     
     args = parser.parse_args()
+
+    # Auto-migrate legacy data file to the new directory if needed
+    old_file = "mp_computed_structure_entries.json.gz"
+    if os.path.exists(old_file) and not os.path.exists(args.mp_data):
+        os.makedirs(os.path.dirname(args.mp_data), exist_ok=True)
+        os.rename(old_file, args.mp_data)
+        print(f"Notice: Auto-migrated legacy data file to {args.mp_data}")
     
     # Download MP data if it doesn't exist
     download_mp_data(args.mp_data)

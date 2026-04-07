@@ -12,7 +12,9 @@ from _utils import (
     filter_long_CIFs,
     filter_CIFs_with_unk,
     tokenize_function,
-    validate_condition_values
+    validate_condition_values,
+    get_cif_candidate_columns,
+    build_train_cif_variant_texts,
 )
 
 NUM_PROC_TOK = 4
@@ -20,9 +22,10 @@ NUM_PROC_TOK = 4
 np.random.seed(1)
 
 class CustomCIFDataCollator:
-    def __init__(self, tokenizer, context_length):
+    def __init__(self, tokenizer, context_length, data_seed=1):
         self.tokenizer = tokenizer
         self.context_length = context_length
+        self.rng = np.random.default_rng(int(data_seed))
 
     def __call__(self, features):
         """
@@ -31,6 +34,36 @@ class CustomCIFDataCollator:
           1) If CIF is longer than context_length, slice from beginning
           2) Otherwise, pack multiple CIFs in round-robin fashion until context_length is reached
         """
+
+        prepared_features = []
+        for feature in features:
+            feature_copy = dict(feature)
+            if "input_ids_variants" in feature_copy:
+                candidate_indices = []
+                seen_variants = set()
+
+                for idx, variant_ids in enumerate(feature_copy["input_ids_variants"]):
+                    if not variant_ids:
+                        continue
+
+                    variant_key = tuple(variant_ids)
+                    if variant_key in seen_variants:
+                        continue
+
+                    seen_variants.add(variant_key)
+                    candidate_indices.append(idx)
+
+                if not candidate_indices:
+                    candidate_indices = [0]
+
+                variant_idx = int(self.rng.choice(candidate_indices))
+                feature_copy["input_ids"] = feature_copy["input_ids_variants"][variant_idx]
+                feature_copy["fixed_mask"] = feature_copy["fixed_mask_variants"][variant_idx]
+                feature_copy["attention_mask"] = feature_copy["attention_mask_variants"][variant_idx]
+                feature_copy["special_tokens_mask"] = feature_copy["special_tokens_mask_variants"][variant_idx]
+            prepared_features.append(feature_copy)
+
+        features = prepared_features
 
         # Auto-detect conditional mode based on presence of condition_values
         is_conditional = "condition_values" in features[0]
@@ -169,6 +202,7 @@ def load_data(
     context_length, 
     mode="unconditional",
     condition_columns=None,
+    data_seed=1,
     remove_CIFs_above_context=False, 
     remove_CIFs_with_unk=False,
     show_token_stats=False,
@@ -180,6 +214,7 @@ def load_data(
     Args:
         mode: "unconditional", "conditional", or "raw"
         condition_columns: Required for conditional/raw modes
+        data_seed: Seed used for deterministic train CIF column cycling
         remove_CIFs_above_context: Whether to filter out CIFs longer than context_length
         remove_CIFs_with_unk: Whether to filter out CIFs containing unknown tokens
         show_token_stats: Whether to display token length statistics
@@ -201,7 +236,7 @@ def load_data(
     # Create tokenizer function based on mode
     if mode == "unconditional":
         def tokenize_fn(examples):
-            return tokenize_function(examples, tokenizer, context_length, mode="unconditional")
+            return tokenize_function(examples, tokenizer, mode="unconditional")
     elif mode == "conditional":
         def tokenize_fn(examples):
             return tokenize_function(examples, tokenizer, condition_columns, mode="conditional")
@@ -220,6 +255,10 @@ def load_data(
         )
     else:
         dataset_with_idx = dataset
+
+    cif_candidate_columns = get_cif_candidate_columns(dataset_with_idx["train"].column_names)
+    if not cif_candidate_columns:
+        raise ValueError("No CIF-like columns found in dataset train split")
 
     # Determine columns to keep based on mode
     if mode == "conditional":
@@ -242,22 +281,49 @@ def load_data(
         ]
 
     # Calculate columns to remove (reduce memory usage)
-    original_columns = dataset_with_idx["train"].column_names
-    if mode == "conditional":
-        columns_to_remove = [
-            col for col in original_columns 
-            if col not in columns_to_keep and col not in parsed_condition_columns and col != "CIF"
-        ]
-    else:
-        columns_to_remove = [col for col in original_columns if col not in columns_to_keep]
+    tokenized_splits = {}
 
-    # Tokenize dataset
-    tokenized_dataset = dataset_with_idx.map(
-        tokenize_fn,
-        batched=True,
-        remove_columns=columns_to_remove,
-        num_proc=NUM_PROC_TOK
-    )
+    for split_name in dataset_with_idx.keys():
+        split_dataset = dataset_with_idx[split_name]
+        split_columns = split_dataset.column_names
+
+        if mode == "conditional":
+            columns_to_remove = [
+                col for col in split_columns
+                if col not in columns_to_keep and col not in parsed_condition_columns and col != "CIF"
+            ]
+        else:
+            columns_to_remove = [col for col in split_columns if col not in columns_to_keep]
+
+        if split_name == "train":
+            def tokenize_train_fn(examples):
+                cif_variant_texts = build_train_cif_variant_texts(
+                    examples=examples,
+                    cif_columns=cif_candidate_columns,
+                )
+                return tokenize_function(
+                    examples,
+                    tokenizer,
+                    condition_columns=condition_columns,
+                    mode=mode,
+                    cif_variant_texts=cif_variant_texts,
+                )
+
+            tokenized_splits[split_name] = split_dataset.map(
+                tokenize_train_fn,
+                batched=True,
+                remove_columns=columns_to_remove,
+                num_proc=NUM_PROC_TOK,
+            )
+        else:
+            tokenized_splits[split_name] = split_dataset.map(
+                tokenize_fn,
+                batched=True,
+                remove_columns=columns_to_remove,
+                num_proc=NUM_PROC_TOK,
+            )
+
+    tokenized_dataset = datasets.DatasetDict(tokenized_splits)
 
 
     # Few filters/validations/stats
@@ -270,7 +336,10 @@ def load_data(
         print("Removing CIFs with unknown tokens")
         tokenized_dataset = filter_CIFs_with_unk(tokenized_dataset, tokenizer)
 
-    if "fixed_mask" not in tokenized_dataset["train"].features:
+    if (
+        "fixed_mask" not in tokenized_dataset["train"].features
+        and "fixed_mask_variants" not in tokenized_dataset["train"].features
+    ):
         raise ValueError("Fixed mask not present in tokenized dataset")
 
     if show_token_stats:
@@ -280,5 +349,5 @@ def load_data(
     if mode == "conditional" and validate_conditions:
         validate_condition_values(tokenized_dataset, dataset_with_idx, parsed_condition_columns)
 
-    data_collator = CustomCIFDataCollator(tokenizer, context_length)
+    data_collator = CustomCIFDataCollator(tokenizer, context_length, data_seed=data_seed)
     return tokenized_dataset, data_collator

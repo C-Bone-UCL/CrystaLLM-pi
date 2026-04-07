@@ -31,7 +31,7 @@ COPY . .
 RUN pip install --no-cache-dir --prefix=/install .
 
 # Stage 2: Runtime stage with CUDA
-FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
+FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 
 # Install Python 3.10
 RUN apt-get update && apt-get install -y \
@@ -53,6 +53,9 @@ COPY --from=builder /app /app
 # Create directories for data and outputs
 RUN mkdir -p /app/data /app/outputs /tmp/.cache /tmp/triton-cache
 
+# Ensure docker entrypoint is executable
+RUN chmod +x /app/docker/entrypoint.sh
+
 ENV MPLCONFIGDIR=/app
 ENV HF_HOME=/tmp/.cache
 ENV PYTHONPATH=/usr/local/lib/python3.10/site-packages
@@ -62,7 +65,7 @@ ENV TRITON_CACHE_DIR=/tmp/triton-cache
 EXPOSE 8000
 
 # Entrypoint modifies token file
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["/app/docker/entrypoint.sh"]
 
 # Run the API
-CMD ["uvicorn", "crystallm_api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "_api:app", "--host", "0.0.0.0", "--port", "8000"]

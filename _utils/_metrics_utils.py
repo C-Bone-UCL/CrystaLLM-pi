@@ -19,6 +19,26 @@ import json
 import concurrent.futures
 
 import pandas as pd
+
+def _configure_pymatgen_warning_filters():
+    """Silence noisy pymatgen warnings that flood VUN/uniqueness logs."""
+    warnings.filterwarnings("ignore", category=UserWarning, module=r"pymatgen")
+    warnings.filterwarnings(
+        "ignore",
+        category=UserWarning,
+        message=r".*No oxidation states specified on sites!.*",
+    )
+    warnings.filterwarnings(
+        "ignore",
+        category=UserWarning,
+        message=r".*CrystalNN: cannot locate an appropriate radius.*",
+    )
+    warnings.filterwarnings(
+        "ignore",
+        category=UserWarning,
+        message=r".*No Pauling electronegativity for.*",
+    )
+
 from datasets import load_dataset
 from pymatgen.core import Structure
 from pymatgen.core import Composition
@@ -37,6 +57,7 @@ from _utils import (
 from _utils._generating.postprocess import process_dataframe
 
 logger = logging.getLogger(__name__)
+_configure_pymatgen_warning_filters()
 
 # Generated data processing
 def load_and_process_generated_data(gen_data_path, num_workers):
@@ -67,7 +88,9 @@ def build_generated_structures(df_proc):
         if df_proc.at[idx, "is_valid"]:
             try:
                 cif_str = df_proc.at[idx, "Generated CIF"]
-                structures[idx] = Structure.from_str(cif_str, fmt="cif")
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", category=UserWarning)
+                    structures[idx] = Structure.from_str(cif_str, fmt="cif")
             except Exception:
                 # If structure building fails here, it's not valid
                 df_proc.at[idx, "is_valid"] = False
@@ -96,11 +119,12 @@ def extract_generated_formulas(structures):
 # VUN metrics
 def _validity_worker(cif_str: str) -> bool:
     """Worker function to check if a single CIF string is valid."""
+    _configure_pymatgen_warning_filters()
     if not cif_str or not isinstance(cif_str, str):
         return False
     try:
         # is_valid contains multiple checks (formula, multiplicity, bonds, etc.)
-        return is_valid(cif_str, bond_length_acceptability_cutoff=1.0)
+        return is_valid(cif_str, bond_length_acceptability_cutoff=1.0,debug=True)
     except Exception:
         return False
 
@@ -134,6 +158,7 @@ def get_valid(df_proc, num_workers):
 
 def _uniqueness_worker(args_tuple: Tuple[int, str, float]) -> Tuple[int, str, float]:
     """Worker to compute BAWL hash and get a metric for uniqueness selection."""
+    _configure_pymatgen_warning_filters()
     from material_hasher.hasher.bawl import BAWLHasher
     idx, cif_str, ehull_val = args_tuple
     
@@ -210,6 +235,7 @@ def get_unique(df_gen, workers):
 
 def _novelty_worker(args_tuple):
     """Worker to check if a single generated structure is novel."""
+    _configure_pymatgen_warning_filters()
     from pymatgen.core import Structure
     from pymatgen.analysis.structure_matcher import StructureMatcher
 
@@ -377,7 +403,7 @@ def download_mp_data(mp_data_path):
         return
     
     print("MP data file not found. Downloading from matbench_discovery...")
-    url = "https://figshare.com/ndownloader/files/40344436" 
+    url = "https://ndownloader.figshare.com/files/40344436"
     
     print("Downloading MP computed structure entries...")
     print("File size: ~170 MB compressed...")
@@ -554,7 +580,9 @@ def predict_properties(gen_df_proc, property_targets, num_workers):
 # CIF validation functions (adapted from CrystaLLM)
 def bond_length_reasonableness_score(cif_str, tolerance=0.32, h_factor=2.5):
     """Score based on bond length vs atomic radii."""
-    structure = Structure.from_str(cif_str, fmt="cif")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=UserWarning)
+        structure = Structure.from_str(cif_str, fmt="cif")
     crystal_nn = CrystalNN()
 
     min_ratio = 1 - tolerance
@@ -564,7 +592,9 @@ def bond_length_reasonableness_score(cif_str, tolerance=0.32, h_factor=2.5):
     score = 0
     bond_count = 0
     for i, site in enumerate(structure):
-        bonded_sites = crystal_nn.get_nn_info(structure, i)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            bonded_sites = crystal_nn.get_nn_info(structure, i)
         for connected_site_info in bonded_sites:
             j = connected_site_info['site_index']
             if i == j:  # skip if they're the same site
@@ -608,7 +638,6 @@ def bond_length_reasonableness_score(cif_str, tolerance=0.32, h_factor=2.5):
 
     return normalized_score
 
-
 def is_space_group_consistent(cif_str):
     structure = Structure.from_str(cif_str, fmt="cif")
     parser = CifParser.from_str(cif_str)
@@ -629,15 +658,39 @@ def is_space_group_consistent(cif_str):
     return is_match
 
 
+# def is_formula_consistent(cif_str):
+#     parser = CifParser.from_str(cif_str)
+#     cif_data = parser.as_dict()
+
+#     formula_data = Composition(extract_data_formula(cif_str))
+#     formula_sum = Composition(cif_data[list(cif_data.keys())[0]]["_chemical_formula_sum"])
+#     formula_structural = Composition(cif_data[list(cif_data.keys())[0]]["_chemical_formula_structural"])
+
+#     return formula_data.reduced_formula == formula_sum.reduced_formula == formula_structural.reduced_formula
+
 def is_formula_consistent(cif_str):
-    parser = CifParser.from_str(cif_str)
-    cif_data = parser.as_dict()
+    try:
+        parser = CifParser.from_str(cif_str)
+        cif_data = parser.as_dict()
+        key = list(cif_data.keys())[0]
 
-    formula_data = Composition(extract_data_formula(cif_str))
-    formula_sum = Composition(cif_data[list(cif_data.keys())[0]]["_chemical_formula_sum"])
-    formula_structural = Composition(cif_data[list(cif_data.keys())[0]]["_chemical_formula_structural"])
+        # metadata check
+        formula_data = Composition(extract_data_formula(cif_str))
+        formula_sum = Composition(cif_data[key].get("_chemical_formula_sum", ""))
+        formula_structural = Composition(cif_data[key].get("_chemical_formula_structural", ""))
+       
+        # New check: actual atoms in the unit cell
+        structure = parser.parse_structures(primitive=False)[0]
+        formula_geometry = structure.composition
+        # Check if all 4 agree
+        # .reduced_composition to handle supercells
+        # almost_equals with some tolerance to handle minor discrepancies in atom counts because because of minor disorder
+        return (formula_data.reduced_formula == formula_sum.reduced_formula ==
+                formula_structural.reduced_formula and
+                formula_sum.reduced_composition.almost_equals(formula_geometry.reduced_composition, rtol=0.1, atol=0.1))
 
-    return formula_data.reduced_formula == formula_sum.reduced_formula == formula_structural.reduced_formula
+    except Exception:
+        return False
 
 
 def is_atom_site_multiplicity_consistent(cif_str):
