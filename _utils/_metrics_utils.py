@@ -73,7 +73,10 @@ def load_and_process_generated_data(gen_data_path, num_workers):
         gen_df['condition_vector'] = -100
     
     if "Generated CIF" not in gen_df.columns:
-        raise ValueError("Input DataFrame must contain 'Generated CIF' column.")
+        if "CIF" in gen_df.columns:
+            gen_df.rename(columns={"CIF": "Generated CIF"}, inplace=True)
+        else:
+            raise ValueError("Input DataFrame must contain 'Generated CIF' column.")
 
     print("Processing the generated CIFs...")
     return process_dataframe(gen_df, num_workers=num_workers, column_name='Generated CIF')
@@ -117,18 +120,18 @@ def extract_generated_formulas(structures):
 
 
 # VUN metrics
-def _validity_worker(cif_str: str) -> bool:
+def _validity_worker(cif_str: str, bond_length_acceptability_cutoff: float) -> bool:
     """Worker function to check if a single CIF string is valid."""
     _configure_pymatgen_warning_filters()
     if not cif_str or not isinstance(cif_str, str):
         return False
     try:
         # is_valid contains multiple checks (formula, multiplicity, bonds, etc.)
-        return is_valid(cif_str, bond_length_acceptability_cutoff=1.0,debug=True)
+        return is_valid(cif_str, bond_length_acceptability_cutoff=bond_length_acceptability_cutoff, debug=True)
     except Exception:
         return False
 
-def get_valid(df_proc, num_workers):
+def get_valid(df_proc, num_workers, bond_length_acceptability_cutoff=1.0):
     """Check CIF validity in parallel."""
     print("\nValidity Metrics")
     
@@ -139,7 +142,10 @@ def get_valid(df_proc, num_workers):
     results = [False] * len(df_proc)
     
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(_validity_worker, cif) for cif in cifs_to_check]
+        worker_func = partial(_validity_worker, bond_length_acceptability_cutoff=bond_length_acceptability_cutoff)
+
+        futures = [executor.submit(worker_func, cif) for cif in cifs_to_check]
+
         
         for i, future in enumerate(tqdm(concurrent.futures.as_completed(futures), 
                                       total=len(futures), desc="Checking validity")):
@@ -658,39 +664,42 @@ def is_space_group_consistent(cif_str):
     return is_match
 
 
-# def is_formula_consistent(cif_str):
-#     parser = CifParser.from_str(cif_str)
-#     cif_data = parser.as_dict()
-
-#     formula_data = Composition(extract_data_formula(cif_str))
-#     formula_sum = Composition(cif_data[list(cif_data.keys())[0]]["_chemical_formula_sum"])
-#     formula_structural = Composition(cif_data[list(cif_data.keys())[0]]["_chemical_formula_structural"])
-
-#     return formula_data.reduced_formula == formula_sum.reduced_formula == formula_structural.reduced_formula
-
 def is_formula_consistent(cif_str):
-    try:
-        parser = CifParser.from_str(cif_str)
-        cif_data = parser.as_dict()
-        key = list(cif_data.keys())[0]
+    parser = CifParser.from_str(cif_str)
+    cif_data = parser.as_dict()
 
-        # metadata check
-        formula_data = Composition(extract_data_formula(cif_str))
-        formula_sum = Composition(cif_data[key].get("_chemical_formula_sum", ""))
-        formula_structural = Composition(cif_data[key].get("_chemical_formula_structural", ""))
+    formula_data = Composition(extract_data_formula(cif_str))
+    formula_sum = Composition(cif_data[list(cif_data.keys())[0]]["_chemical_formula_sum"])
+    formula_structural = Composition(cif_data[list(cif_data.keys())[0]]["_chemical_formula_structural"])
+
+    return formula_data.reduced_formula == formula_sum.reduced_formula == formula_structural.reduced_formula
+
+
+# Below is new more comprehensive one which includes structure object check, not present during paper publication
+
+# def is_formula_consistent(cif_str):
+#     try:
+#         parser = CifParser.from_str(cif_str)
+#         cif_data = parser.as_dict()
+#         key = list(cif_data.keys())[0]
+
+#         # metadata check
+#         formula_data = Composition(extract_data_formula(cif_str))
+#         formula_sum = Composition(cif_data[key].get("_chemical_formula_sum", ""))
+#         formula_structural = Composition(cif_data[key].get("_chemical_formula_structural", ""))
        
-        # New check: actual atoms in the unit cell
-        structure = parser.parse_structures(primitive=False)[0]
-        formula_geometry = structure.composition
-        # Check if all 4 agree
-        # .reduced_composition to handle supercells
-        # almost_equals with some tolerance to handle minor discrepancies in atom counts because because of minor disorder
-        return (formula_data.reduced_formula == formula_sum.reduced_formula ==
-                formula_structural.reduced_formula and
-                formula_sum.reduced_composition.almost_equals(formula_geometry.reduced_composition, rtol=0.1, atol=0.1))
+#         # New check: actual atoms in the unit cell
+#         structure = parser.parse_structures(primitive=False)[0]
+#         formula_geometry = structure.composition
+#         # Check if all 4 agree
+#         # .reduced_composition to handle supercells
+#         # almost_equals with some tolerance to handle minor discrepancies in atom counts because because of minor disorder
+#         return (formula_data.reduced_formula == formula_sum.reduced_formula ==
+#                 formula_structural.reduced_formula and
+#                 formula_sum.reduced_composition.almost_equals(formula_geometry.reduced_composition, rtol=0.1, atol=0.1))
 
-    except Exception:
-        return False
+#     except Exception:
+#         return False
 
 
 def is_atom_site_multiplicity_consistent(cif_str):

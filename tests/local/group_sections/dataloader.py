@@ -163,7 +163,7 @@ class DataLoaderTests:
         )
         
         assert "train" in tokenized_dataset, "Should have train split"
-        assert "input_ids_variants" in tokenized_dataset["train"].features, "Should have input_ids_variants"
+        assert "input_ids" in tokenized_dataset["train"].features, "Should have input_ids"
         assert data_collator is not None, "Should return data collator"
     
     def test_load_data_conditional(self):
@@ -202,72 +202,3 @@ class DataLoaderTests:
         # Check first example has correct number of conditions
         first_example = tokenized_dataset["train"][0]
         assert len(first_example["condition_values"]) == 2, "Should have 2 condition values"
-
-    def test_load_data_train_uses_all_cif_variants(self):
-        """Train split should pre-tokenize all CIF variants and collator should sample one per row."""
-        from _dataloader import load_data
-        from _tokenizer import CustomCIFTokenizer
-
-        tokenizer = CustomCIFTokenizer.from_pretrained("HF-cif-tokenizer")
-
-        base_cif = self.test_data['augmented_cif']
-        mock_data = {
-            "train": Dataset.from_dict({
-                "CIF": [base_cif] * 4,
-                "CIF_SUPERCELL_1": [base_cif] * 4,
-                "CIF_SUPERCELL_2": [base_cif] * 4,
-            }),
-            "validation": Dataset.from_dict({
-                "CIF": [base_cif] * 2,
-                "CIF_SUPERCELL_1": [""] * 2,
-                "CIF_SUPERCELL_2": [""] * 2,
-            }),
-        }
-        dataset = DatasetDict(mock_data)
-
-        tokenized_dataset, data_collator = load_data(
-            tokenizer=tokenizer,
-            dataset=dataset,
-            context_length=512,
-            mode="unconditional",
-            remove_CIFs_above_context=False,
-            remove_CIFs_with_unk=False,
-        )
-
-        train_example = tokenized_dataset["train"][0]
-        assert "input_ids_variants" in train_example
-        assert len(train_example["input_ids_variants"]) == 3
-
-        batch = data_collator([tokenized_dataset["train"][0], tokenized_dataset["train"][1]])
-        assert batch["input_ids"].shape[0] == 2
-        assert batch["input_ids"].shape[1] == 512
-
-    def test_data_collator_samples_unique_variant_content(self):
-        """Variant sampling should deduplicate equivalent variants before random choice."""
-        from _dataloader import CustomCIFDataCollator
-        from _tokenizer import CustomCIFTokenizer
-
-        tokenizer = CustomCIFTokenizer.from_pretrained("HF-cif-tokenizer")
-        collator = CustomCIFDataCollator(tokenizer, context_length=4, data_seed=7)
-
-        feature = {
-            "input_ids_variants": [
-                [1, 2, 3, 4],
-                [1, 2, 3, 4],
-                [1, 2, 3, 4],
-                [9, 9, 9, 9],
-            ],
-            "fixed_mask_variants": [[1, 1, 1, 1]] * 4,
-            "attention_mask_variants": [[1, 1, 1, 1]] * 4,
-            "special_tokens_mask_variants": [[0, 0, 0, 0]] * 4,
-        }
-
-        unique_hits = 0
-        draws = 200
-        for _ in range(draws):
-            batch = collator([feature])
-            if int(batch["input_ids"][0, 0].item()) == 9:
-                unique_hits += 1
-
-        unique_rate = unique_hits / float(draws)
-        assert 0.35 <= unique_rate <= 0.65

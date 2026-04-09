@@ -14,6 +14,8 @@ from importlib import reload
 import commentjson
 from io import StringIO
 from typing import List
+from concurrent.futures import ProcessPoolExecutor
+from tqdm import tqdm
 
 reload(_tokenizer)
 
@@ -29,57 +31,6 @@ from _tokenizer import CustomCIFTokenizer
 logger = logging.getLogger(__name__)
 
 # Adapted from original CrystaLLM repo: https://github.com/lantunes/CrystaLLM
-
-
-def assign_split_labels(dataframe, test_size, valid_size, duplicates_mode=False, seed=1):
-    """Assign deterministic train/val/test labels for a dataframe."""
-    if test_size < 0 or valid_size < 0 or (test_size + valid_size) >= 1.0:
-        raise ValueError("test_size and valid_size must be >= 0 and sum to < 1")
-
-    n_rows = len(dataframe)
-    labels = np.full(n_rows, "train", dtype=object)
-
-    if test_size == 0.0 and valid_size == 0.0:
-        return pd.Series(labels, index=dataframe.index)
-
-    rng = np.random.default_rng(seed)
-
-    if duplicates_mode:
-        if "Material ID" not in dataframe.columns:
-            raise ValueError("When using duplicates mode, the 'Material ID' column must be present")
-
-        unique_materials = dataframe["Material ID"].astype(str).unique()
-        rng.shuffle(unique_materials)
-
-        n_materials = len(unique_materials)
-        n_test = int(n_materials * test_size)
-        n_valid = int(n_materials * valid_size)
-        n_train = n_materials - n_test - n_valid
-
-        train_materials = set(unique_materials[:n_train])
-        valid_materials = set(unique_materials[n_train:n_train + n_valid])
-        test_materials = set(unique_materials[n_train + n_valid:]) if n_test > 0 else set()
-
-        mat_series = dataframe["Material ID"].astype(str)
-        labels[mat_series.isin(list(valid_materials)).to_numpy()] = "val"
-        if test_materials:
-            labels[mat_series.isin(list(test_materials)).to_numpy()] = "test"
-    else:
-        indices = np.arange(n_rows)
-        rng.shuffle(indices)
-
-        n_test = int(n_rows * test_size)
-        n_valid = int(n_rows * valid_size)
-
-        if n_test > 0:
-            labels[indices[-n_test:]] = "test"
-
-        valid_start = n_rows - n_test - n_valid
-        valid_end = n_rows - n_test if n_test > 0 else n_rows
-        if n_valid > 0:
-            labels[indices[valid_start:valid_end]] = "val"
-
-    return pd.Series(labels, index=dataframe.index)
 
 
 def get_unit_cell_volume(a, b, c, alpha_deg, beta_deg, gamma_deg):
@@ -291,10 +242,6 @@ def round_numbers(cif_str, decimal_places=4):
         number = float(number_str)
         # Check if number of digits after decimal point is less than 'decimal_places'
         if len(number_str.split('.')[-1]) <= decimal_places:
-            # Whole-number floats like 1.0 should be written as integers to match
-            # pretraining format (e.g. occupancy 1.0 -> 1).
-            if number_str.split('.')[-1] == '0' and number == int(number):
-                return str(int(number))
             return number_str
         rounded = round(number, decimal_places)
         return format(rounded, '.{}f'.format(decimal_places))
@@ -652,15 +599,6 @@ def add_variable_brackets_to_cif(cif_str):
                        (value_stripped.startswith('"') and value_stripped.endswith('"')):
                         value_stripped = value_stripped[1:-1].strip()
                     value = "'[" + value_stripped + "]'"
-                elif key == "_symmetry_space_group_name_H-M":
-                    # Strip surrounding quotes (CIF spec requires quoting values with spaces,
-                    # e.g. 'P 1'), then remove internal spaces so the tokenizer can match
-                    # the space group as a single token (P1_sg not P + space + 1).
-                    if (value_stripped.startswith("'") and value_stripped.endswith("'")) or \
-                       (value_stripped.startswith('"') and value_stripped.endswith('"')):
-                        value_stripped = value_stripped[1:-1].strip()
-                    value_stripped = value_stripped.replace(" ", "")
-                    value = "[" + value_stripped + "]"
                 else:
                     if not ((value_stripped.startswith("[") and value_stripped.endswith("]")) or
                             (value_stripped.startswith("'") and value_stripped.endswith("'")) or
@@ -678,18 +616,79 @@ def add_variable_brackets_to_cif(cif_str):
 
     return "\n".join(new_lines)
 
+_worker_tokenizer = None
+
+def _init_tokenizer_worker(pretrained_dir: str, pad_token: str) -> None:
+    global _worker_tokenizer
+    _worker_tokenizer = CustomCIFTokenizer.from_pretrained(
+        pretrained_dir=pretrained_dir,
+        pad_token=pad_token,
+    )
+
+def _count_cif_tokens(cif_str: str) -> int:
+    """Returns token count using the worker's globally initialized tokenizer."""
+    try:
+        return len(_worker_tokenizer.tokenize(cif_str))
+    except Exception:
+        return 0
 
 def filter_df_to_context(
     df: pd.DataFrame,
     context: int = 1024,
-    cif_column: str = "CIF"
+    cif_column: str = "CIF",
+    num_workers: int = 1,
+    tokenizer_dir: str = 'HF-cif-tokenizer',
 ) -> pd.DataFrame:
-    
-    tokenizer = CustomCIFTokenizer.from_pretrained(
-        pretrained_dir='HF-cif-tokenizer',
-        pad_token="<pad>"
-        )
+    """Filters a DataFrame to only include CIF strings within the token context limit."""
+    cif_strings = df[cif_column].fillna("").tolist()
 
-    mask = df[cif_column].fillna("").apply(lambda x: len(tokenizer.tokenize(x)) <= context)
+    if num_workers <= 1:
+        tokenizer = CustomCIFTokenizer.from_pretrained(
+            pretrained_dir=tokenizer_dir,
+            pad_token="<pad>",
+        )
+        mask = [len(tokenizer.tokenize(x)) <= context for x in tqdm(cif_strings)]
+    else:
+        def _check_cif_fits_context(cif_str: str) -> bool:
+            return _count_cif_tokens(cif_str) <= context
+            
+        with ProcessPoolExecutor(
+            max_workers=num_workers,
+            initializer=_init_tokenizer_worker,
+            initargs=(tokenizer_dir, '<pad>'),
+        ) as executor:
+            mask = list(tqdm(
+                executor.map(_check_cif_fits_context, cif_strings, chunksize=100), 
+                total=len(cif_strings)
+            ))
+
     return df.loc[mask].reset_index(drop=True)
 
+def count_tokens_df(
+    df: pd.DataFrame,
+    cif_column: str = "CIF",
+    num_workers: int = 1,
+    tokenizer_dir: str = 'HF-cif-tokenizer',
+) -> pd.DataFrame:
+    """Calculates token counts for CIF strings and appends them as a new DataFrame column."""
+    cif_strings = df[cif_column].fillna("").tolist()
+    
+    if num_workers <= 1:
+        tokenizer = CustomCIFTokenizer.from_pretrained(
+            pretrained_dir=tokenizer_dir,
+            pad_token="<pad>",
+        )
+        token_counts = [len(tokenizer.tokenize(x)) for x in tqdm(cif_strings)]
+    else:
+        with ProcessPoolExecutor(
+            max_workers=num_workers,
+            initializer=_init_tokenizer_worker,
+            initargs=(tokenizer_dir, '<pad>'),
+        ) as executor:
+            token_counts = list(tqdm(
+                executor.map(_count_cif_tokens, cif_strings, chunksize=100), 
+                total=len(cif_strings)
+            ))
+        
+    df["token_count"] = token_counts
+    return df

@@ -114,6 +114,12 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", default=8, type=int, help="Number of parallel workers.")
     parser.add_argument("--load_processed_data", type=str, default=None, help="Path to a pre-processed training dataset to speed up novelty.")
     parser.add_argument("--check_comp_novelty", action="store_true", help="Also check compositional novelty (reduced formula level).")
+    # add an arg where we can specify to skip validity and or uniqueness
+    parser.add_argument("--skip_validity", action="store_true", help="Skip validity checks (assumes all structures are valid).")
+    parser.add_argument("--skip_uniqueness", action="store_true", help="Skip uniqueness checks (assumes all structures are unique).")
+    # add bond_length_acce
+    parser.add_argument("--bond_length_acceptability_cutoff", type=float, default=1.0, help="Cutoff for bond length acceptability in validity checks")
+
     
     args = parser.parse_args()
     
@@ -123,10 +129,16 @@ if __name__ == "__main__":
     gen_df_proc = load_and_process_generated_data(args.input_parquet, args.num_workers)
     
     # Compute Validity
-    gen_df_proc = get_valid(gen_df_proc, args.num_workers)
+    if args.skip_validity:
+        gen_df_proc['is_valid'] = True
+    else:
+        gen_df_proc = get_valid(gen_df_proc, args.num_workers, bond_length_acceptability_cutoff=args.bond_length_acceptability_cutoff)
 
     # Compute Uniqueness
-    gen_df_proc = get_unique(gen_df_proc, args.num_workers)
+    if args.skip_uniqueness:
+        gen_df_proc['is_unique'] = True
+    else:
+        gen_df_proc = get_unique(gen_df_proc, args.num_workers)
     
     # Build structures and extract formulas for novelty checks
     gen_structures = build_generated_structures(gen_df_proc)

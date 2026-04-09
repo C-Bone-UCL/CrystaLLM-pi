@@ -184,25 +184,3 @@ class GenerationPipelineTests:
             
         except Exception as e:
             print(f"Postprocessing script import failed: {e}")
-
-    def test_xtra_augment_generation_jobs(self):
-        """Xtra-augment generation jobs should target LeMat prompts and xtra-augment artifacts."""
-        from _pipelines._xtra_augment_jobs import XTRA_AUGMENT_JOBS
-
-        assert len(XTRA_AUGMENT_JOBS) == 3, "Expected 3 xtra-augment jobs"
-
-        for job in XTRA_AUGMENT_JOBS:
-            assert job["activate_conditionality"] == "None"
-            assert job["gen_config"] == "_config_files/generation/unconditional/_xtra_augment/lemat-bench_eval.jsonc"
-            assert job["input_parquet"] == "_post_paper_files/lemat-bench/an-init_prompt.parquet"
-            assert job["output_parquet"].startswith("_artifacts/_xtra_augment/")
-            assert job["output_parquet"].endswith("_gen.parquet")
-            assert job["output_cif_dir"].startswith("_artifacts/_xtra_augment/")
-            assert job["output_cif_dir"].endswith("_cifs/")
-
-    def test_sequential_full_imports(self):
-        """Sequential full pipeline should be importable and expose a main entrypoint."""
-        import _pipelines.sequential_full as sequential_full
-
-        assert hasattr(sequential_full, "main"), "sequential_full should expose main()"
-        assert hasattr(sequential_full, "run_full_job"), "sequential_full should expose run_full_job()"

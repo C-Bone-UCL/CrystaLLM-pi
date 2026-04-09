@@ -48,22 +48,3 @@ class TrainingTests:
             
         except Exception as e:
             print(f"Model class imports failed: {e}")
-
-    def test_xtra_augment_training_jobs(self):
-        """Xtra-augment training job manifest should define three unique training outputs."""
-        from _pipelines._xtra_augment_jobs import XTRA_AUGMENT_JOBS
-
-        assert len(XTRA_AUGMENT_JOBS) == 3, "Expected 3 xtra-augment jobs"
-
-        names = [job["name"] for job in XTRA_AUGMENT_JOBS]
-        assert names == ["mp_20-base", "mp_20-Xaug-sc", "mp_20-Xaug-all"]
-
-        output_dirs = [job["output_dir"] for job in XTRA_AUGMENT_JOBS]
-        assert len(set(output_dirs)) == len(output_dirs), "Training output dirs must be unique"
-
-        train_configs = [job["train_config"] for job in XTRA_AUGMENT_JOBS]
-        assert train_configs == [
-            "_config_files/training/unconditional/_xtra_augment/mp_20-base.jsonc",
-            "_config_files/training/unconditional/_xtra_augment/mp_20-Xaug-sc.jsonc",
-            "_config_files/training/unconditional/_xtra_augment/mp_20-Xaug-all.jsonc",
-        ]
