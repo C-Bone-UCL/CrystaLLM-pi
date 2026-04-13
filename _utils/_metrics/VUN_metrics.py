@@ -107,7 +107,7 @@ def print_vun_metrics(df, condition_column_name, sort_metrics_by):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Calculate Valid, Unique, and Novel metrics for generated CIFs.")
     parser.add_argument("--input_parquet", required=True, help="Path to parquet file with generated CIFs.")
-    parser.add_argument("--huggingface_dataset", required=True, help="Hugging Face dataset path for novelty check.")
+    parser.add_argument("--huggingface_dataset", default=None, help="Hugging Face dataset path for novelty check.")
     parser.add_argument("--output_parquet", default=None, help="Path to save processed parquet with VUN metric columns.")
     parser.add_argument("--output_csv", default=None, help="Path to save VUN metrics summary CSV.")
     parser.add_argument("--sort_metrics_by", default="all", choices=["all", "Condition Vector", "both"], help="How to group results for metrics.")
@@ -120,9 +120,11 @@ if __name__ == "__main__":
     # add bond_length_acce
     parser.add_argument("--bond_length_acceptability_cutoff", type=float, default=1.0, help="Cutoff for bond length acceptability in validity checks")
 
-    
     args = parser.parse_args()
-    
+
+    if not args.huggingface_dataset and not args.load_processed_data:
+        parser.error("At least one of --huggingface_dataset or --load_processed_data must be provided.")
+
     print(f"Starting VUN metrics calculation with {args.num_workers} workers.")
     
     # Load and process generated data

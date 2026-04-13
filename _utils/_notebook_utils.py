@@ -108,6 +108,97 @@ def get_metrics_xrd(df, n_test, only_matched=False, verbose=True):
 
     return metrics
 
+import pandas as pd
+import numpy as np
+
+def get_stratified_metrics_xrd(df_metrics: pd.DataFrame, df_test: pd.DataFrame, only_matched: bool = False, verbose=True) -> pd.DataFrame:
+    """
+    Computes XRD structure match metrics stratified by novelty tiers to isolate
+    pre-training leakage from true conditioning efficacy.
+    
+    Handles missing generations (e.g., truncated by context window) by left-joining
+    metrics onto the full test set. Missing indices automatically count as unmatched.
+    """
+    # Start with the full test set to accurately count total structures (n_test)
+    df = df_test.copy()
+    
+    # Align metrics to the full test set safely
+    if 'Material ID' in df.columns and 'Material ID' in df_metrics.columns:
+        # Merge on Material ID if available (safest if indices were reset)
+        cols_to_use = df_metrics.columns.difference(df.columns).tolist() + ['Material ID']
+        df = df.merge(df_metrics[cols_to_use], on='Material ID', how='left')
+    else:
+        # Fallback to index join
+        cols_to_use = df_metrics.columns.difference(df.columns)
+        df = df.join(df_metrics[cols_to_use], how='left')
+
+    # mutually exclusive stratification masks
+    masks = {
+        'Overall': pd.Series(True, index=df.index),
+        'Memorized (Seen Comp & Struct)': ~df['is_novel'],
+        'Structurally Novel (Seen Comp)': df['is_novel'] & ~df['is_comp_novel'],
+        'Compositionally Novel (Unseen Comp)': df['is_comp_novel']
+    }
+
+    results = {}
+
+    for tier_name, mask in masks.items():
+        subset = df[mask].copy()
+        n_test = len(subset)
+        
+        if n_test == 0:
+            continue
+
+        # Basic Match Metrics (NaN RMS-d gracefully counts as unmatched)
+        n_matches = subset['RMS-d'].notna().sum()
+        percent_match = (n_matches / n_test) * 100
+        mean_rmsd = subset['RMS-d'].mean() # pandas mean() naturally ignores NaNs
+        average_score = subset['Score'].mean() if 'Score' in subset.columns else np.nan
+
+        # Property Metrics Data
+        prop_df = subset[subset['RMS-d'].notna()] if only_matched else subset
+        
+        # Helper to compute safe MAE and R^2
+        def safe_mae(true_col, gen_col):
+            if true_col in prop_df.columns and gen_col in prop_df.columns:
+                return prop_df[true_col].sub(prop_df[gen_col]).abs().mean()
+            return np.nan
+            
+        def safe_r2(true_col, gen_col):
+            if true_col in prop_df.columns and gen_col in prop_df.columns:
+                # Drop NaNs to prevent corr() errors on unmatched generations
+                valid_pairs = prop_df[[true_col, gen_col]].dropna()
+                if len(valid_pairs) > 1:
+                    return valid_pairs.corr().iloc[0, 1] ** 2
+            return np.nan
+
+        results[tier_name] = {
+            'Total Structures': n_test,
+            'Matched': n_matches,
+            'Match Rate (%)': percent_match,
+            'Mean RMS-d': mean_rmsd,
+            'a MAE': safe_mae('True a', 'Gen a'),
+            'b MAE': safe_mae('True b', 'Gen b'),
+            'c MAE': safe_mae('True c', 'Gen c'),
+            'Vol MAE': safe_mae('True volume', 'Gen volume'),
+            'a R^2': safe_r2('True a', 'Gen a'),
+            'b R^2': safe_r2('True b', 'Gen b'),
+            'c R^2': safe_r2('True c', 'Gen c'),
+            'Vol R^2': safe_r2('True volume', 'Gen volume'),
+            'Avg Score': average_score
+        }
+
+    if verbose:
+        for tier, metrics in results.items():
+            print(f"\n--- Metrics for {tier} ---")
+            for k, v in metrics.items():
+                if isinstance(v, float):
+                    print(f"{k}: {v:.4f}")
+                else:
+                    print(f"{k}: {v}")
+
+    return pd.DataFrame(results).T
+
 def get_metrics_ptnd_vs_scratch(
     df_dict, *,
     train_df=None,
@@ -755,5 +846,192 @@ def run_material_selection(input_parquet, output_dir, output_csv, top_n_slme=15,
     # os.makedirs(os.path.dirname(output_csv), exist_ok=True)
     summary_df.to_csv(output_csv, index=False)
     print(f"Saved summary dataframe to {output_csv}")
-    
-    return materials, summary_df
+
+
+def load_count_datasets(datasets: list[tuple]) -> list[tuple]:
+    """Load pre-computed token-count parquets and print a quick summary.
+
+    datasets: list of (name, parquet_path_or_None, context_token_limit)
+    Returns the same list with DataFrames in place of paths, or None for skipped entries.
+    """
+    loaded = []
+    for name, path, ctx in datasets:
+        if path is None:
+            print(f"[SKIP] {name}  (count parquet not yet generated)")
+            loaded.append((name, None, ctx))
+            continue
+        df = pd.read_parquet(path)
+        pct_over = 100 * (df["token_count"] > ctx).mean()
+        print(f"{name},  n={len(df):>7,},  ctx={ctx}  {pct_over:.1f}% beyond context")
+        loaded.append((name, df, ctx))
+    return loaded
+
+
+def _extract_atom_counts_worker(cif_text: str) -> tuple:
+    """Worker for ProcessPoolExecutor – module-level so it is picklable.
+
+    Returns (conv_count, prim_count) on success, (None, None) on any parse error.
+    Imports are cached by Python after the first call in each worker process.
+    """
+    try:
+        import warnings
+        from pymatgen.core import Structure
+        from _utils._generating.postprocess import postprocess
+
+        cleaned = postprocess(cif_text)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            struct = Structure.from_str(cleaned, fmt="cif")
+        return len(struct), len(struct.get_primitive_structure())
+    except Exception:
+        return None, None
+
+
+def compute_atom_counts(loaded: list[tuple], num_workers: int = 32) -> list[tuple]:
+    """Parse CIF files to add conv_count and prim_count columns to each dataset df.
+
+    Processes ALL structures (not just those within context). If columns already exist,
+    the dataset is skipped. Returns a new loaded list with updated DataFrames.
+    """
+    import concurrent.futures
+    from tqdm import tqdm
+
+    updated = []
+    for name, df, ctx in loaded:
+        if df is None:
+            updated.append((name, None, ctx))
+            continue
+
+        if "conv_count" in df.columns and "prim_count" in df.columns:
+            print(f"{name}: atom counts already cached ({len(df):,} structures)")
+            updated.append((name, df, ctx))
+            continue
+
+        cifs = df["CIF"].tolist()
+        print(f"{name}: parsing {len(cifs):,} CIFs with {num_workers} workers")
+        chunksize = max(1, len(cifs) // (num_workers * 4))
+
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+            results = list(tqdm(
+                executor.map(_extract_atom_counts_worker, cifs, chunksize=chunksize),
+                total=len(cifs),
+                desc="Parsing geometries",
+            ))
+
+        df = df.copy()
+        df["conv_count"] = pd.to_numeric([r[0] for r in results], errors="coerce")
+        df["prim_count"] = pd.to_numeric([r[1] for r in results], errors="coerce")
+
+        n_ok = df["conv_count"].notna().sum()
+        print(f"  {n_ok:,} / {len(df):,} parsed successfully")
+        print(f"  re-save your parquet to cache atom counts for next run")
+        updated.append((name, df, ctx))
+
+    return updated
+
+
+def plot_dataset_stats(loaded: list[tuple], atom_density_line: int = 20, save_dir: str="plots/") -> None:
+    """Plot token-count and atom-count distributions for each loaded dataset.
+
+    Structures beyond context shown in red, within-context in amber/teal.
+    Series drawn largest-first so smaller ones appear in front.
+    atom_density_line: dashed line on the atom plot.
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import MaxNLocator
+
+    C_CONV_WITHIN = "#E69F00"   # amber     (conventional, within context)
+    C_PRIM_WITHIN = "#009E73"   # teal      (primitive, within context)
+    C_CONV_ABOVE  = "#CC4125"   # brick red (conventional, beyond context)
+    C_PRIM_ABOVE  = "#FF9980"   # coral     (primitive, beyond context)
+
+    AXES_LW, LABEL_FS, TICK_FS, ANNOT_FS = 1.2, 13, 11, 10
+
+    def _style_ax(ax):
+        for s in ("top", "right"):   ax.spines[s].set_visible(False)
+        for s in ("left", "bottom"): ax.spines[s].set_linewidth(AXES_LW)
+        ax.tick_params(axis="both", which="major", labelsize=TICK_FS)
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=5, prune="upper"))
+
+    os.makedirs(save_dir, exist_ok=True)
+
+    for name, df, ctx in loaded:
+        if df is None:
+            print(f"[SKIP] {name}")
+            continue
+
+        tc = df["token_count"]
+        n_over   = int((tc > ctx).sum())
+        pct_over = 100.0 * n_over / len(tc)
+
+        fig, (ax_tok, ax_atom) = plt.subplots(2, 1, figsize=(9, 7), constrained_layout=True)
+        fig.suptitle(name, fontsize=LABEL_FS + 1, fontweight="bold")
+
+        tok_bins = np.histogram_bin_edges(tc, bins=80) 
+        tok_series = [
+            (tc[tc <= ctx], C_PRIM_WITHIN, 0.85),
+            (tc[tc >  ctx], C_CONV_ABOVE,  0.85),
+        ]
+        for data, color, alpha in sorted(tok_series, key=lambda x: len(x[0]), reverse=True):
+            if len(data):
+                ax_tok.hist(data, bins=tok_bins, color=color, edgecolor="none", alpha=alpha)
+
+        ax_tok.axvline(ctx, color="black", linestyle="--", linewidth=1.4)
+        xmin, xmax = ax_tok.get_xlim()
+        _, ymax = ax_tok.get_ylim()
+        ax_tok.text(ctx - (xmax - xmin) * 0.02, ymax * 0.96,
+                    f"ctx = {ctx:,}", color="black", fontsize=ANNOT_FS, ha="right", va="top")
+        ax_tok.text(ctx + (xmax - xmin) * 0.02, ymax * 0.96,
+                    f"{pct_over:.1f}% beyond context  (n={n_over:,})",
+                    color=C_CONV_ABOVE, fontsize=ANNOT_FS, ha="left", va="top")
+        ax_tok.set_xlabel("Token count", fontsize=LABEL_FS)
+        ax_tok.set_ylabel("Structures", fontsize=LABEL_FS)
+        _style_ax(ax_tok)
+
+        if "conv_count" not in df.columns or "prim_count" not in df.columns:
+            ax_atom.text(0.5, 0.5, "Run compute_atom_counts() first",
+                         ha="center", va="center", transform=ax_atom.transAxes,
+                         fontsize=ANNOT_FS, color="gray")
+        else:
+            valid  = df["conv_count"].notna()
+            within = df["token_count"] <= ctx
+            conv_within = df.loc[valid &  within, "conv_count"].astype(int)
+            conv_above  = df.loc[valid & ~within, "conv_count"].astype(int)
+            prim_within = df.loc[valid &  within, "prim_count"].astype(int)
+            prim_above  = df.loc[valid & ~within, "prim_count"].astype(int)
+
+            all_counts = pd.concat([conv_within, conv_above, prim_within, prim_above])
+            if not all_counts.empty:
+                max_bin   = min(int(all_counts.max()), 300)
+                atom_bins = 80
+                atom_series = [
+                    (conv_within.clip(upper=max_bin), C_CONV_WITHIN, 0.75, f"Conventional ≤ctx  (n={len(conv_within):,})"),
+                    (prim_within.clip(upper=max_bin), C_PRIM_WITHIN, 0.80, f"Primitive ≤ctx  (n={len(prim_within):,})"),
+                    (conv_above.clip(upper=max_bin),  C_CONV_ABOVE,  0.85, f"Conventional >ctx  (n={len(conv_above):,})"),
+                    (prim_above.clip(upper=max_bin),  C_PRIM_ABOVE,  0.85, f"Primitive >ctx  (n={len(prim_above):,})"),
+                ]
+                for data, color, alpha, label in sorted(atom_series, key=lambda x: len(x[0]), reverse=True):
+                    if not data.empty:
+                        ax_atom.hist(data, bins=atom_bins, color=color, edgecolor="none", alpha=alpha, label=label)
+
+                ax_atom.axvline(atom_density_line, color="black", linestyle="--",
+                                linewidth=1.2, label=f"{atom_density_line} atoms")
+                ax_atom.legend(fontsize=ANNOT_FS - 1, frameon=False, loc="upper right")
+                cap_label = (f"Atoms per unit cell  (capped at {max_bin})"
+                             if int(all_counts.max()) > max_bin else "Atoms per unit cell")
+                ax_atom.set_xlabel(cap_label, fontsize=LABEL_FS)
+            else:
+                ax_atom.text(0.5, 0.5, "No parseable geometries",
+                             ha="center", va="center", transform=ax_atom.transAxes,
+                             fontsize=ANNOT_FS, color="gray")
+
+        ax_atom.set_ylabel("Structures", fontsize=LABEL_FS)
+        ax_atom.set_title(f"Atom count per unit cell  ({len(df):,} structures total)", fontsize=LABEL_FS)
+        _style_ax(ax_atom)
+
+        save_path = os.path.join(save_dir, f"{name}.png")
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"Saved plot to {save_path}")
+        plt.show()
+        plt.close(fig)

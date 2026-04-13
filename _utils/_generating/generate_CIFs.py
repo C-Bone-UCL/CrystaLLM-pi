@@ -780,6 +780,12 @@ def run_generation_pool(
         listener.get()
 
     manager.shutdown()
+
+    if is_single_prompt and generated_data:
+        base_id = generated_data[0]["Material ID"].rsplit("_", 1)[0]
+        for i, row in enumerate(generated_data):
+            row["Material ID"] = f"{base_id}_{i + 1}"
+
     return generated_data
 
 

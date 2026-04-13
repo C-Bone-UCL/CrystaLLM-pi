@@ -87,6 +87,8 @@ def main():
         suite.run_test("tokenizer_basic", data_tests.test_tokenizer_basic)
         suite.run_test("cif_validation", data_tests.test_cif_validation)
         suite.run_test("prompt_creation", data_tests.test_prompt_creation)
+        suite.run_test("logit_analysis_reconstruction", data_tests.test_logit_analysis_reconstruction)
+        suite.run_test("logit_analysis_condition_dtype_matches_model", data_tests.test_logit_analysis_condition_dtype_matches_model)
         suite.run_test("model_loading", model_tests.test_model_loading)
         suite.run_test("model_forward", model_tests.test_model_forward)
         suite.run_test("pkv_model_forward", model_tests.test_pkv_model_forward)

@@ -315,7 +315,7 @@ def get_novelty(df_gen, base_comps, ltol, stol, angle_tol, structures, workers):
 def load_and_filter_training_data(hf_dataset, processed_data_path, num_workers, gen_formulas):
     """Load training data and filter to relevant compositions."""
     print("\nLoading Training Dataset (for novelty check)")
-    
+
     if processed_data_path and os.path.exists(processed_data_path):
         print(f"Loading pre-processed training data from {processed_data_path}.")
         proc_train_df = pd.read_parquet(processed_data_path)
