@@ -26,6 +26,7 @@ API_keys.jsonc
 /.cache/
 /.mypy_cache/
 /.ruff_cache/
-/.env
+**/.env
+**/.env.*
 /*.pem
 /*.key
