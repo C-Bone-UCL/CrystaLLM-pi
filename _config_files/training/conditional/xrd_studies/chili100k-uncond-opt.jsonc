@@ -1,18 +1,22 @@
 {
-
   // Data Arguments
   //################
-  "dataset_HF": "c-bone/mp_20_Xaug_sc",
+  "dataset_HF": "c-bone/chili100k_strat",
   "pretrained_tokenizer_dir": "HF-cif-tokenizer",
-  "context_length": 1024,
-  "remove_CIFs_above_context": true,
-  "remove_CIFs_with_unk": false,
+  "context_length": 1536,
+  // Filters
+  "remove_CIFs_above_context": false,
+  "remove_CIFs_with_unk": true,
+
 
   // Model Arguments
   //#################
+  // Model Depth
+  // n_positions has been tied to context_length
   "n_embd": 512,
   "n_layer": 8,
   "n_head": 8,
+  // Dropout
   "residual_dropout": 0.1,
   "embedding_dropout": 0.1,
   "attention_dropout": 0.1,
@@ -23,36 +27,31 @@
   "train_batch_size": 32,
   "eval_batch_size": 32,
   "gradient_accumulation_steps": 1,
+  "auto_find_batch_size": false,
   // Learning Rate and Optimizer
-  "learning_rate": 0.000005,
-  "pretrained_model_dir": "model_ckpts/mpdb-small-base-lematerial/checkpoint-1250000",
+  "learning_rate":  0.00489,
   "lr_scheduler_type": "cosine_with_min_lr",
   "lr_scheduler_kwargs": {
-    "min_lr_rate": 0.1
+    "min_lr_rate": 0.01
   },
-  "warmup_steps": 300,
+  "warmup_ratio": 0.0784,
   "adam_beta1": 0.9,
-  "adam_beta2": 0.995,
+  "adam_beta2": 0.999,
   "grad_clip": 1.0,
-  "weight_decay": 0.1,
-  "optimizer": "muon",
-  "muon_lr": 0.00005,
-  "muon_momentum": 0.95,
-
+  "weight_decay": 0.0743,
   // Logging
-  "output_dir": "model_ckpts/_xtra_augment/mp-20-ft_Xaug_sc/",
+  "output_dir": "model_ckpts/chili100k-uncond-opt/",
   "save_total_limit": 2,
   "report_to": "wandb",
-  // "report_to": "none",
-  "wandb_project_folder": "xtra_augment",
+  "wandb_project_folder": "Chili",
+  "pretrained_model_dir": "model_ckpts/mattergen_XRD/uncond_ft/checkpoint-425000/",
   "eval_strategy": "steps",
   "eval_steps": 500,
-  "logging_steps": 50,
+  "logging_steps": 100,
   "save_strategy": "steps",
-  "max_steps": 7500,
+  "max_steps": 2500,
   "early_stopping_patience": 15,
-  "early_stopping_threshold": 0.000005,
-  
+  "early_stopping_threshold": 0.00005,
   // Utils
   "seed": 1,
   "data_seed": 1,
@@ -60,9 +59,11 @@
   "metric_for_best_model": "eval_loss",
   "greater_is_better": false,
   "torch_compile": true,
+  "fp16": true,
   "deepspeed_config": "_config_files/deepspeed_default.json",
 
-  // CodeCarbon
+  // CodeCarbon Arguments
+  //######################
   "codecarbon": true,
   "tracker_project": "CrystaLLM-pi"
 }

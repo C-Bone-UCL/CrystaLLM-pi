@@ -3,7 +3,7 @@ export GID := $(shell id -g)
 
 COMPOSE_BASE = docker compose -f docker/docker-compose.yml
 COMPOSE_DEV = docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml
-PYTHON_ENV = conda run --no-capture-output -n crystallmv2_venv
+PYTHON_ENV = conda run --no-capture-output -n CrystaLLM-pi_env
 APPTAINER_SIF ?= crystallm-api.sif
 APPTAINER_DOCKER_IMAGE ?= crystallm-api
 APPTAINER_DOCKER_SOURCE_TAG ?= local

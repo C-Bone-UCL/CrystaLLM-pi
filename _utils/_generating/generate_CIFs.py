@@ -239,6 +239,26 @@ def _normalize_scoring_mode(mode):
     return str(mode).lower()
 
 
+def resolve_generation_plan(scoring_mode, target_valid_cifs, max_return_attempts, num_return_sequences, total_samples):
+    """Resolve validation and stopping behavior for a generation run."""
+    normalized_scoring_mode = _normalize_scoring_mode(scoring_mode)
+    need_scores = (normalized_scoring_mode == "logp")
+    check_validity = need_scores or (target_valid_cifs > 0)
+
+    if check_validity:
+        target_per_prompt = target_valid_cifs
+    else:
+        target_per_prompt = num_return_sequences * max_return_attempts
+
+    return {
+        "normalized_scoring_mode": normalized_scoring_mode,
+        "need_scores": need_scores,
+        "check_validity": check_validity,
+        "target_per_prompt": target_per_prompt,
+        "total_expected_generations": total_samples * target_per_prompt,
+    }
+
+
 def _load_worker_model(model_class, model_source_path, model_source, dtype):
     """Load worker model from local checkpoint or HuggingFace source."""
     if model_source == "hf":
@@ -491,9 +511,6 @@ def main():
     if not args.output_parquet:
         sys.exit("ERROR: output_parquet is required")
     
-    # Set defaults
-    args.num_repeats = getattr(args, 'num_repeats', 1)
-    
     print("Environment info")
     print(f"Available GPUs: {torch.cuda.device_count()}")
     for i in range(torch.cuda.device_count()):
@@ -501,7 +518,7 @@ def main():
     
     print()
     print("Generation settings")
-    print(f"Total sequences per prompt-condition pair: {args.num_return_sequences * args.num_repeats}")
+    print(f"Max raw generations per prompt-condition pair: {args.num_return_sequences * args.max_return_attempts}")
     print(f"Will save generated CIFs to {args.output_parquet}")
     
 
@@ -545,36 +562,37 @@ def main():
     print(f"Number of condition-prompt pairs: {total_samples}")
     
     # Normalize scoring mode and set base seed
-    scoring_mode = _normalize_scoring_mode(args.scoring_mode)
     base_seed = getattr(args, 'seed', 1)
-    
-    if scoring_mode == "none":
-        target_per_prompt = generation_kwargs.get("num_return_sequences", 1) * args.max_return_attempts
-        print(f"Target CIFs per prompt: {target_per_prompt} (no validation/scoring)")
-        print(f"Will save all generated CIFs without validation or ranking")
-    else:
+    plan = resolve_generation_plan(
+        scoring_mode=args.scoring_mode,
+        target_valid_cifs=args.target_valid_cifs,
+        max_return_attempts=args.max_return_attempts,
+        num_return_sequences=generation_kwargs.get("num_return_sequences", 1),
+        total_samples=total_samples,
+    )
+    scoring_mode = plan["normalized_scoring_mode"]
+
+    if not plan["check_validity"]:
+        print(f"Target CIFs per prompt: {plan['target_per_prompt']} (no validation/scoring)")
+        print("Will save all generated CIFs without validation or ranking")
+    elif plan["need_scores"]:
         print(f"Target valid CIFs per prompt: {args.target_valid_cifs}")
         print(f"Will save all CIFs ranked by {scoring_mode} score (up to {args.target_valid_cifs} per prompt)")
+    else:
+        print(f"Target valid CIFs per prompt: {args.target_valid_cifs}")
+        print("Will save valid CIFs only, without ranking")
     
 
     # Setup multiprocessing
     manager = mp.Manager()
     queue = manager.Queue()
-    # Progress tracking: calculate expected generations based on scoring mode
-    if scoring_mode == "none":
-        target_per_prompt = generation_kwargs.get("num_return_sequences", 1) * args.max_return_attempts
-        total_expected_generations = total_samples * target_per_prompt
-    else:
-        total_expected_generations = total_samples * args.target_valid_cifs
+    total_expected_generations = plan["total_expected_generations"]
     
     
     # Determine splitting strategy
     is_single_prompt = (total_samples == 1) and (num_gpus > 1)
 
     target_valid_cifs = getattr(args, 'target_valid_cifs', 20)
-    # In scoring_mode=none, ensure target_valid_cifs=0 so generate_on_gpu does not validate
-    if scoring_mode == "none":
-        target_valid_cifs = 0
 
     results = []
     # Use spawn context for CUDA safety
@@ -630,9 +648,9 @@ def main():
                     ))
                     
                     # Estimate offset increment for next worker to avoid ID collision
-                    if scoring_mode == "none":
-                         expected_gen = local_attempts * generation_kwargs.get("num_return_sequences", 1)
-                         current_offset += expected_gen
+                    if not plan["check_validity"]:
+                        expected_gen = local_attempts * generation_kwargs.get("num_return_sequences", 1)
+                        current_offset += expected_gen
                     else:
                         current_offset += local_target
 
@@ -672,10 +690,12 @@ def main():
     try:    
         df.to_parquet(args.output_parquet, index=False)
         print(f"\nSaved {len(df)} CIFs to {args.output_parquet}")
-        if scoring_mode == "none":
-            print(f"Results include all generated CIFs (no validation or scoring applied).")
-        else:
+        if not plan["check_validity"]:
+            print("Results include all generated CIFs (no validation or scoring applied).")
+        elif plan["need_scores"]:
             print(f"Results include all generated CIFs ranked by {scoring_mode} score per prompt.")
+        else:
+            print("Results include valid CIFs only (no scoring applied).")
     except Exception as e:
         # do a fallback to saving a 'fallback.parquet' file in the current directory
         fallback_path = "fallback.parquet"
@@ -709,15 +729,16 @@ def run_generation_pool(
     worker_count = min(worker_count, max(1, num_gpus))
 
     total_samples = len(df_prompts)
-    normalized_scoring_mode = _normalize_scoring_mode(scoring_mode)
-    need_scores = (normalized_scoring_mode == "logp")
-    check_validity = need_scores or (target_valid_cifs > 0)
-
-    if not check_validity:
-        target_per_prompt = generation_kwargs.get("num_return_sequences", 1) * max_return_attempts
-        total_expected_generations = total_samples * target_per_prompt
-    else:
-        total_expected_generations = total_samples * target_valid_cifs
+    plan = resolve_generation_plan(
+        scoring_mode=scoring_mode,
+        target_valid_cifs=target_valid_cifs,
+        max_return_attempts=max_return_attempts,
+        num_return_sequences=generation_kwargs.get("num_return_sequences", 1),
+        total_samples=total_samples,
+    )
+    normalized_scoring_mode = plan["normalized_scoring_mode"]
+    check_validity = plan["check_validity"]
+    total_expected_generations = plan["total_expected_generations"]
 
     is_single_prompt = (total_samples == 1) and (worker_count > 1)
 

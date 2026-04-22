@@ -1,5 +1,7 @@
 """
-Plot digit probability heatmaps for CIF numeric fields.
+This script takes in probability data for CIF generation and creates a grid of 
+heatmaps, allowing developers to visually inspect how confident the model was 
+for each digit at each position.
 """
 
 import numpy as np
@@ -8,28 +10,35 @@ import matplotlib.colors as mcolors
 from matplotlib.patches import Rectangle
 from typing import Optional
 
+# Assuming this is imported from your local module
 from .logit_extraction import DIGIT_TOKENS
 
-
 ROW_LABELS = DIGIT_TOKENS + ["other"]
+DEFAULT_CMAP = "magma_r"
+DEFAULT_DPI = 300
+FIGSIZE_PER_PANEL = (3.5, 2.8)
+
+# Typography & Layout
+TITLE_FONTSIZE = 14
+LABEL_FONTSIZE = 12
+TICKS_FONTSIZE = 10
+AXES_LINEWIDTH = 1.5
+BOX_LINEWIDTH = 2.0
+BOX_COLOR = "black"
 
 
 def plot_digit_heatmap_grid(
     fields: list,
     tags_to_plot: Optional[list] = None,
     ncols: int = 3,
-    figsize_per_panel: tuple = (3.2, 2.4),
-    cmap: str = "YlOrRd",
     title: Optional[str] = None,
     save_path: Optional[str] = None,
-    dpi: int = 200,
 ):
     """
-    Plot a grid of digit probability heatmaps.
-
-    Each panel shows one CIF field. Y-axis is digit value (0-9, '.', 'other'),
-    X-axis is position within the number. Color = softmax probability.
-    The actually generated digit gets a black border.
+    Plots a grid of digit probability heatmaps for visual inspection.
+    
+    Creates a multi-panel figure where each panel shows the softmax probability 
+    distribution for a specific CIF field. The actually generated token is highlighted.
     """
     if tags_to_plot is not None:
         fields = [f for f in fields if f["tag"] in tags_to_plot]
@@ -40,82 +49,92 @@ def plot_digit_heatmap_grid(
         return None, None
 
     nrows = int(np.ceil(n_panels / ncols))
+    
+    # constrained_layout natively handles spacing and dynamic colorbar injection
     fig, axes = plt.subplots(
         nrows, ncols,
-        figsize=(figsize_per_panel[0] * ncols, figsize_per_panel[1] * nrows),
+        figsize=(FIGSIZE_PER_PANEL[0] * ncols, FIGSIZE_PER_PANEL[1] * nrows),
         squeeze=False,
+        constrained_layout=True 
     )
 
     norm = mcolors.Normalize(vmin=0, vmax=1)
+    im = None  # Track the mappable for the colorbar
 
-    for panel_idx, field in enumerate(fields):
-        row = panel_idx // ncols
-        col = panel_idx % ncols
-        ax = axes[row, col]
-
+    # Map each field directly to its corresponding axis
+    for field, ax in zip(fields, axes.flat):
         probs = field["probs"]  # shape (n_digits, 12)
         n_positions = probs.shape[0]
         generated = field["digit_tokens"]
-
+        
         # Transpose so rows = token values, cols = positions
-        heatmap_data = probs.T  # (12, n_positions)
+        heatmap_data = probs.T  
 
         im = ax.imshow(
-            heatmap_data, aspect="auto", cmap=cmap, norm=norm,
-            interpolation="nearest",
+            heatmap_data, aspect="auto", cmap=DEFAULT_CMAP, norm=norm,
+            interpolation="nearest"
         )
 
-        # Mark the generated digit with a black rectangle
+        # Mark the generated digit with a highlighted rectangle
         for pos_idx, tok in enumerate(generated):
             if tok in ROW_LABELS:
                 tok_row = ROW_LABELS.index(tok)
                 rect = Rectangle(
                     (pos_idx - 0.5, tok_row - 0.5), 1, 1,
-                    linewidth=1.8, edgecolor="black", facecolor="none"
+                    linewidth=BOX_LINEWIDTH, edgecolor=BOX_COLOR, facecolor="none"
                 )
                 ax.add_patch(rect)
 
+        # Typographic and axis styling
         ax.set_yticks(range(len(ROW_LABELS)))
-        ax.set_yticklabels(ROW_LABELS, fontsize=7)
+        ax.set_yticklabels(ROW_LABELS, fontsize=TICKS_FONTSIZE)
         ax.set_xticks(range(n_positions))
-        ax.set_xticklabels(
-            [f"d{i+1}" for i in range(n_positions)], fontsize=7
-        )
-        ax.set_xlabel("digit position", fontsize=8)
+        ax.set_xticklabels([f"d{i+1}" for i in range(n_positions)], fontsize=TICKS_FONTSIZE)
+        
+        # Remove physical tick lines but keep labels for a cleaner "heatmap" look
+        ax.tick_params(axis='both', which='both', length=0)
+        
+        # Thicken the bounding box of the heatmap
+        for spine in ax.spines.values():
+            spine.set_linewidth(AXES_LINEWIDTH)
+            spine.set_color("black")
+
+        ax.set_xlabel("Digit Position", fontsize=LABEL_FONTSIZE)
 
         tag_display = _format_tag(field["tag"])
         value_str = "".join(generated)
-        ax.set_title(f"{tag_display} = {value_str}", fontsize=8, fontweight="bold")
+        ax.set_title(f"{tag_display} = {value_str}", fontsize=TITLE_FONTSIZE, fontweight="bold")
 
-    # Hide unused axes
-    for panel_idx in range(n_panels, nrows * ncols):
-        row = panel_idx // ncols
-        col = panel_idx % ncols
-        axes[row, col].set_visible(False)
+    # Hide any unused axes in the grid if panels don't perfectly fill the rows
+    for ax in axes.flat[n_panels:]:
+        ax.set_visible(False)
 
-    # Single colorbar
-    cbar_ax = fig.add_axes([0.93, 0.15, 0.015, 0.7])
-    fig.colorbar(
-        plt.cm.ScalarMappable(norm=norm, cmap=cmap),
-        cax=cbar_ax, label="P(token)"
-    )
+    # Attach a single global colorbar dynamically
+    if im is not None:
+        cbar = fig.colorbar(im, ax=axes.ravel().tolist(), shrink=0.8, aspect=30)
+        cbar.set_label("P(token)", fontsize=LABEL_FONTSIZE, weight='bold')
+        cbar.ax.tick_params(labelsize=TICKS_FONTSIZE)
+        cbar.outline.set_linewidth(AXES_LINEWIDTH)
 
     if title:
-        fig.suptitle(title, fontsize=11, fontweight="bold", y=0.98)
-
-    fig.subplots_adjust(
-        hspace=0.5, wspace=0.35, right=0.91, top=0.92, bottom=0.08
-    )
+        # Pad title slightly so it doesn't crowd the top row
+        fig.suptitle(title, fontsize=TITLE_FONTSIZE + 2, fontweight="bold", y=1.02)
 
     if save_path:
-        fig.savefig(save_path, dpi=dpi, bbox_inches="tight")
-        print(f"Saved to {save_path}")
+        try:
+            fig.savefig(save_path, dpi=DEFAULT_DPI, bbox_inches="tight")
+            print(f"Saved to {save_path}")
+        except Exception as e:
+            print(f"Failed to save figure to {save_path}. Error: {e}")
 
     return fig, axes
 
 
 def _format_tag(tag: str) -> str:
-    """Shorten tag for display. E.g. '_cell_length_a' → 'cell_a'."""
+    """
+    Shortens CIF tags for display purposes to prevent title overlapping. 
+    E.g., '_cell_length_a' becomes 'cell_a'.
+    """
     replacements = {
         "_cell_length_a": "cell_a",
         "_cell_length_b": "cell_b",
@@ -126,6 +145,7 @@ def _format_tag(tag: str) -> str:
         "_cell_volume": "volume",
         "_cell_formula_units_Z": "Z",
     }
+    
     # Handle coord tags with atom index suffix
     for coord_tag in ("_atom_site_fract_x", "_atom_site_fract_y", "_atom_site_fract_z"):
         if tag.startswith(coord_tag):

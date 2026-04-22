@@ -1,25 +1,25 @@
 {
   // Data Arguments
   //################
-  "dataset_HF": "c-bone/mp_20_pxrd",
+  "dataset_HF": "c-bone/chili100k_strat",
   "pretrained_tokenizer_dir": "HF-cif-tokenizer",
-  "context_length": 1024,
-  "dataset_streaming": false,
+  "context_length": 1536,
   // Filters
   "remove_CIFs_above_context": false,
   "remove_CIFs_with_unk": true,
 
     // Conditional Arguments
   //#######################
-  "condition_columns": "['Condition Vector']" , 
+  "condition_columns": "['condition_vector']" , 
   "n_prefix_tokens": 40,
   "n_hidden_cond": 64,
-  "cond_dropout": 0.16,
+  "cond_dropout": 0.196,
   "share_layers": false,
   "n_heads_sharing_slider": 2,
-  "cond_lr": 0.0021071619928203556,
-  "cond_wd": 0.16,
-  // "activate_conditionality": "None",
+  "cond_lr": 0.0055,
+  "cond_wd": 0.0605,
+  "activate_conditionality": "Slider",
+
 
   // Model Arguments
   //#################
@@ -29,9 +29,9 @@
   "n_layer": 8,
   "n_head": 8,
   // Dropout
-  "residual_dropout": 0.18,
-  "embedding_dropout": 0.18,
-  "attention_dropout": 0.18,
+  "residual_dropout": 0.1,
+  "embedding_dropout": 0.1,
+  "attention_dropout": 0.1,
 
   // Trainer Arguments
   //###################
@@ -41,30 +41,29 @@
   "gradient_accumulation_steps": 1,
   "auto_find_batch_size": false,
   // Learning Rate and Optimizer
-  "learning_rate": 0.0021071619928203556,
+  "learning_rate":  0.00489,
   "lr_scheduler_type": "cosine_with_min_lr",
   "lr_scheduler_kwargs": {
     "min_lr_rate": 0.01
   },
-  "warmup_ratio": 0.09999999999999999,
+  "warmup_ratio": 0.0784,
   "adam_beta1": 0.9,
-  "adam_beta2": 0.99,
+  "adam_beta2": 0.999,
   "grad_clip": 1.0,
-  // "max_grad_norm": 1.0,
-  "weight_decay": 0.01,
+  "weight_decay": 0.0743,
   // Logging
-  "output_dir": "model_ckpts/mp_20_pxrd_scratch_uncond/base_uncond",
+  "output_dir": "model_ckpts/chili100k-xrd-slider-opt/",
   "save_total_limit": 2,
   "report_to": "wandb",
-  "wandb_project_folder": "SliderGPT_experiments",
-  // "pretrained_model_dir": "model_ckpts/mpdb-small-base-lematerial/checkpoint-1250000",
+  "wandb_project_folder": "Chili",
+  "pretrained_model_dir": "model_ckpts/mattergen_XRD/slider_ft/checkpoint-405000",
   "eval_strategy": "steps",
   "eval_steps": 500,
   "logging_steps": 100,
   "save_strategy": "steps",
-  "max_steps": 15000,
+  "max_steps": 2500,
   "early_stopping_patience": 15,
-  "early_stopping_threshold": 0.000005,
+  "early_stopping_threshold": 0.00005,
   // Utils
   "seed": 1,
   "data_seed": 1,
@@ -78,5 +77,5 @@
   // CodeCarbon Arguments
   //######################
   "codecarbon": true,
-  "tracker_project": "CrystaLLMv2"
+  "tracker_project": "CrystaLLM-pi"
 }

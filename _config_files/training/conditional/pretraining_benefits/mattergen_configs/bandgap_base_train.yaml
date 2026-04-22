@@ -1,0 +1,26 @@
+hydra:
+  run:
+    dir: ${oc.env:OUTPUT_DIR,outputs/singlerun/${now:%Y-%m-%d}/${now:%H-%M-%S}}
+
+auto_resume: true
+
+defaults:
+  - data_module: mp_bandgap
+  - trainer: default
+  - lightning_module: default
+  - lightning_module/diffusion_module: default
+  - lightning_module/diffusion_module/model: mattergen
+  - lightning_module/diffusion_module/corruption: default
+
+# Unconditional base training phase 1
+data_module:
+  properties: []
+  batch_size:
+    val: 8
+  num_workers:
+    train: 1
+    val: 1
+
+trainer:
+  devices: 3
+  accumulate_grad_batches: 8

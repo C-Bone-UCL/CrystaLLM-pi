@@ -119,6 +119,7 @@ if __name__ == "__main__":
     parser.add_argument("--skip_uniqueness", action="store_true", help="Skip uniqueness checks (assumes all structures are unique).")
     # add bond_length_acce
     parser.add_argument("--bond_length_acceptability_cutoff", type=float, default=1.0, help="Cutoff for bond length acceptability in validity checks")
+    parser.add_argument("--allow_stated_p1_mismatch", action="store_true", help="Allow space-group mismatch when CIF states P1 (for mattergen comaprison).")
 
     args = parser.parse_args()
 
@@ -134,7 +135,12 @@ if __name__ == "__main__":
     if args.skip_validity:
         gen_df_proc['is_valid'] = True
     else:
-        gen_df_proc = get_valid(gen_df_proc, args.num_workers, bond_length_acceptability_cutoff=args.bond_length_acceptability_cutoff)
+        gen_df_proc = get_valid(
+            gen_df_proc,
+            args.num_workers,
+            bond_length_acceptability_cutoff=args.bond_length_acceptability_cutoff,
+            allow_stated_p1_mismatch=args.allow_stated_p1_mismatch,
+        )
 
     # Compute Uniqueness
     if args.skip_uniqueness:

@@ -301,7 +301,8 @@ def _calculate_metrics(rms_dists, a_diffs, b_diffs, c_diffs, gen_structs):
     }
 
 
-def get_match_rate_and_rms(gen_structs, true_structs, matcher, args, score_data=None, num_workers=None):
+def get_match_rate_and_rms(gen_structs, true_structs, matcher, args, score_data=None, num_workers=None,
+                           atom_counts=None, novel_data=None, material_ids_order=None):
     """Compute match rate and RMS distance plus additional XRD metrics.
     
     - Only valid structures (smact + structure validity) are considered
@@ -312,6 +313,9 @@ def get_match_rate_and_rms(gen_structs, true_structs, matcher, args, score_data=
     Args:
         score_data: Dict mapping material_id -> list of scores corresponding to gen_structs
         num_workers: Number of parallel workers (defaults to CPU count // 2)
+        atom_counts: List of true structure atom counts (one per material, in order)
+        novel_data: Dict mapping column name -> {material_id -> value} for extra columns
+        material_ids_order: List of material IDs in the same order as gen_structs/true_structs
     """
     if num_workers is None:
         num_workers = max(1, multiprocessing.cpu_count() // 2)
@@ -375,7 +379,16 @@ def get_match_rate_and_rms(gen_structs, true_structs, matcher, args, score_data=
             best_score = current_scores[0] if current_scores else None
             rows[i] = _create_empty_row(true_structs[i], len(gen_structs[i]), best_score)
     
-    return _calculate_metrics(rms_dists, a_diffs, b_diffs, c_diffs, gen_structs), pd.DataFrame(rows)
+    stats_df = pd.DataFrame(rows)
+    
+    if atom_counts is not None:
+        stats_df["atom_counts"] = atom_counts
+    
+    if novel_data and material_ids_order:
+        for col_name, mid_to_val in novel_data.items():
+            stats_df[col_name] = [mid_to_val.get(mid) for mid in material_ids_order]
+    
+    return _calculate_metrics(rms_dists, a_diffs, b_diffs, c_diffs, gen_structs), stats_df
 
 
 def get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, num_workers, has_rank_column=False, id_to_scores=None):
@@ -386,6 +399,7 @@ def get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, num_workers, has_rank_c
     """
     true_structs = []
     valid_material_ids = []
+    atom_counts = []
     
     for mid, cifs in tqdm(id_to_gen_cifs.items(), desc="Parsing true CIFs"):
         if mid not in id_to_true_cifs:
@@ -394,6 +408,7 @@ def get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, num_workers, has_rank_c
             true_struct = Structure.from_str(id_to_true_cifs[mid], fmt="cif")
             true_structs.append(true_struct)
             valid_material_ids.append(mid)
+            atom_counts.append(len(true_struct))
         except Exception:
             continue
 
@@ -444,7 +459,7 @@ def get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, num_workers, has_rank_c
             if mid in id_to_scores:
                 filtered_score_data[mid] = id_to_scores[mid]
     
-    return gen_structs, true_structs, filtered_score_data
+    return gen_structs, true_structs, filtered_score_data, valid_material_ids, atom_counts
 
 
 def _parallel_convert_generated_cif(cif):
@@ -478,6 +493,14 @@ if __name__ == "__main__":
 
     # Load generated CIFs
     df = pd.read_parquet(args.input_parquet)
+
+    # check if there is a suffix in the Material ID column, and if so, remove it (to match with test DB)
+    if "Material ID" in df.columns:
+        if df["Material ID"].str.contains(r"_[^_]+$").any():
+            print("Removing suffix from Material ID column for matching with test DB")
+            df["Material ID"] = df["Material ID"].str.replace(r"_[^_]+$", "", regex=True)
+
+    # df["Material ID"] = df["Material ID"].str.replace(r"_[^_]+$", "", regex=True)
 
     args.num_workers = max(1, args.num_workers)
     print(f"Using {args.num_workers} workers")
@@ -527,6 +550,7 @@ if __name__ == "__main__":
     print(f"Loaded {len(id_to_gen_cifs)} materials from {args.input_parquet}")
 
     # Load true CIFs
+    novel_data = {}
     if args.ref_parquet:
         df_testdb = pd.read_parquet(args.ref_parquet)
         if "Split" in df_testdb.columns:
@@ -536,6 +560,12 @@ if __name__ == "__main__":
         for mid, group in df_testdb.groupby("Material ID"):
             cif_col = "CIF" if "CIF" in group.columns else "True CIF"
             id_to_true_cifs[mid] = group[cif_col].iloc[0]
+        
+        # Extract novelty columns if present
+        for col in ("is_novel", "is_comp_novel"):
+            if col in df_testdb.columns:
+                novel_data[col] = df_testdb.set_index("Material ID")[col].to_dict()
+                print(f"Found '{col}' column in ref parquet, will include in output")
         
         # Filter to intersection
         intersection_ids = set(id_to_gen_cifs.keys()) & set(id_to_true_cifs.keys())
@@ -547,9 +577,12 @@ if __name__ == "__main__":
         print(f"Using true CIFs from input parquet")
 
     # Process structures and compute metrics
-    gen_structs, true_structs, score_data = get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, args.num_workers, has_rank_column, id_to_scores)
+    gen_structs, true_structs, score_data, valid_material_ids, atom_counts = get_structs(
+        id_to_gen_cifs, id_to_true_cifs, n_gens, args.num_workers, has_rank_column, id_to_scores)
 
-    metrics, stats_df = get_match_rate_and_rms(gen_structs, true_structs, struct_matcher, args, score_data, args.num_workers)
+    metrics, stats_df = get_match_rate_and_rms(
+        gen_structs, true_structs, struct_matcher, args, score_data, args.num_workers,
+        atom_counts=atom_counts, novel_data=novel_data or None, material_ids_order=valid_material_ids)
 
     # Save and display results
     stats_df.to_parquet(args.output_parquet, index=False)

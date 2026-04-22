@@ -1,32 +1,186 @@
-"""
-Random utility functions used in the jupyter notebooks to avoid overcluttering them with code.
-"""
-
 import os
+import sys
 from pathlib import Path
+
+import numpy as np
 import pandas as pd
-from pymatgen.io.cif import CifParser
-import re
+from _utils._processing_utils import extract_reduced_formula as _shared_extract_reduced_formula
+from pymatgen.core import Composition
 from pymatgen.core import Element
 from smact.data_loader import lookup_element_hhis
-from pymatgen.core import Composition
-import sys
-import json
 
+
+_XRD_PROPERTY_SPECS = (
+    ("a", "True a", "Gen a"),
+    ("b", "True b", "Gen b"),
+    ("c", "True c", "Gen c"),
+)
+
+
+def _mean_abs_error(
+    frame: pd.DataFrame,
+    true_col: str,
+    gen_col: str,
+    *,
+    allow_missing: bool = False,
+):
+    if allow_missing and (true_col not in frame.columns or gen_col not in frame.columns):
+        return np.nan
+    return frame[true_col].sub(frame[gen_col]).abs().mean()
+
+
+def _r_squared(
+    frame: pd.DataFrame,
+    true_col: str,
+    gen_col: str,
+    *,
+    allow_missing: bool = False,
+):
+    if allow_missing and (true_col not in frame.columns or gen_col not in frame.columns):
+        return np.nan
+
+    valid_pairs = frame[[true_col, gen_col]].dropna()
+    if len(valid_pairs) <= 1:
+        return np.nan
+    return valid_pairs.corr().iloc[0, 1] ** 2
+
+
+def _atom_count_stats(frame: pd.DataFrame) -> dict:
+    if "atom_counts" not in frame.columns:
+        return {}
+
+    matched_counts = frame.loc[frame["RMS-d"].notna(), "atom_counts"].dropna()
+    unmatched_counts = frame.loc[frame["RMS-d"].isna(), "atom_counts"].dropna()
+    mean_matched = matched_counts.mean() if len(matched_counts) > 0 else np.nan
+    mean_unmatched = unmatched_counts.mean() if len(unmatched_counts) > 0 else np.nan
+    matched_se = matched_counts.sem() if len(matched_counts) > 1 else np.nan
+    unmatched_se = unmatched_counts.sem() if len(unmatched_counts) > 1 else np.nan
+
+    return {
+        'Atom Count (matched mean)': mean_matched,
+        'Atom Count (matched SE)': matched_se,
+        'Atom Count (unmatched mean)': mean_unmatched,
+        'Atom Count (unmatched SE)': unmatched_se,
+        'Delta Atom Count (match - unmatch)': (
+            mean_matched - mean_unmatched
+            if not (np.isnan(mean_matched) or np.isnan(mean_unmatched))
+            else np.nan
+        ),
+    }
+
+
+def _build_xrd_property_metrics(
+    frame: pd.DataFrame,
+    *,
+    allow_missing: bool,
+    volume_label: str,
+) -> dict:
+    metrics = {}
+
+    for label, true_col, gen_col in _XRD_PROPERTY_SPECS:
+        metrics[f"{label} MAE"] = _mean_abs_error(
+            frame,
+            true_col,
+            gen_col,
+            allow_missing=allow_missing,
+        )
+    metrics[f"{volume_label} MAE"] = _mean_abs_error(
+        frame,
+        "True volume",
+        "Gen volume",
+        allow_missing=allow_missing,
+    )
+
+    for label, true_col, gen_col in _XRD_PROPERTY_SPECS:
+        metrics[f"{label} R^2"] = _r_squared(
+            frame,
+            true_col,
+            gen_col,
+            allow_missing=allow_missing,
+        )
+    metrics[f"{volume_label} R^2"] = _r_squared(
+        frame,
+        "True volume",
+        "Gen volume",
+        allow_missing=allow_missing,
+    )
+
+    return metrics
+
+
+def _material_summary_record(
+    row: pd.Series,
+    *,
+    formula: str,
+    position: int,
+    metric_name: str,
+    struct_nov: str,
+    comp_nov: str,
+) -> dict:
+    return {
+        'Reduced Formula': formula,
+        'Position': position,
+        'Metric': metric_name,
+        'Pred. SLME': row['predicted_slme'],
+        'HHI_p': row['HHI_p'],
+        'HHI_r': row['HHI_r'],
+        'HHI_dist': row['HHI_distance_to_0'],
+        'E_hull_mace (eV/atom)': row['ehull_mace_mp'],
+        'Structure Nov.': struct_nov,
+        'Composition Nov.': comp_nov,
+    }
+
+
+def _sem(values, *, single_value=np.nan) -> float:
+    values = np.asarray(values, dtype=float)
+    if len(values) > 1:
+        return values.std(ddof=1) / np.sqrt(len(values))
+    return single_value
+
+
+def _fit_line_and_corr(x, y):
+    slope, intercept = np.polyfit(x, y, 1)
+    corr = np.corrcoef(x, y)[0, 1]
+    return slope, intercept, corr
+
+
+def _top_two_means(means: pd.Series):
+    top = means.nlargest(2)
+    if len(top) < 2:
+        return None
+    return (top.index[0], top.iloc[0]), (top.index[1], top.iloc[1])
+
+
+def _draw_hist_series(ax, series, *, bins):
+    for item in sorted(series, key=lambda entry: len(entry[0]), reverse=True):
+        if len(item) == 3:
+            data, color, alpha = item
+            label = None
+        else:
+            data, color, alpha, label = item
+
+        if len(data):
+            hist_kwargs = {
+                'bins': bins,
+                'color': color,
+                'edgecolor': 'none',
+                'alpha': alpha,
+            }
+            if label is not None:
+                hist_kwargs['label'] = label
+            ax.hist(data, **hist_kwargs)
 def build_challenge_dataframe(input_folder: str, output_csv: str = "materials.parquet"):
     records = []
     input_path = Path(input_folder)
     
     for subfolder in input_path.iterdir():
         if subfolder.is_dir():
-            # Find .cif file
             cif_files = list(subfolder.glob("*.cif"))
             if not cif_files:
                 continue
             cif_path = cif_files[0]
             material_id = cif_path.stem
-            
-            # Read CIF content
+
             true_cif = cif_path.read_text()
             
             records.append({
@@ -38,9 +192,6 @@ def build_challenge_dataframe(input_folder: str, output_csv: str = "materials.pa
     
     df.to_parquet(output_csv, index=False)
     print(f"Saved {len(df)} records to {output_csv}")
-
-import numpy as np
-import pandas as pd
 
 def get_metrics_xrd(df, n_test, only_matched=False, verbose=True):
     mean_rmsd = df['RMS-d'].mean()
@@ -59,15 +210,11 @@ def get_metrics_xrd(df, n_test, only_matched=False, verbose=True):
             matched_in_subset = metrics_df['RMS-d'].notna().sum()
             print(f"Computing metrics on all valid-system structures ({len(metrics_df)} entries, {matched_in_subset} matched)")
 
-    a_mae = metrics_df['True a'].sub(metrics_df['Gen a']).abs().mean()
-    b_mae = metrics_df['True b'].sub(metrics_df['Gen b']).abs().mean()
-    c_mae = metrics_df['True c'].sub(metrics_df['Gen c']).abs().mean()
-    vol_mae = metrics_df['True volume'].sub(metrics_df['Gen volume']).abs().mean()
-    
-    a_corr = metrics_df[['True a', 'Gen a']].corr().iloc[0, 1] ** 2
-    b_corr = metrics_df[['True b', 'Gen b']].corr().iloc[0, 1] ** 2
-    c_corr = metrics_df[['True c', 'Gen c']].corr().iloc[0, 1] ** 2
-    vol_corr = metrics_df[['True volume', 'Gen volume']].corr().iloc[0, 1] ** 2
+    property_metrics = _build_xrd_property_metrics(
+        metrics_df,
+        allow_missing=False,
+        volume_label='Volume',
+    )
 
     average_score = metrics_df['Score'].mean() if 'Score' in metrics_df.columns else float('nan')
     
@@ -76,15 +223,7 @@ def get_metrics_xrd(df, n_test, only_matched=False, verbose=True):
         'Total number of structures': n_test,
         'Mean RMS-d': mean_rmsd,
         'Percent Matched (%)': percent_match,
-        
-        'a MAE': a_mae,
-        'b MAE': b_mae,
-        'c MAE': c_mae,
-        'Volume MAE': vol_mae,
-        'a R^2': a_corr,
-        'b R^2': b_corr,
-        'c R^2': c_corr,
-        'Volume R^2': vol_corr,
+        **property_metrics,
         'Average Score': average_score
     }
 
@@ -95,44 +234,31 @@ def get_metrics_xrd(df, n_test, only_matched=False, verbose=True):
         print(f"Percent Matched (%): {percent_match:.2f}% ({n_matches}/{n_test})")
         
         print("\n--- Property Metrics (Valid-System Data) ---")
-        print(f"a MAE: {a_mae:.4f}")
-        print(f"b MAE: {b_mae:.4f}")
-        print(f"c MAE: {c_mae:.4f}")
-        print(f"Volume MAE: {vol_mae:.4f}")
-        print(f"a R^2: {a_corr:.4f}")
-        print(f"b R^2: {b_corr:.4f}")
-        print(f"c R^2: {c_corr:.4f}")
-        print(f"Volume R^2: {vol_corr:.4f}")
+        for key, value in property_metrics.items():
+            print(f"{key}: {value:.4f}")
         if 'Score' in metrics_df.columns:
             print(f"Average Score: {average_score:.4f}")
 
     return metrics
 
-import pandas as pd
-import numpy as np
-
-def get_stratified_metrics_xrd(df_metrics: pd.DataFrame, df_test: pd.DataFrame, only_matched: bool = False, verbose=True) -> pd.DataFrame:
-    """
-    Computes XRD structure match metrics stratified by novelty tiers to isolate
-    pre-training leakage from true conditioning efficacy.
-    
-    Handles missing generations (e.g., truncated by context window) by left-joining
-    metrics onto the full test set. Missing indices automatically count as unmatched.
-    """
-    # Start with the full test set to accurately count total structures (n_test)
-    df = df_test.copy()
-    
-    # Align metrics to the full test set safely
-    if 'Material ID' in df.columns and 'Material ID' in df_metrics.columns:
-        # Merge on Material ID if available (safest if indices were reset)
-        cols_to_use = df_metrics.columns.difference(df.columns).tolist() + ['Material ID']
-        df = df.merge(df_metrics[cols_to_use], on='Material ID', how='left')
+def get_stratified_metrics_xrd(df_metrics: pd.DataFrame, df_test: pd.DataFrame = None, only_matched: bool = False, verbose=True, n_test=None) -> pd.DataFrame:
+    if df_test is not None:
+        df = df_test.copy()
+        if 'Material ID' in df.columns and 'Material ID' in df_metrics.columns:
+            cols_to_use = df_metrics.columns.difference(df.columns).tolist() + ['Material ID']
+            df = df.merge(df_metrics[cols_to_use], on='Material ID', how='left')
+        else:
+            cols_to_use = df_metrics.columns.difference(df.columns)
+            df = df.join(df_metrics[cols_to_use], how='left')
     else:
-        # Fallback to index join
-        cols_to_use = df_metrics.columns.difference(df.columns)
-        df = df.join(df_metrics[cols_to_use], how='left')
+        missing = [c for c in ('is_novel', 'is_comp_novel') if c not in df_metrics.columns]
+        if missing:
+            raise ValueError(
+                f"df_test was not provided but df_metrics is missing columns: {missing}. "
+                "Pass df_test, or run XRD_metrics.py with a ref_parquet that contains these columns."
+            )
+        df = df_metrics.copy()
 
-    # mutually exclusive stratification masks
     masks = {
         'Overall': pd.Series(True, index=df.index),
         'Memorized (Seen Comp & Struct)': ~df['is_novel'],
@@ -144,48 +270,39 @@ def get_stratified_metrics_xrd(df_metrics: pd.DataFrame, df_test: pd.DataFrame, 
 
     for tier_name, mask in masks.items():
         subset = df[mask].copy()
-        n_test = len(subset)
+        tier_size = len(subset)
         
-        if n_test == 0:
+        if tier_size == 0:
             continue
 
-        # Basic Match Metrics (NaN RMS-d gracefully counts as unmatched)
+        if isinstance(n_test, dict):
+            denom = n_test.get(tier_name, tier_size)
+        elif tier_name == 'Overall' and n_test is not None:
+            denom = n_test
+        else:
+            denom = tier_size
+
         n_matches = subset['RMS-d'].notna().sum()
-        percent_match = (n_matches / n_test) * 100
-        mean_rmsd = subset['RMS-d'].mean() # pandas mean() naturally ignores NaNs
+        percent_match = (n_matches / denom) * 100
+        mean_rmsd = subset['RMS-d'].mean()
         average_score = subset['Score'].mean() if 'Score' in subset.columns else np.nan
 
-        # Property Metrics Data
         prop_df = subset[subset['RMS-d'].notna()] if only_matched else subset
-        
-        # Helper to compute safe MAE and R^2
-        def safe_mae(true_col, gen_col):
-            if true_col in prop_df.columns and gen_col in prop_df.columns:
-                return prop_df[true_col].sub(prop_df[gen_col]).abs().mean()
-            return np.nan
-            
-        def safe_r2(true_col, gen_col):
-            if true_col in prop_df.columns and gen_col in prop_df.columns:
-                # Drop NaNs to prevent corr() errors on unmatched generations
-                valid_pairs = prop_df[[true_col, gen_col]].dropna()
-                if len(valid_pairs) > 1:
-                    return valid_pairs.corr().iloc[0, 1] ** 2
-            return np.nan
+        atom_stats = _atom_count_stats(subset)
+        property_metrics = _build_xrd_property_metrics(
+            prop_df,
+            allow_missing=True,
+            volume_label='Vol',
+        )
 
         results[tier_name] = {
-            'Total Structures': n_test,
+            'Total Structures': denom,
             'Matched': n_matches,
             'Match Rate (%)': percent_match,
             'Mean RMS-d': mean_rmsd,
-            'a MAE': safe_mae('True a', 'Gen a'),
-            'b MAE': safe_mae('True b', 'Gen b'),
-            'c MAE': safe_mae('True c', 'Gen c'),
-            'Vol MAE': safe_mae('True volume', 'Gen volume'),
-            'a R^2': safe_r2('True a', 'Gen a'),
-            'b R^2': safe_r2('True b', 'Gen b'),
-            'c R^2': safe_r2('True c', 'Gen c'),
-            'Vol R^2': safe_r2('True volume', 'Gen volume'),
-            'Avg Score': average_score
+            **property_metrics,
+            'Avg Score': average_score,
+            **atom_stats,
         }
 
     if verbose:
@@ -208,8 +325,6 @@ def get_metrics_ptnd_vs_scratch(
     cond_col="target_Bandgap (eV)",
     hit_tol_eV=0.2
 ):
-    """Extract metrics from pretraining vs scratch comparison analysis."""
-    import numpy as np
     from scipy.stats import gaussian_kde
     
     def _method_pretrain(lbl):
@@ -220,14 +335,12 @@ def get_metrics_ptnd_vs_scratch(
         else:                m = "Raw"
         return m, ("scratch" not in l)
     
-    # Gather all condition values
     conds = set()
     for d in df_dict.values():
         if cond_col in d.columns:
             conds.update(d[cond_col].dropna().unique())
     conds = sorted(map(float, conds))
-    
-    # Build summary rows
+
     rows = []
     for lbl, df in df_dict.items():
         meth, pre = _method_pretrain(lbl)
@@ -244,19 +357,16 @@ def get_metrics_ptnd_vs_scratch(
             if n == 0:
                 rows.append({"m":meth,"p":pre,"x":c,"n":0,"hit":np.nan,"valid":np.nan,"q":np.nan})
                 continue
-            
-            # Hit rate calculation
+
             hit = np.nan
             if {pred_bg_col,target_bg_col}.issubset(sub.columns):
                 pred = pd.to_numeric(sub[pred_bg_col],errors="coerce")
                 true = pd.to_numeric(sub[target_bg_col],errors="coerce")
                 mask = (pred-true).abs() <= hit_tol_eV
                 hit = mask.mean()
-            
-            # Valid fraction
+
             valid = sub["is_valid"].mean() if "is_valid" in sub.columns else np.nan
-            
-            # Quality metric Q
+
             q = np.nan
             req = {"is_valid","is_unique","is_novel","is_stable_mace"}
             if req.issubset(sub.columns):
@@ -265,8 +375,7 @@ def get_metrics_ptnd_vs_scratch(
             rows.append({"m":meth,"p":pre,"x":c,"n":n,"hit":hit,"valid":valid,"q":q})
     
     met = pd.DataFrame(rows)
-    
-    # Compute KDE density if training data available
+
     dens_interp = None
     if train_df is not None and train_bg_col in train_df.columns and len(train_df)>50:
         vals = pd.to_numeric(train_df[train_bg_col],errors="coerce").dropna()
@@ -276,43 +385,36 @@ def get_metrics_ptnd_vs_scratch(
         dens_norm = dens/dens.max()
         dens_interp = np.interp(met["x"].astype(float), xs, dens_norm)
         met["density"] = dens_interp
-    
-    # Compute metrics
+
     met = met[met["n"] > 0].copy()
     met["hit_rate"] = met["hit"]
     
     metrics = {}
-    
-    # Hit-rate vs density correlation
+
     if "density" in met.columns:
         d = met["density"]
-        a_h, b_h = np.polyfit(d, met["hit_rate"], 1)
-        r_hit_density = np.corrcoef(d, met["hit_rate"])[0,1]
+        a_h, b_h, r_hit_density = _fit_line_and_corr(d, met["hit_rate"])
         metrics["hit_rate_vs_density_slope"] = a_h
         metrics["hit_rate_vs_density_intercept"] = b_h
         metrics["hit_rate_density_correlation"] = r_hit_density
-    
-    # Average differences (pretrained - scratch)
+
     diffs_valid = []
     diffs_q = []
     diffs_hit = []
     
     for m in met.m.unique():
         grp = met[met.m == m]
-        
-        # Valid differences
+
         vp = grp[grp.p]["valid"].mean()
         vs = grp[~grp.p]["valid"].mean()
         if not np.isnan(vp) and not np.isnan(vs):
             diffs_valid.append(vp - vs)
-        
-        # Quality differences
+
         qp = grp[grp.p]["q"].mean()
         qs = grp[~grp.p]["q"].mean()
         if not np.isnan(qp) and not np.isnan(qs):
             diffs_q.append(qp - qs)
-        
-        # Hit rate differences
+
         hp = grp[grp.p]["hit_rate"].mean()
         hs = grp[~grp.p]["hit_rate"].mean()
         if not np.isnan(hp) and not np.isnan(hs):
@@ -320,17 +422,16 @@ def get_metrics_ptnd_vs_scratch(
     
     if diffs_valid:
         metrics["avg_delta_validity"] = np.mean(diffs_valid)
-        metrics["sem_delta_validity"] = np.std(diffs_valid, ddof=1) / np.sqrt(len(diffs_valid))
+        metrics["sem_delta_validity"] = _sem(diffs_valid)
     
     if diffs_q:
         metrics["avg_delta_quality"] = np.mean(diffs_q)
-        metrics["sem_delta_quality"] = np.std(diffs_q, ddof=1) / np.sqrt(len(diffs_q))
+        metrics["sem_delta_quality"] = _sem(diffs_q)
     
     if diffs_hit:
         metrics["avg_delta_hit_rate"] = np.mean(diffs_hit)
-        metrics["sem_delta_hit_rate"] = np.std(diffs_hit, ddof=1) / np.sqrt(len(diffs_hit))
-    
-    # Best/worst ratio at bandgap around 6-7 eV
+        metrics["sem_delta_hit_rate"] = _sem(diffs_hit)
+
     candidates = [c for c in conds if 6.0 <= c < 7.0]
     best_ratio = None
     best_c = None
@@ -345,14 +446,11 @@ def get_metrics_ptnd_vs_scratch(
     if best_ratio is not None:
         metrics["best_worst_ratio_6_7eV"] = best_ratio
         metrics["best_worst_ratio_bandgap"] = best_c
-    
-    # Density correlations for valid and quality
+
     if "density" in met.columns:
         d = met["density"]
-        a_v, b_v = np.polyfit(d, met["valid"], 1)
-        a_q2, b_q2 = np.polyfit(d, met["q"], 1)
-        r_v = np.corrcoef(d, met["valid"])[0,1]
-        r_q = np.corrcoef(d, met["q"])[0,1]
+        a_v, b_v, r_v = _fit_line_and_corr(d, met["valid"])
+        a_q2, b_q2, r_q = _fit_line_and_corr(d, met["q"])
         
         metrics["valid_vs_density_slope"] = a_v
         metrics["valid_vs_density_intercept"] = b_v
@@ -360,14 +458,12 @@ def get_metrics_ptnd_vs_scratch(
         metrics["quality_vs_density_slope"] = a_q2
         metrics["quality_vs_density_intercept"] = b_q2
         metrics["quality_density_correlation"] = r_q
-    
-    # Best performing methods
+
     for metric in ("hit_rate", "valid", "q"):
         means = met.groupby(["m", "p"])[metric].mean().dropna()
-        if len(means) >= 2:
-            top = means.nlargest(2)
-            (m1, p1), (m2, p2) = top.index[0], top.index[1]
-            v1, v2 = top.iloc[0], top.iloc[1]
+        top_two = _top_two_means(means)
+        if top_two is not None:
+            ((m1, p1), v1), ((m2, p2), v2) = top_two
             
             metrics[f"best_{metric}_method"] = m1
             metrics[f"best_{metric}_pretrained"] = p1
@@ -378,38 +474,53 @@ def get_metrics_ptnd_vs_scratch(
             
             pct_improvement = (v1 - v2) * 100 if v2 > 0 else np.nan
             metrics[f"{metric}_improvement_percent"] = pct_improvement
-    
-    # print metrics nicely
+
     for k, v in metrics.items():
         if isinstance(v, float):
             print(f"{k}: {v:.4f}")
         else:
             print(f"{k}: {v}")
-    
-    # Additional print statements to match plotting.py output format
-    if "hit_rate_vs_density_slope" in metrics:
-        print(f"Hit-rate vs density: hit_rate = {metrics['hit_rate_vs_density_slope']:.3f}·density + {metrics['hit_rate_vs_density_intercept']:.3f}")
-        print(f"Pearson's r = {metrics['hit_rate_density_correlation']:.3f} (density vs hit_rate)")
-    
-    if "avg_delta_validity" in metrics:
-        print(f"Avg Δ validity (pretrained-scratch): {metrics['avg_delta_validity']:.3f} ± {metrics['sem_delta_validity']:.3f} (SEM)")
-    
-    if "avg_delta_quality" in metrics:
-        print(f"Avg Δ quality  (pretrained-scratch): {metrics['avg_delta_quality']:.3f} ± {metrics['sem_delta_quality']:.3f} (SEM)")
-    
-    if "avg_delta_hit_rate" in metrics:
-        print(f"Avg Δ hit_rate (pretrained-scratch): {metrics['avg_delta_hit_rate']:.3f} ± {metrics['sem_delta_hit_rate']:.3f} (SEM)")
-    
-    if "best_worst_ratio_6_7eV" in metrics:
-        print(f"At {metrics['best_worst_ratio_bandgap']:.2f} eV, best/worst hit_rate = {metrics['best_worst_ratio_6_7eV']:.2f}×")
-    
-    if "valid_vs_density_slope" in metrics:
-        print(f"Valid vs density: valid = {metrics['valid_vs_density_slope']:.3f}·density + {metrics['valid_vs_density_intercept']:.3f}")
-        print(f"Quality vs density: Q = {metrics['quality_vs_density_slope']:.3f}·density + {metrics['quality_vs_density_intercept']:.3f}")
-        print(f"Pearson's r = {metrics['valid_density_correlation']:.3f} (density vs valid)")
-        print(f"Pearson's r = {metrics['quality_density_correlation']:.3f} (density vs quality)")
-    
-    # Best run outputs
+
+    extra_line_groups = (
+        (
+            "hit_rate_vs_density_slope",
+            (
+                "Hit-rate vs density: hit_rate = {hit_rate_vs_density_slope:.3f}*density + {hit_rate_vs_density_intercept:.3f}",
+                "Pearson's r = {hit_rate_density_correlation:.3f} (density vs hit_rate)",
+            ),
+        ),
+        (
+            "avg_delta_validity",
+            ("Avg delta validity (pretrained-scratch): {avg_delta_validity:.3f} +/- {sem_delta_validity:.3f} (SEM)",),
+        ),
+        (
+            "avg_delta_quality",
+            ("Avg delta quality  (pretrained-scratch): {avg_delta_quality:.3f} +/- {sem_delta_quality:.3f} (SEM)",),
+        ),
+        (
+            "avg_delta_hit_rate",
+            ("Avg delta hit_rate (pretrained-scratch): {avg_delta_hit_rate:.3f} +/- {sem_delta_hit_rate:.3f} (SEM)",),
+        ),
+        (
+            "best_worst_ratio_6_7eV",
+            ("At {best_worst_ratio_bandgap:.2f} eV, best/worst hit_rate = {best_worst_ratio_6_7eV:.2f}x",),
+        ),
+        (
+            "valid_vs_density_slope",
+            (
+                "Valid vs density: valid = {valid_vs_density_slope:.3f}*density + {valid_vs_density_intercept:.3f}",
+                "Quality vs density: Q = {quality_vs_density_slope:.3f}*density + {quality_vs_density_intercept:.3f}",
+                "Pearson's r = {valid_density_correlation:.3f} (density vs valid)",
+                "Pearson's r = {quality_density_correlation:.3f} (density vs quality)",
+            ),
+        ),
+    )
+
+    for gate_key, lines in extra_line_groups:
+        if gate_key in metrics:
+            for line in lines:
+                print(line.format(**metrics))
+
     for metric in ("hit_rate", "valid", "q"):
         if f"best_{metric}_method" in metrics:
             m1 = metrics[f"best_{metric}_method"]
@@ -434,8 +545,6 @@ def get_metrics_dataset_size_study(
     gen_col="gen_density (g/cm3)",
     targets=(1.2747, 15.30, 22.94)
 ):
-    """Extract metrics from dataset size study analysis."""
-    import numpy as np
     from scipy.stats import pearsonr, ttest_rel
     
     def _model(k: str) -> str:
@@ -452,8 +561,7 @@ def get_metrics_dataset_size_study(
     def _subset(df: pd.DataFrame, tgt_col: str, tgt: float, gen_col: str):
         m = np.isclose(df[tgt_col], tgt, atol=1e-2) & df["is_valid"] & df[gen_col].notna()
         return pd.to_numeric(df.loc[m, gen_col], errors="coerce").dropna()
-    
-    # Build metrics for each target and dataset combination
+
     metrics_list = []
     for tgt in targets:
         for key, df in dfs_dict.items():
@@ -472,65 +580,57 @@ def get_metrics_dataset_size_study(
             })
     
     met_df = pd.DataFrame(metrics_list)
-    
-    # Clean size data
+
     if 'size' in met_df.columns:
         met_df['size'] = met_df['size'].astype(str).str.strip()
     
     size_map = {"full": len(train_df), "100k": 1e5, "10k": 1e4, "1k": 1e3}
     met_df["size_numeric"] = met_df["size"].map(size_map)
-    
-    # Calculate all metrics
+
     metrics = {}
-    
-    # Pearson correlations between valid count and dataset size
+
     for method in met_df.method.unique():
         sub = met_df[met_df.method == method]
         if len(sub) >= 2:
             r, p_val = pearsonr(sub["count"], sub["size_numeric"])
             metrics[f"{method}_count_vs_size_correlation"] = r
             metrics[f"{method}_count_vs_size_pvalue"] = p_val
-    
-    # Average MAE and SEM for each method
+
     for method in met_df.method.unique():
         vals = met_df[met_df.method == method]["mae"].values
         if len(vals) > 0:
             mean_mae = vals.mean()
-            sem_mae = vals.std(ddof=1) / np.sqrt(len(vals)) if len(vals) > 1 else np.nan
+            sem_mae = _sem(vals)
             metrics[f"{method}_avg_mae"] = mean_mae
             metrics[f"{method}_sem_mae"] = sem_mae
-    
-    # Average standard deviation for each method
+
     for method in met_df.method.unique():
         vals = met_df[met_df.method == method]["std"].values
         if len(vals) > 0:
             mean_std = vals.mean()
-            sem_std = vals.std(ddof=1) / np.sqrt(len(vals)) if len(vals) > 1 else np.nan
+            sem_std = _sem(vals)
             metrics[f"{method}_avg_std"] = mean_std
             metrics[f"{method}_sem_std"] = sem_std
-    
-    # 1k dataset specific metrics
+
     df_1k = met_df[met_df['size'] == '1k']
     for method in ['Slider', 'PKV', 'Prepend']:
         method_counts = df_1k[df_1k['method'] == method]['count']
         if not method_counts.empty:
             mean_count = method_counts.mean()
-            sem_count = method_counts.std(ddof=1) / np.sqrt(len(method_counts)) if len(method_counts) > 1 else 0.0
+            sem_count = _sem(method_counts.values, single_value=0.0)
             metrics[f"{method}_1k_avg_valid_count"] = mean_count
             metrics[f"{method}_1k_sem_valid_count"] = sem_count
-    
-    # MAE for each method-size combination
+
     for method in met_df.method.unique():
         for size in ("1k", "10k", "100k", "full"):
             sub = met_df[(met_df.method == method) & (met_df.size == size)]
             if not sub.empty:
                 vals = sub['mae'].values
                 mean_mae = vals.mean()
-                sem_mae = vals.std(ddof=1) / np.sqrt(len(vals)) if len(vals) > 1 else np.nan
+                sem_mae = _sem(vals)
                 metrics[f"{method}_{size}_mae"] = mean_mae
                 metrics[f"{method}_{size}_mae_sem"] = sem_mae
-    
-    # T-tests comparing methods
+
     df_wide = met_df.pivot_table(index=["target", "size"], columns="method", values="mae").dropna()
     
     if {"Slider", "PKV"}.issubset(df_wide.columns):
@@ -542,38 +642,35 @@ def get_metrics_dataset_size_study(
         t_stat, p_val = ttest_rel(df_wide["Prepend"], df_wide["PKV"])
         metrics["ttest_prepend_vs_pkv_t"] = t_stat
         metrics["ttest_prepend_vs_pkv_p"] = p_val
-    
-    # Print statements to match plotting.py output format
+
     for method in met_df.method.unique():
         sub = met_df[met_df.method==method]
         if len(sub)>=2:
             r = metrics[f"{method}_count_vs_size_correlation"]
             print(f"{method}: Pearson r (valid count vs size) = {r:.3f}")
-    
-    for method in met_df.method.unique():
-        if f"{method}_avg_mae" in metrics:
-            mean_mae = metrics[f"{method}_avg_mae"]
-            sem_mae = metrics[f"{method}_sem_mae"]
-            print(f"{method}: Avg MAE = {mean_mae:.3f} ± {sem_mae:.3f}")
-    
-    for method in met_df.method.unique():
-        if f"{method}_avg_std" in metrics:
-            mean_std = metrics[f"{method}_avg_std"]
-            sem_std = metrics[f"{method}_sem_std"]
-            print(f"{method}: Avg std = {mean_std:.3f} ± {sem_std:.3f}")
+
+    for label, mean_suffix, sem_suffix in (
+        ("Avg MAE", "avg_mae", "sem_mae"),
+        ("Avg std", "avg_std", "sem_std"),
+    ):
+        for method in met_df.method.unique():
+            mean_key = f"{method}_{mean_suffix}"
+            sem_key = f"{method}_{sem_suffix}"
+            if mean_key in metrics:
+                print(f"{method}: {label} = {metrics[mean_key]:.3f} +/- {metrics[sem_key]:.3f}")
     
     for method in ['Slider', 'PKV', 'Prepend']:
         if f"{method}_1k_avg_valid_count" in metrics:
             mean_count = metrics[f"{method}_1k_avg_valid_count"]
             sem_count = metrics[f"{method}_1k_sem_valid_count"]
-            print(f"{method} (1k): Avg valid count = {mean_count:.1f} ± {sem_count:.1f}")
+            print(f"{method} (1k): Avg valid count = {mean_count:.1f} +/- {sem_count:.1f}")
     
     for method in met_df.method.unique():
         for size in ("1k","10k","100k","full"):
             if f"{method}_{size}_mae" in metrics:
                 mean_mae = metrics[f"{method}_{size}_mae"]
                 sem_mae = metrics[f"{method}_{size}_mae_sem"]
-                print(f"{method} ({size}): Avg MAE = {mean_mae:.3f} ± {sem_mae:.3f}")
+                print(f"{method} ({size}): Avg MAE = {mean_mae:.3f} +/- {sem_mae:.3f}")
     
     if "ttest_slider_vs_pkv_t" in metrics:
         t = metrics["ttest_slider_vs_pkv_t"]
@@ -584,23 +681,18 @@ def get_metrics_dataset_size_study(
         t = metrics["ttest_prepend_vs_pkv_t"]
         p = metrics["ttest_prepend_vs_pkv_p"]
         print(f"t-test Prepend vs PKV MAE: t={t:.3f}, p={p:.3f}")
-    
-    # Add raw dataframe for further analysis
+
     metrics["raw_dataframe"] = met_df
     
     return metrics
 
 def process_xrd_to_condition_vector(file_content):
-    # Parse the text data
     lines = file_content.strip().split('\n')
-    
-    # Skip header line
     data_lines = lines[1:] if len(lines) > 1 else lines
-    
+
     peaks = []
     for line in data_lines:
         if line.strip():
-            # Use split() to handle any whitespace (tabs or spaces)
             parts = line.strip().split()
             if len(parts) >= 2:
                 try:
@@ -608,61 +700,46 @@ def process_xrd_to_condition_vector(file_content):
                     intensity = float(parts[1])
                     peaks.append({'two_theta': two_theta, 'intensity': intensity})
                 except ValueError:
-                    # This will skip any line that can't be converted to numbers
                     continue
-    
-    # Sort by intensity (descending) and take top 20
+
     top_k = 20
     peaks = sorted(peaks, key=lambda d: d['intensity'], reverse=True)[:top_k]
-    
-    # Extract theta and intensity values
+
     thetas = [d['two_theta'] for d in peaks]
     ints = [d['intensity'] for d in peaks]
-    
-    # Pad with -100 if fewer than top_k peaks
+
     thetas += [-100] * (top_k - len(thetas))
     ints += [-100] * (top_k - len(ints))
-    
-    # Define scaling ranges
+
     theta_min, theta_max = 0, 90
-    
-    # Find max intensity for normalization
+
     valid_intensities = [i for i in ints if i != -100]
     intensity_max = max(valid_intensities) if valid_intensities else 1
-    
-    # Scale theta values
+
     scaled_theta = [(t - theta_min) / (theta_max - theta_min) if t != -100 else -100 for t in thetas]
     scaled_theta = [round(t, 3) for t in scaled_theta]
-    
-    # Scale intensity values relative to max intensity
+
     scaled_int = [i / intensity_max if i != -100 else -100 for i in ints]
     scaled_int = [round(i, 3) for i in scaled_int]
-    
-    # Combine vectors (theta + intensity = 40 total values)
+
     vec = scaled_theta + scaled_int
-    
-    # Format as string
+
     vector_str = ",".join(map(str, vec))
-    
+
     print("Theta scaled to [0,1] (0 to 90), Intensity scaled to [0,1] (relative to max in pattern), -100 for padding")
-    
+
     return vector_str
 
 def extract_reduced_formula(cif_str):
-    """Parses CIF string and returns the reduced formula."""
-    parser = CifParser.from_str(cif_str)
-    structure = parser.parse_structures()[0]
-    return structure.reduced_formula
+    return _shared_extract_reduced_formula(cif_str)
 
 
 def parse_formula(formula_string: str) -> dict:
-    """Parse chemical formula into element counts."""
     comp = Composition(formula_string)
     return comp.get_el_amt_dict()
 
 
 def hhi_scores_from_formula(formula: dict):
-    """Computes material-level HHI_p and HHI_r weighted by element mass fraction."""
     masses = []
     hhi_p_vals = []
     hhi_r_vals = []
@@ -699,7 +776,6 @@ def hhi_scores_from_formula(formula: dict):
 
 
 def get_hhi_scores_from_cif(cif_str):
-    """Wrapper to process a single CIF string."""
     try:
         formula_str = extract_reduced_formula(cif_str)
         formula_dict = parse_formula(formula_str)
@@ -712,17 +788,13 @@ def get_hhi_scores_from_cif(cif_str):
 
 
 def extract_formula(cif_str):
-    """Extract reduced formula from CIF string."""
     try:
-        parser = CifParser.from_str(cif_str)
-        structure = parser.parse_structures()[0]
-        return structure.composition.reduced_formula
+        return _shared_extract_reduced_formula(cif_str)
     except Exception:
         return "UnknownFormula"
 
 
 def parse_novelty_from_tag(tag):
-    """Extract structure and composition novelty from tag string."""
     struct_nov = []
     comp_nov = []
     
@@ -739,91 +811,73 @@ def parse_novelty_from_tag(tag):
         comp_nov = ["ft"]
     elif "CompNovel-pt" in tag:
         comp_nov = ["pt"]
-    
-    # Format as strings
+
     struct_str = "-".join(struct_nov) if struct_nov else "None"
     comp_str = "-".join(comp_nov) if comp_nov else "None"
-    
+
     return struct_str, comp_str
 
 
 def build_novelty_tag(row):
-    """Build novelty tag from novelty flags."""
     tags = []
-    
-    # Structural novelty
+
     if row['is_novel'] and row['is_novel_pt']:
         tags.append("Novel-ft-pt")
     elif row['is_novel']:
         tags.append("Novel-ft")
     elif row['is_novel_pt']:
         tags.append("Novel-pt")
-    
-    # Compositional novelty
+
     if row['is_comp_novel'] and row['is_comp_novel_pt']:
         tags.append("CompNovel-ft-pt")
     elif row['is_comp_novel']:
         tags.append("CompNovel-ft")
     elif row['is_comp_novel_pt']:
         tags.append("CompNovel-pt")
-    
+
     return "__".join(tags) if tags else "NotNovel"
 
 
 def select_top_materials(df, top_n_slme=15, top_n_sustain=15, slme_threshold=25):
-    """Select top materials by SLME and sustainability, return materials dict and summary df."""
     materials = {}
     summary_records = []
-    
-    # Top by SLME
-    for i, (_, row) in enumerate(df.nlargest(top_n_slme, 'predicted_slme').iterrows()):
-        formula = extract_formula(row['Generated CIF'])
-        novelty = build_novelty_tag(row)
-        name = f"{formula}__SLME-{int(row['predicted_slme'])}_top_{i+1}__{novelty}"
-        materials[name] = row['Generated CIF']
-        
-        struct_nov, comp_nov = parse_novelty_from_tag(novelty)
-        summary_records.append({
-            'Reduced Formula': formula,
-            'Position': i + 1,
-            'Metric': 'SLME',
-            'Pred. SLME': row['predicted_slme'],
-            'HHI_p': row['HHI_p'],
-            'HHI_r': row['HHI_r'],
-            'HHI_dist': row['HHI_distance_to_0'],
-            'E_hull_mace (eV/atom)': row['ehull_mace_mp'],
-            'Structure Nov.': struct_nov,
-            'Composition Nov.': comp_nov
-        })
-    
-    # Top by sustainability (filtered by SLME)
-    sustain_df = df[df['predicted_slme'] > slme_threshold]
-    for i, (_, row) in enumerate(sustain_df.nsmallest(top_n_sustain, 'HHI_distance_to_0').iterrows()):
-        formula = extract_formula(row['Generated CIF'])
-        novelty = build_novelty_tag(row)
-        name = f"{formula}__Sustain-SLME-{int(row['predicted_slme'])}_top_{i+1}__{novelty}"
-        materials[name] = row['Generated CIF']
-        
-        struct_nov, comp_nov = parse_novelty_from_tag(novelty)
-        summary_records.append({
-            'Reduced Formula': formula,
-            'Position': i + 1,
-            'Metric': 'HHI-SLME',
-            'Pred. SLME': row['predicted_slme'],
-            'HHI_p': row['HHI_p'],
-            'HHI_r': row['HHI_r'],
-            'HHI_dist': row['HHI_distance_to_0'],
-            'E_hull_mace (eV/atom)': row['ehull_mace_mp'],
-            'Structure Nov.': struct_nov,
-            'Composition Nov.': comp_nov
-        })
+
+    selection_specs = (
+        ('SLME', df.nlargest(top_n_slme, 'predicted_slme'), 'SLME-{slme}'),
+        (
+            'HHI-SLME',
+            df[df['predicted_slme'] > slme_threshold].nsmallest(top_n_sustain, 'HHI_distance_to_0'),
+            'Sustain-SLME-{slme}',
+        ),
+    )
+
+    for metric_name, selected_df, name_template in selection_specs:
+        for position, (_, row) in enumerate(selected_df.iterrows(), start=1):
+            formula = extract_formula(row['Generated CIF'])
+            novelty = build_novelty_tag(row)
+            material_name = (
+                f"{formula}__{name_template.format(slme=int(row['predicted_slme']))}"
+                f"_top_{position}__{novelty}"
+            )
+            materials[material_name] = row['Generated CIF']
+
+            struct_nov, comp_nov = parse_novelty_from_tag(novelty)
+            summary_records.append(
+                _material_summary_record(
+                    row,
+                    formula=formula,
+                    position=position,
+                    metric_name=metric_name,
+                    struct_nov=struct_nov,
+                    comp_nov=comp_nov,
+                )
+            )
     
     summary_df = pd.DataFrame(summary_records)
     return materials, summary_df
 
 
 def export_materials(materials, output_dir):
-    """Export materials dict to CIF files in directory."""
     os.makedirs(output_dir, exist_ok=True)
     
     for name, cif_str in materials.items():
@@ -835,25 +889,16 @@ def export_materials(materials, output_dir):
 
 
 def run_material_selection(input_parquet, output_dir, output_csv, top_n_slme=15, top_n_sustain=15):
-    """Main workflow: select top materials, export CIF files and summary dataframe."""
     df = pd.read_parquet(input_parquet)
     materials, summary_df = select_top_materials(df, top_n_slme, top_n_sustain)
     
     export_materials(materials, output_dir)
-    
-    # Ensure output directory exists
-    
-    # os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+
     summary_df.to_csv(output_csv, index=False)
     print(f"Saved summary dataframe to {output_csv}")
 
 
 def load_count_datasets(datasets: list[tuple]) -> list[tuple]:
-    """Load pre-computed token-count parquets and print a quick summary.
-
-    datasets: list of (name, parquet_path_or_None, context_token_limit)
-    Returns the same list with DataFrames in place of paths, or None for skipped entries.
-    """
     loaded = []
     for name, path, ctx in datasets:
         if path is None:
@@ -868,11 +913,6 @@ def load_count_datasets(datasets: list[tuple]) -> list[tuple]:
 
 
 def _extract_atom_counts_worker(cif_text: str) -> tuple:
-    """Worker for ProcessPoolExecutor – module-level so it is picklable.
-
-    Returns (conv_count, prim_count) on success, (None, None) on any parse error.
-    Imports are cached by Python after the first call in each worker process.
-    """
     try:
         import warnings
         from pymatgen.core import Structure
@@ -888,11 +928,6 @@ def _extract_atom_counts_worker(cif_text: str) -> tuple:
 
 
 def compute_atom_counts(loaded: list[tuple], num_workers: int = 32) -> list[tuple]:
-    """Parse CIF files to add conv_count and prim_count columns to each dataset df.
-
-    Processes ALL structures (not just those within context). If columns already exist,
-    the dataset is skipped. Returns a new loaded list with updated DataFrames.
-    """
     import concurrent.futures
     from tqdm import tqdm
 
@@ -931,20 +966,13 @@ def compute_atom_counts(loaded: list[tuple], num_workers: int = 32) -> list[tupl
 
 
 def plot_dataset_stats(loaded: list[tuple], atom_density_line: int = 20, save_dir: str="plots/") -> None:
-    """Plot token-count and atom-count distributions for each loaded dataset.
-
-    Structures beyond context shown in red, within-context in amber/teal.
-    Series drawn largest-first so smaller ones appear in front.
-    atom_density_line: dashed line on the atom plot.
-    """
-    import numpy as np
     import matplotlib.pyplot as plt
     from matplotlib.ticker import MaxNLocator
 
-    C_CONV_WITHIN = "#E69F00"   # amber     (conventional, within context)
-    C_PRIM_WITHIN = "#009E73"   # teal      (primitive, within context)
-    C_CONV_ABOVE  = "#CC4125"   # brick red (conventional, beyond context)
-    C_PRIM_ABOVE  = "#FF9980"   # coral     (primitive, beyond context)
+    C_CONV_WITHIN = "#E69F00"
+    C_PRIM_WITHIN = "#009E73"
+    C_CONV_ABOVE  = "#CC4125"
+    C_PRIM_ABOVE  = "#FF9980"
 
     AXES_LW, LABEL_FS, TICK_FS, ANNOT_FS = 1.2, 13, 11, 10
 
@@ -973,9 +1001,7 @@ def plot_dataset_stats(loaded: list[tuple], atom_density_line: int = 20, save_di
             (tc[tc <= ctx], C_PRIM_WITHIN, 0.85),
             (tc[tc >  ctx], C_CONV_ABOVE,  0.85),
         ]
-        for data, color, alpha in sorted(tok_series, key=lambda x: len(x[0]), reverse=True):
-            if len(data):
-                ax_tok.hist(data, bins=tok_bins, color=color, edgecolor="none", alpha=alpha)
+        _draw_hist_series(ax_tok, tok_series, bins=tok_bins)
 
         ax_tok.axvline(ctx, color="black", linestyle="--", linewidth=1.4)
         xmin, xmax = ax_tok.get_xlim()
@@ -1006,14 +1032,12 @@ def plot_dataset_stats(loaded: list[tuple], atom_density_line: int = 20, save_di
                 max_bin   = min(int(all_counts.max()), 300)
                 atom_bins = 80
                 atom_series = [
-                    (conv_within.clip(upper=max_bin), C_CONV_WITHIN, 0.75, f"Conventional ≤ctx  (n={len(conv_within):,})"),
-                    (prim_within.clip(upper=max_bin), C_PRIM_WITHIN, 0.80, f"Primitive ≤ctx  (n={len(prim_within):,})"),
+                    (conv_within.clip(upper=max_bin), C_CONV_WITHIN, 0.75, f"Conventional <=ctx  (n={len(conv_within):,})"),
+                    (prim_within.clip(upper=max_bin), C_PRIM_WITHIN, 0.80, f"Primitive <=ctx  (n={len(prim_within):,})"),
                     (conv_above.clip(upper=max_bin),  C_CONV_ABOVE,  0.85, f"Conventional >ctx  (n={len(conv_above):,})"),
                     (prim_above.clip(upper=max_bin),  C_PRIM_ABOVE,  0.85, f"Primitive >ctx  (n={len(prim_above):,})"),
                 ]
-                for data, color, alpha, label in sorted(atom_series, key=lambda x: len(x[0]), reverse=True):
-                    if not data.empty:
-                        ax_atom.hist(data, bins=atom_bins, color=color, edgecolor="none", alpha=alpha, label=label)
+                _draw_hist_series(ax_atom, atom_series, bins=atom_bins)
 
                 ax_atom.axvline(atom_density_line, color="black", linestyle="--",
                                 linewidth=1.2, label=f"{atom_density_line} atoms")

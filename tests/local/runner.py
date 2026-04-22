@@ -19,6 +19,7 @@ from tests.local.groups import (
     EvaluationPipelineTests,
     IntegrationTests,
     LoadAndGenerateTests,
+    NotebookUtilsTests,
     VirtualiserTests,
 )
 
@@ -65,6 +66,7 @@ def main():
         data_tests = DataProcessingTests(suite.temp_dir, test_data)
         dataloader_tests = DataLoaderTests(suite.temp_dir, test_data)
         data_utils_tests = DataUtilsTests(suite.temp_dir, test_data)
+        notebook_utils_tests = NotebookUtilsTests(suite.temp_dir, test_data)
         model_tests = ModelTests(suite.temp_dir, test_data)
         gen_tests = GenerationTests(suite.temp_dir, test_data)
         eval_tests = EvaluationTests(suite.temp_dir, test_data)
@@ -122,6 +124,20 @@ def main():
         suite.run_test("tokenize_function_raw", data_utils_tests.test_tokenize_function_raw)
         suite.run_test("create_fixed_format_mask", data_utils_tests.test_create_fixed_format_mask)
         suite.run_test("parse_condition_value", data_utils_tests.test_parse_condition_value)
+
+        print("\nNotebook Utils Tests:")
+        suite.run_test("notebook_utils_metrics_xrd", notebook_utils_tests.test_get_metrics_xrd_keys_and_counts)
+        suite.run_test("notebook_utils_stratified_metrics_xrd", notebook_utils_tests.test_get_stratified_metrics_xrd_tiers)
+        suite.run_test("notebook_utils_xrd_condition_vector", notebook_utils_tests.test_process_xrd_to_condition_vector_output_length)
+        suite.run_test("notebook_utils_novelty_round_trip", notebook_utils_tests.test_build_and_parse_novelty_round_trip)
+        suite.run_test("notebook_utils_select_top_materials", notebook_utils_tests.test_select_top_materials_returns_summary)
+        suite.run_test("notebook_utils_material_selection_io", notebook_utils_tests.test_export_and_run_material_selection_write_files)
+        suite.run_test("notebook_utils_stratified_only_matched", notebook_utils_tests.test_get_stratified_metrics_xrd_only_matched_and_missing_score)
+        suite.run_test("notebook_utils_extract_formula_fallback", notebook_utils_tests.test_extract_formula_fallback)
+        suite.run_test("notebook_utils_summary_columns", notebook_utils_tests.test_run_material_selection_preserves_summary_columns)
+        suite.run_test("notebook_utils_ptnd_metrics", notebook_utils_tests.test_get_metrics_ptnd_vs_scratch_returns_core_keys)
+        suite.run_test("notebook_utils_dataset_size_metrics", notebook_utils_tests.test_get_metrics_dataset_size_study_returns_raw_dataframe)
+        suite.run_test("notebook_utils_plot_stats", notebook_utils_tests.test_plot_dataset_stats_writes_png)
         
         # Evaluation tests
         print("\n📊 Evaluation Tests:")
@@ -155,6 +171,7 @@ def main():
         suite.run_test("condition_vector_parsing_comprehensive", gen_pipeline_tests.test_condition_vector_parsing_comprehensive)
         suite.run_test("evaluation_script", gen_pipeline_tests.test_evaluation_script)
         suite.run_test("postprocessing_script", gen_pipeline_tests.test_postprocessing_script)
+        suite.run_test("generation_mode_resolution", gen_pipeline_tests.test_generation_mode_resolution)
         
         # Evaluation pipeline tests
         print("\n📈 Evaluation Pipeline Tests:")

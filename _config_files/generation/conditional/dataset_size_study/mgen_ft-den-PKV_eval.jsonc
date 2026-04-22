@@ -7,7 +7,8 @@
   "temperature": 1.0,
   "model_ckpt_dir": "model_ckpts/mattergen_den_ehull/PKV_ft",
   "num_return_sequences": 10,
-  "num_repeats": 100,
-  "parquet_in": "_artifacts/dataset_size_study/ab-initio-den-ehull_prompts.parquet", 
-  "parquet_out": "_artifacts/dataset_size_study/mgen_ft-den-PKV_gen.parquet"
+  "max_return_attempts": 100,
+  "target_valid_cifs": 0,
+  "input_parquet": "_artifacts/dataset_size_study/ab-initio-den-ehull_prompts.parquet", 
+  "output_parquet": "_artifacts/dataset_size_study/mgen_ft-den-PKV_gen.parquet"
 }

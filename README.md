@@ -204,7 +204,7 @@ The script automatically:
 4. **Generates structures** using the appropriate conditional model architecture (automatically inferred).
 5. **Validates & Ranks** outputs based on structural integrity and optional LogP perplexity scoring.
 
-Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). Slider models (COD-XRD, Mattergen-XRD) support direct peak conditioning via `--xrd_files`, and can also run without `--xrd_files` by using missing conditioning values.
+Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). The Hub-hosted Slider model (`Mattergen-XRD`) supports direct peak conditioning via `--xrd_files`, and can also run without `--xrd_files` by using missing conditioning values. The maintained second-pass experimental XRD workflow now lives in [`notebooks/X_XRD_chili100k.ipynb`](notebooks/X_XRD_chili100k.ipynb) using the Chili configs under [`_config_files/training/conditional/xrd_studies/`](_config_files/training/conditional/xrd_studies) and [`_config_files/generation/conditional/xrd_studies/`](_config_files/generation/conditional/xrd_studies).
 
 ## Available Pre-trained Models
 
@@ -212,10 +212,11 @@ Each model can be used by providing a list of reduced formulas (`--reduced_formu
 * `c-bone/CrystaLLM-pi_SLME`: Solar efficiency conditioning (0-33% range) (PKV model)
 * `c-bone/CrystaLLM-pi_bandgap`: Bandgap + stability conditioning (0-18 eV, 0-5 eV/atom) (PKV model)
 * `c-bone/CrystaLLM-pi_density`: Density + stability conditioning (0-25 g/cm³, 0-0.1 eV/atom) (PKV model)
-* `c-bone/CrystaLLM-pi_COD-XRD`: XRD pattern conditioning (Experimental patterns) (Slider model)
 * `c-bone/CrystaLLM-pi_Mattergen-XRD`: XRD pattern conditioning (Theoretical patterns, fully ordered bias) (Slider model)
 
 <br>
+
+> For the maintained experimental benchmark workflow, use [`notebooks/X_XRD_chili100k.ipynb`](notebooks/X_XRD_chili100k.ipynb). It replaces the older COD notebook for second-pass XRD data prep, training, generation, and aggregation.
 
 > For true XRD conditioning, provide **pre-picked peak data** (not raw continuous diffraction profiles) in `.csv`, `.xy`, `.txt`, or `.dat` formats via `--xrd_files`. Many open-source programs do this (e.g., [fityk](https://fityk.nieto.pl/) for academic use). This is because different XRD profiles can require different processing parameters, so automating this step is quite difficult.
 > 
@@ -315,13 +316,13 @@ python _load_and_generate.py \
     --output_parquet solar_screening.parquet
 ```
 
-**XRD Conditioned Output (Pre-processed)**
+**XRD Conditioned Output (Pre-processed Peaks)**
 
 Generate from pre-processed XRD patterns. Mapped 1:1 with the requested formula.
 
 ```bash
 python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-pi_COD-XRD" \
+  --hf_model_path "c-bone/CrystaLLM-pi_Mattergen-XRD" \
     --reduced_formula_list "TiO2" \
     --z_list "2" \
     --xrd_files "tests/fixtures/test_rutile_processed.csv" \
@@ -428,6 +429,8 @@ python _utils/_virtualiser/crystal_virtualiser.py \
 # Training, Generating & Evaluating from Scratch
 
 Complete pipeline for training your own models from data preprocessing to evaluation. All training and generation parameters and options are defined in [`_args.py`](_args.py). Training & generating should be done via configuration files (`.jsonc` format) which specify all necessary parameters.
+
+> Maintained notebook workflow: [`notebooks/X_XRD_chili100k.ipynb`](notebooks/X_XRD_chili100k.ipynb) is the active replacement for the retired COD XRD notebook. It covers CHILI-100K preprocessing, second-pass Slider finetuning, conditioned generation, unconditional control runs, and aggregate metrics.
 
 ## Data Processing Pipeline
 
@@ -661,9 +664,9 @@ python _utils/_generating/generate_CIFs.py \
 
 * **Temperature:** Controls randomness (default ~1.0, higher is more exploratory but higher chance of gibberish)
 * **Top-p/Top-k:** Sampling parameters (typical: 0.95, 50)
-* **scoring_mode:** if set to `None`, then we just generate sequences * attempts number of CIFs per Prompt/Condition pair. If set to `LOGP`, we use a perplexity based scoring method (See Note)
+* **scoring_mode:** if set to `None` and `target_valid_cifs = 0`, then we generate `max_return_attempts * num_return_sequences` CIFs per Prompt/Condition pair without validation. If set to `None` and `target_valid_cifs > 0`, then we validate generated CIFs and stop once that many valid CIFs are found, without ranking. If set to `LOGP`, we validate and rank using a perplexity based scoring method.
 * **num_return_sequences:** Batch size for generation (adjust for GPU mem.)
-* **max_return_attempts:** Total generation for each Prompt/Condition pair = max_return_attempts * num_return_sequences
+* **max_return_attempts:** In raw mode, total generation for each Prompt/Condition pair = `max_return_attempts * num_return_sequences`. In validation-targeted modes, generation stops when `target_valid_cifs` valid CIFs are found or `max_return_attempts` is reached.
 
 </details>
 
@@ -885,13 +888,13 @@ curl -X POST "http://localhost:8000/generate/direct" \
   }'
 ```
 
-### Direct generation (COD-XRD, Early-Stopping Z-Search with Spacegroup)
+### Direct generation (Mattergen-XRD, Early-Stopping Z-Search with Spacegroup)
 
 ```bash
 curl -X POST "http://localhost:8000/generate/direct" \
   -H "Content-Type: application/json" \
   -d '{
-    "hf_model_path": "c-bone/CrystaLLM-pi_COD-XRD",
+    "hf_model_path": "c-bone/CrystaLLM-pi_Mattergen-XRD",
     "reduced_formula_list": "TiO2",
     "spacegroups": "P4_2/mnm",
     "level": "level_4",
@@ -901,7 +904,7 @@ curl -X POST "http://localhost:8000/generate/direct" \
     "max_return_attempts": 2,
     "target_valid_cifs": 1,
     "scoring_mode": "none",
-    "output_parquet": "/app/outputs/xrd_cod_early_stop.parquet"
+    "output_parquet": "/app/outputs/xrd_mattergen_early_stop.parquet"
   }'
 ```
 

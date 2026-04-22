@@ -10,6 +10,6 @@
   "input_parquet": "_artifacts/mp-20-pxrd/ablation/mp-test_prompts_1k_nocond.parquet",
   "output_parquet": "_artifacts/mp-20-pxrd/ablation/mp-20-scratch-uncond-20shot_gen.parquet",
   "scoring_mode": "None",
-  // "target_valid_cifs": 20,
+  "target_valid_cifs": 0,
   "max_return_attempts": 1
 }

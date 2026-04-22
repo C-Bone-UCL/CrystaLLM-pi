@@ -1,5 +1,5 @@
 """
-Training utilities for CrystaLLMv2 including custom trainers, callbacks, and optimizer setup.
+Training utilities for CrystaLLM-pi including custom trainers, callbacks, and optimizer setup.
 """
 
 import json

@@ -1,4 +1,4 @@
-"""VUN metrics and property calculations for CrystaLLMv2."""
+"""VUN metrics and property calculations for CrystaLLM-pi."""
 
 import argparse
 import os
@@ -120,18 +120,23 @@ def extract_generated_formulas(structures):
 
 
 # VUN metrics
-def _validity_worker(cif_str: str, bond_length_acceptability_cutoff: float) -> bool:
+def _validity_worker(cif_str: str, bond_length_acceptability_cutoff: float, allow_stated_p1_mismatch: bool = False) -> bool:
     """Worker function to check if a single CIF string is valid."""
     _configure_pymatgen_warning_filters()
     if not cif_str or not isinstance(cif_str, str):
         return False
     try:
         # is_valid contains multiple checks (formula, multiplicity, bonds, etc.)
-        return is_valid(cif_str, bond_length_acceptability_cutoff=bond_length_acceptability_cutoff, debug=True)
+        return is_valid(
+            cif_str,
+            bond_length_acceptability_cutoff=bond_length_acceptability_cutoff,
+            allow_stated_p1_mismatch=allow_stated_p1_mismatch,
+            debug=True,
+        )
     except Exception:
         return False
 
-def get_valid(df_proc, num_workers, bond_length_acceptability_cutoff=1.0):
+def get_valid(df_proc, num_workers, bond_length_acceptability_cutoff=1.0, allow_stated_p1_mismatch=False):
     """Check CIF validity in parallel."""
     print("\nValidity Metrics")
     
@@ -142,7 +147,11 @@ def get_valid(df_proc, num_workers, bond_length_acceptability_cutoff=1.0):
     results = [False] * len(df_proc)
     
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        worker_func = partial(_validity_worker, bond_length_acceptability_cutoff=bond_length_acceptability_cutoff)
+        worker_func = partial(
+            _validity_worker,
+            bond_length_acceptability_cutoff=bond_length_acceptability_cutoff,
+            allow_stated_p1_mismatch=allow_stated_p1_mismatch,
+        )
 
         futures = [executor.submit(worker_func, cif) for cif in cifs_to_check]
 
@@ -170,7 +179,13 @@ def _uniqueness_worker(args_tuple: Tuple[int, str, float]) -> Tuple[int, str, fl
     
     try:
         struct = Structure.from_str(cif_str, fmt="cif")
-        hash_val = BAWLHasher().get_material_hash(struct)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r".*No oxidation states specified on sites!.*",
+                category=UserWarning,
+            )
+            hash_val = BAWLHasher().get_material_hash(struct)
         
         # Use ehull if available, otherwise fallback to volume per formula unit
         if ehull_val is not None and not np.isnan(ehull_val):
@@ -644,7 +659,7 @@ def bond_length_reasonableness_score(cif_str, tolerance=0.32, h_factor=2.5):
 
     return normalized_score
 
-def is_space_group_consistent(cif_str):
+def is_space_group_consistent(cif_str, allow_stated_p1_mismatch=False):
     structure = Structure.from_str(cif_str, fmt="cif")
     parser = CifParser.from_str(cif_str)
     cif_data = parser.as_dict()
@@ -660,6 +675,10 @@ def is_space_group_consistent(cif_str):
 
     # Check if the detected space group matches the stated space group
     is_match = stated_space_group.strip() == detected_space_group.strip()
+    if not is_match and allow_stated_p1_mismatch:
+        stated_normalized = stated_space_group.replace(" ", "").upper()
+        if stated_normalized == "P1":
+            return True
 
     return is_match
 
@@ -746,7 +765,7 @@ def is_sensible(cif_str, length_lo=0.5, length_hi=1000., angle_lo=10., angle_hi=
 
     return True
 
-def is_valid(cif_str, bond_length_acceptability_cutoff=1.0, debug=False):
+def is_valid(cif_str, bond_length_acceptability_cutoff=1.0, allow_stated_p1_mismatch=False, debug=False):
     if not is_formula_consistent(cif_str):
         if debug:
             print(f"Formula is inconsistent for {cif_str}")
@@ -760,7 +779,7 @@ def is_valid(cif_str, bond_length_acceptability_cutoff=1.0, debug=False):
         if debug:
             print(f"Bond length is unreasonable for {cif_str}")
         return False
-    if not is_space_group_consistent(cif_str):
+    if not is_space_group_consistent(cif_str, allow_stated_p1_mismatch=allow_stated_p1_mismatch):
         if debug:
             print(f"Space group is inconsistent for {cif_str}")
         return False

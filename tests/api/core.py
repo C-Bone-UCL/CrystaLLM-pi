@@ -7,19 +7,19 @@ and evaluation metrics endpoints. Uses FastAPI's TestClient for synchronous test
 
 Usage:
     # Test against running Docker container (recommended)
-    conda run -n crystallmv2_venv python tests/api/suite.py --docker_url http://localhost:8000
+    conda run -n CrystaLLM-pi_env python tests/api/suite.py --docker_url http://localhost:8000
     
     # Test locally with FastAPI TestClient (requires fastapi installed)
     python tests/api/suite.py --hf_key YOUR_HF_KEY --wandb_key YOUR_WANDB_KEY
     
     # Run integration tests (slower, actually executes commands)
-    conda run -n crystallmv2_venv python tests/api/suite.py --docker_url http://localhost:8000 --integration
+    conda run -n CrystaLLM-pi_env python tests/api/suite.py --docker_url http://localhost:8000 --integration
     
     # Run integration tests with verbose output (shows sample CIFs, VUN stats, E-hull values)
-    conda run -n crystallmv2_venv python tests/api/suite.py --docker_url http://localhost:8000 --integration --verbose
+    conda run -n CrystaLLM-pi_env python tests/api/suite.py --docker_url http://localhost:8000 --integration --verbose
 
     # Compatibility wrapper
-    conda run -n crystallmv2_venv python run-tests-api.py --docker_url http://localhost:8000
+    conda run -n CrystaLLM-pi_env python run-tests-api.py --docker_url http://localhost:8000
 
 Docker setup (run this first):
     export HF_KEY="your_hf_token_here"
