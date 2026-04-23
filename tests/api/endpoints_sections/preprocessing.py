@@ -106,6 +106,29 @@ class PreprocessingEndpointTests(IntegrationMixin):
         data = self._wait_and_assert(response, job_name="clean_with_norm")
         assert "--property1_normaliser" in data["command"]
         assert "power_log" in data["command"]
+
+    def test_clean_with_property3_filter_and_token_count(self):
+        """Test clean forwards the newer property3, filter, and token counting flags."""
+        if self._should_skip_integration():
+            return
+
+        output_parquet = self._out("test_clean_extended.parquet") if self.is_integration else os.path.join(self.temp_dir, "clean_extended.parquet")
+        response = self.client.post("/preprocessing/clean", json={
+            "input_parquet": self._input_parquet(self.test_data['test_file']),
+            "output_parquet": output_parquet,
+            "num_workers": 4,
+            "property_columns": "[\"Bandgap (eV)\", \"Density (g/cm^3)\", \"formation_energy_per_atom\"]",
+            "property1_normaliser": "power_log",
+            "property2_normaliser": "linear",
+            "property3_normaliser": "signed_log",
+            "filter_to": 512,
+            "count_tokens": True
+        })
+        data = self._wait_and_assert(response, job_name="clean_extended")
+        assert "--property3_normaliser" in data["command"]
+        assert "signed_log" in data["command"]
+        assert "--filter_to 512" in data["command"]
+        assert "--count_tokens" in data["command"]
         
     def test_clean_invalid_normalizer(self):
         """Test clean rejects invalid normalizer."""

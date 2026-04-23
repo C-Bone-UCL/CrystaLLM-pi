@@ -3,7 +3,7 @@ export GID := $(shell id -g)
 
 COMPOSE_BASE = docker compose -f docker/docker-compose.yml
 COMPOSE_DEV = docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml
-PYTHON_ENV = conda run --no-capture-output -n CrystaLLM-pi_env
+# PYTHON_ENV = conda run --no-capture-output -n crystallmv2_venv #CrystaLLM-pi_env
 APPTAINER_SIF ?= crystallm-api.sif
 APPTAINER_DOCKER_IMAGE ?= crystallm-api
 APPTAINER_DOCKER_SOURCE_TAG ?= local
@@ -36,10 +36,10 @@ api-health:
 	curl -fsS http://localhost:8000/healthz
 
 api-test:
-	$(PYTHON_ENV) python -m tests.api.suite --docker_url http://localhost:8000
+	python -m tests.api.suite --docker_url http://localhost:8000
 
 api-test-with-integration:
-	$(PYTHON_ENV) python -m tests.api.suite --docker_url http://localhost:8000 --integration
+	python -m tests.api.suite --docker_url http://localhost:8000 --integration
 
 api-apptainer-build:
 	docker tag $(APPTAINER_DOCKER_IMAGE):$(APPTAINER_DOCKER_SOURCE_TAG) $(APPTAINER_DOCKER_IMAGE):$(APPTAINER_DOCKER_TAG)

@@ -122,9 +122,7 @@ def load_pretrained_model(args, tokenizer):
             share_layers=getattr(args, 'share_layers', False),
         )
     elif conditionality == "Slider":
-        # Do NOT pass n_positions here — load at checkpoint's native size so wpe
-        # weights match and are preserved. resize_positional_embeddings() handles
-        # extension afterwards.
+        # Do NOT pass n_positions here, load at checkpoint's native size
         config = config_class.from_pretrained(
             args.pretrained_model_dir,
             vocab_size=vocab_size,
@@ -135,7 +133,7 @@ def load_pretrained_model(args, tokenizer):
             slider_dropout=args.cond_dropout,
         )
     elif conditionality == "Raw":
-        # Same — load at checkpoint's native n_positions, resize after.
+        # Same, load at checkpoint's native n_positions
         config = config_class.from_pretrained(
             args.pretrained_model_dir,
             vocab_size=vocab_size,

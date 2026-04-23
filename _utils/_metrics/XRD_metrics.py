@@ -473,6 +473,28 @@ def _parallel_convert_generated_cif(cif):
 
 
 
+def reconstruct_xrd_peaks(condition_vector_str):
+    """Parse XRD peaks from a normalized condition vector string back to (two_theta, intensity) dicts."""
+    try:
+        if isinstance(condition_vector_str, str):
+            vector_str = condition_vector_str.strip().strip("[]")
+            values = [float(x.strip()) for x in vector_str.split(",")]
+        else:
+            values = list(condition_vector_str)
+
+        mid_point = len(values) // 2
+        theta_values = values[:mid_point]
+        intensity_values = values[mid_point:]
+
+        return [
+            {"two_theta": theta_norm * 90.0, "intensity": int_norm * 100.0}
+            for theta_norm, int_norm in zip(theta_values, intensity_values)
+            if theta_norm != -100 and int_norm != -100
+        ]
+    except Exception:
+        return []
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_parquet", required=True, help="Path to .parquet file with generated structures")

@@ -35,6 +35,24 @@ MODEL_INFO = {
         "normalization": None,
         "model_type": "Base",
     },
+    "c-bone/CrystaLLM-pi_alex_mp_20_base": {
+        "description": "Unconditional generation",
+        "conditions": 0,
+        "example_conditions": None,
+        "max": None,
+        "min": None,
+        "normalization": None,
+        "model_type": "Base",
+    },
+    "c-bone/CrystaLLM-pi_mp_20_base": {
+        "description": "Unconditional generation",
+        "conditions": 0,
+        "example_conditions": None,
+        "max": None,
+        "min": None,
+        "normalization": None,
+        "model_type": "Base",
+    },
     "c-bone/CrystaLLM-pi_SLME": {
         "description": "Solar cell efficiency (SLME) conditioning",
         "conditions": 1,
@@ -62,8 +80,8 @@ MODEL_INFO = {
         "normalization": ["linear", "linear"],
         "model_type": "PKV",
     },
-    "c-bone/CrystaLLM-pi_COD-XRD": {
-        "description": "Experimental XRD conditioning",
+    "c-bone/CrystaLLM-pi_Mattergen-XRD": {
+        "description": "Theoretical XRD conditioning",
         "conditions": 40,
         "example_conditions": "See tests/fixtures/test_rutile_processed.csv",
         "max": [90.0, 100.0],
@@ -71,7 +89,7 @@ MODEL_INFO = {
         "normalization": ["linear", "linear"],
         "model_type": "Slider",
     },
-    "c-bone/CrystaLLM-pi_Mattergen-XRD": {
+    "c-bone/CrystaLLM-pi_Chili100K-XRD": {
         "description": "Theoretical XRD conditioning",
         "conditions": 40,
         "example_conditions": "See tests/fixtures/test_rutile_processed.csv",
@@ -124,28 +142,6 @@ def parse_xrd_file_to_condition_vector(file_path: str, wavelength: float = 1.540
             raise ValueError(f"Intensity values are not in descending order at index {i}: {scaled_intensities[i]} > {scaled_intensities[i - 1]}")
 
     return scaled_thetas + scaled_intensities
-
-def normalize_property_values(raw_values: List[List[float]], model_path: str) -> List[List[float]]:
-    """Normalize property vectors according to model-specific normalization settings."""
-    if not raw_values or is_xrd_model(model_path):
-        return raw_values
-
-    model_info = MODEL_INFO.get(model_path)
-    if not model_info or not model_info.get("normalization"):
-        return raw_values
-
-    norm_methods = _as_list(model_info.get("normalization"), "linear")
-    min_vals = _as_list(model_info.get("min"), 0.0)
-    max_vals = _as_list(model_info.get("max"), 1.0)
-
-    normalized_values = []
-    for idx, values in enumerate(raw_values):
-        method = norm_methods[idx] if idx < len(norm_methods) else "linear"
-        min_val = min_vals[idx] if idx < len(min_vals) else 0.0
-        max_val = max_vals[idx] if idx < len(max_vals) else 1.0
-        normalized_values.append(normalize_values_with_method(values, method, min_val, max_val))
-
-    return normalized_values
 
 def validate_model_conditions(model_path: str, condition_lists: Optional[List[List[float]]], is_xrd: bool = False) -> None:
     """Validate that provided condition dimensions match model expectations."""
@@ -288,9 +284,24 @@ def build_formula_condition_map(formulas: List[str], condition_lists_arg: Option
     raw_condition_vectors = parse_condition_list_args(condition_lists_arg)
     transposed = [list(x) for x in zip(*raw_condition_vectors)]
     validate_model_conditions(model_path, transposed, is_xrd=False)
-    
-    normalized_transposed = normalize_property_values(transposed, model_path)
-    normalized_vectors = [list(x) for x in zip(*normalized_transposed)]
+
+    if not is_xrd_model(model_path):
+        model_info = MODEL_INFO.get(model_path)
+        if model_info and model_info.get("normalization"):
+            norm_methods = _as_list(model_info.get("normalization"), "linear")
+            min_vals = _as_list(model_info.get("min"), 0.0)
+            max_vals = _as_list(model_info.get("max"), 1.0)
+            transposed = [
+                normalize_values_with_method(
+                    values,
+                    norm_methods[idx] if idx < len(norm_methods) else "linear",
+                    min_vals[idx] if idx < len(min_vals) else 0.0,
+                    max_vals[idx] if idx < len(max_vals) else 1.0,
+                )
+                for idx, values in enumerate(transposed)
+            ]
+
+    normalized_vectors = [list(x) for x in zip(*transposed)]
     as_str = [", ".join(str(v) for v in vec) for vec in normalized_vectors]
 
     if len(as_str) == 1:
@@ -320,15 +331,6 @@ def attach_prompt_metadata(df_prompts: pd.DataFrame, specs: List[dict]) -> pd.Da
             out[col] = None
     return out
 
-def _validity_worker(cif_str: str, debug: bool = True) -> bool:
-    """Validate one CIF with optional debug traces from `is_valid`."""
-    if not cif_str or not isinstance(cif_str, str): return False
-    try:
-        return bool(is_valid(cif_str, bond_length_acceptability_cutoff=1.0, debug=debug))
-    except Exception as err:
-        if debug: print(f"Validity worker exception: {err}")
-        return False
-        
 def reduce_rows_for_reduced_formula_search(
     df_generated: pd.DataFrame, 
     df_prompts: pd.DataFrame, 
@@ -350,7 +352,7 @@ def reduce_rows_for_reduced_formula_search(
     if "is_consistent" in generated.columns:
         generated["is_valid"] = generated["is_consistent"].fillna(False)
     elif "is_valid" not in generated.columns:
-        generated["is_valid"] = generated["Generated CIF"].apply(lambda cif: _validity_worker(cif, debug=False))
+        generated["is_valid"] = generated["Generated CIF"].apply(lambda cif: bool(is_valid(cif, bond_length_acceptability_cutoff=1.0, debug=False)) if cif and isinstance(cif, str) else False)
 
     valid_subset = generated[generated["is_valid"]].copy()
 

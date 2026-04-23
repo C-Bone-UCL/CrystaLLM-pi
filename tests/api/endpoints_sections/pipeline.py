@@ -42,16 +42,15 @@ class PipelineIntegrationTests(IntegrationMixin):
         ehull_path = self._out("pipeline_ehull.parquet")
 
         print("      Step 1/5 Generating structures")
-        # Add target_valid_cifs to guarantee output
         response = self.client.post("/generate/direct", json={
-            "hf_model_path": "c-bone/CrystaLLM-pi_bandgap",
+            "hf_model_path": "c-bone/CrystaLLM-pi_base",
             "output_parquet": generated_path,
-            "reduced_formula_list": "Si,GaAs",
-            "z_list": "2,1",
-            "condition_lists": ["1.1,0.0", "1.4,0.0"],
-            "level": "level_2",
+            "reduced_formula_list": "TiO2",
+            "z_list": "2",
+            "spacegroups": "P4_2/mnm",
+            "level": "level_4",
             "num_return_sequences": 5,
-            "max_return_attempts": 5,
+            "max_return_attempts": 2,
             "target_valid_cifs": 1
         })
 

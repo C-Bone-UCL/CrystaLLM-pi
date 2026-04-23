@@ -209,14 +209,15 @@ Each model can be used by providing a list of reduced formulas (`--reduced_formu
 ## Available Pre-trained Models
 
 * `c-bone/CrystaLLM-pi_base`: Unconditional generation (Base model)
+* `c-bone/CrystaLLM-pi_alex_mp_20_base`: Unconditional generation (trained on alex-mp-20)
+* `c-bone/CrystaLLM-pi_mp_20_base`: Unconditional generation (trained on mp-20)
 * `c-bone/CrystaLLM-pi_SLME`: Solar efficiency conditioning (0-33% range) (PKV model)
 * `c-bone/CrystaLLM-pi_bandgap`: Bandgap + stability conditioning (0-18 eV, 0-5 eV/atom) (PKV model)
 * `c-bone/CrystaLLM-pi_density`: Density + stability conditioning (0-25 g/cm³, 0-0.1 eV/atom) (PKV model)
 * `c-bone/CrystaLLM-pi_Mattergen-XRD`: XRD pattern conditioning (Theoretical patterns, fully ordered bias) (Slider model)
+* `c-bone/CrystaLLM-pi_Chili100K-XRD`: XRD pattern conditioning (Theoretical patterns, fully ordered bias) (Slider model)
 
 <br>
-
-> For the maintained experimental benchmark workflow, use [`notebooks/X_XRD_chili100k.ipynb`](notebooks/X_XRD_chili100k.ipynb). It replaces the older COD notebook for second-pass XRD data prep, training, generation, and aggregation.
 
 > For true XRD conditioning, provide **pre-picked peak data** (not raw continuous diffraction profiles) in `.csv`, `.xy`, `.txt`, or `.dat` formats via `--xrd_files`. Many open-source programs do this (e.g., [fityk](https://fityk.nieto.pl/) for academic use). This is because different XRD profiles can require different processing parameters, so automating this step is quite difficult.
 > 
@@ -336,7 +337,7 @@ Provide peaks from a different radiation source (e.g., MoKa at 0.71073 Å). The 
 
 ```bash
 python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-pi_Mattergen-XRD" \
+    --hf_model_path "c-bone/CrystaLLM-pi_Chili100K-XRD" \
     --reduced_formula_list "TiO2" \
     --search_zs \
     --xrd_files "tests/fixtures/test_rutile_raw.xy" \
@@ -430,7 +431,7 @@ python _utils/_virtualiser/crystal_virtualiser.py \
 
 Complete pipeline for training your own models from data preprocessing to evaluation. All training and generation parameters and options are defined in [`_args.py`](_args.py). Training & generating should be done via configuration files (`.jsonc` format) which specify all necessary parameters.
 
-> Maintained notebook workflow: [`notebooks/X_XRD_chili100k.ipynb`](notebooks/X_XRD_chili100k.ipynb) is the active replacement for the retired COD XRD notebook. It covers CHILI-100K preprocessing, second-pass Slider finetuning, conditioned generation, unconditional control runs, and aggregate metrics.
+> Maintained notebook workflow: [`notebooks/X_XRD_chili100k.ipynb`](notebooks/X_XRD_chili100k.ipynb) covers CHILI-100K preprocessing, second-pass Slider finetuning, conditioned generation, unconditional control runs, and aggregate metrics.
 
 ## Data Processing Pipeline
 
@@ -743,13 +744,19 @@ Lower E_hull values indicate higher thermodynamic stability. Structures with E_h
 
 ### Additional Metrics
 
-XRD, Bandgap, Density, and challenge set benchmark metrics available in `_utils/_metrics/` folder.
+XRD, bandgap or density property metrics, VUN, and stability metrics are available in `_utils/_metrics/`.
 
 > **Note**: ALIGNN-based scripts require the separate `alignn_env` environment.
 
 # API
 
 Containerized API provides REST endpoints for preprocessing, training, generation, and metrics.
+
+Current API parity notes:
+
+- `/generate/direct` accepts exactly one output target: `output_parquet` or `output_cif_dir`.
+- `/preprocessing/clean` exposes `property3_normaliser`, `filter_to`, and `count_tokens`.
+- Metrics routes include `/metrics/vun`, `/metrics/ehull`, `/metrics/xrd`, and `/metrics/property`.
 
 First-time host setup (Linux + NVIDIA GPU required):
 
@@ -854,6 +861,8 @@ python -m tests.local.suite --cpu
 
 See the examples below.
 
+For `/generate/direct`, provide exactly one of `output_parquet` or `output_cif_dir`.
+
 <details>
 <summary>Expand for comprehensive API generation examples (curl)</summary>
 
@@ -908,13 +917,13 @@ curl -X POST "http://localhost:8000/generate/direct" \
   }'
 ```
 
-### Direct generation (Mattergen-XRD, LOGP Ranked Z-Search with Raw Wavelength Conversion)
+### Direct generation (Chili100K-XRD, LOGP Ranked Z-Search with Raw Wavelength Conversion)
 
 ```bash
 curl -X POST "http://localhost:8000/generate/direct" \
   -H "Content-Type: application/json" \
   -d '{
-    "hf_model_path": "c-bone/CrystaLLM-pi_Mattergen-XRD",
+    "hf_model_path": "c-bone/CrystaLLM-pi_Chili100K-XRD",
     "reduced_formula_list": "TiO2",
     "search_zs": true,
     "xrd_files": ["/app/tests/fixtures/test_rutile_raw.xy"],
@@ -924,7 +933,7 @@ curl -X POST "http://localhost:8000/generate/direct" \
     "target_valid_cifs": 5,
     "scoring_mode": "LOGP",
     "temperature": 1.0,
-    "output_parquet": "/app/outputs/xrd_mattergen_logp.parquet"
+    "output_cif_dir": "/app/outputs/xrd_chili_logp"
   }'
 ```
 

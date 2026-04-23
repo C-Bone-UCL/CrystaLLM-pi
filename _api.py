@@ -214,6 +214,15 @@ def run_command(job_id: str, cmd: List[str], output_file: Optional[str]):
             handle.write("\n=== STDERR ===\n")
             handle.write(stderr or "")
 
+        if output_file and not Path(output_file).exists():
+            _update_job(
+                job_id,
+                status="failed",
+                completed_at=datetime.now().isoformat(),
+                error=f"Expected output target not created: {output_file}. See {log_file}.",
+            )
+            return
+
         _update_job(
             job_id,
             status="completed",
@@ -331,6 +340,8 @@ async def root():
             "metrics": [
                 "/metrics/vun",
                 "/metrics/ehull",
+                "/metrics/xrd",
+                "/metrics/property",
             ],
             "virtualiser": [
                 "/virtualise",

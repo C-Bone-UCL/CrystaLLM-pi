@@ -59,6 +59,65 @@ class CommandConstructionTests:
         assert "--temperature 0.9" in cmd
         assert "c-bone/CrystaLLM-pi_bandgap" in cmd
 
+    def test_direct_generation_output_cif_dir_without_parquet(self):
+        """Verify direct generation accepts output_cif_dir as the only output target."""
+        response = self.client.post("/generate/direct", json={
+            "hf_model_path": "c-bone/CrystaLLM-pi_base",
+            "output_cif_dir": "/out-cifs",
+            "reduced_formula_list": "TiO2",
+            "z_list": "2"
+        })
+
+        assert response.status_code == 200
+        cmd = response.json()["command"]
+        assert "--output_cif_dir /out-cifs" in cmd
+        assert "--output_parquet" not in cmd
+
+    def test_direct_generation_rejects_search_zs_with_z_list(self):
+        """Verify direct generation rejects mutually exclusive Z controls."""
+        response = self.client.post("/generate/direct", json={
+            "hf_model_path": "c-bone/CrystaLLM-pi_base",
+            "output_parquet": "/out.parquet",
+            "reduced_formula_list": "TiO2",
+            "search_zs": True,
+            "z_list": "2"
+        })
+        assert response.status_code == 422
+        assert "search_zs" in response.json()["detail"]
+
+    def test_direct_generation_rejects_xrd_file_count_mismatch(self):
+        """Verify direct generation rejects XRD file counts that do not match formulas."""
+        response = self.client.post("/generate/direct", json={
+            "hf_model_path": "c-bone/CrystaLLM-pi_Mattergen-XRD",
+            "output_parquet": "/out.parquet",
+            "reduced_formula_list": "TiO2,SiO2",
+            "xrd_files": ["/tmp/test_rutile_processed.csv"]
+        })
+        assert response.status_code == 422
+        assert "XRD files" in response.json()["detail"]
+
+    def test_direct_generation_rejects_spacegroup_count_mismatch(self):
+        """Verify direct generation rejects incompatible spacegroup mappings."""
+        response = self.client.post("/generate/direct", json={
+            "hf_model_path": "c-bone/CrystaLLM-pi_base",
+            "output_parquet": "/out.parquet",
+            "reduced_formula_list": "TiO2,SiO2",
+            "spacegroups": "P4_2/mnm,P6_3/mmc,Fm-3m"
+        })
+        assert response.status_code == 422
+        assert "spacegroups" in response.json()["detail"]
+
+    def test_direct_generation_rejects_condition_vector_count_mismatch(self):
+        """Verify direct generation rejects incompatible condition vector mappings."""
+        response = self.client.post("/generate/direct", json={
+            "hf_model_path": "c-bone/CrystaLLM-pi_bandgap",
+            "output_parquet": "/out.parquet",
+            "reduced_formula_list": "TiO2,SiO2",
+            "condition_lists": ["1.2,0.0", "3.1,0.0", "5.0,0.0"]
+        })
+        assert response.status_code == 422
+        assert "condition vector" in response.json()["detail"]
+
     def test_direct_generation_scoring_mode_case_passthrough(self):
         """Verify lower-case scoring mode is accepted and forwarded."""
         response = self.client.post("/generate/direct", json={
@@ -115,3 +174,66 @@ class CommandConstructionTests:
         assert "--nproc_per_node=2" in cmd
         assert "-m _train" in cmd
         assert "--config /config.jsonc" in cmd
+
+    def test_make_prompts_automatic_extended_args(self):
+        """Verify automatic prompt generation forwards the newer helper args."""
+        response = self.client.post("/generate/make-prompts", json={
+            "output_parquet": "/tmp/prompts.parquet",
+            "automatic": True,
+            "input_parquet": "/tmp/input.parquet",
+            "split": "test",
+            "level": "level_3",
+            "raw": True,
+            "cif_column": "Generated CIF",
+            "condition_columns": ["Bandgap (eV)"],
+            "remove_ref_columns": True
+        })
+        assert response.status_code == 200
+        cmd = response.json()["command"]
+        assert "--automatic" in cmd
+        assert "--input_parquet /tmp/input.parquet" in cmd
+        assert "--raw" in cmd
+        assert "--cif_column Generated CIF" in cmd
+        assert "--condition_columns Bandgap (eV)" in cmd
+        assert "--remove_ref_columns" in cmd
+
+    def test_make_prompts_manual_mode_passthrough(self):
+        """Verify manual prompt generation forwards the pairing mode."""
+        response = self.client.post("/generate/make-prompts", json={
+            "output_parquet": "/tmp/prompts.parquet",
+            "manual": True,
+            "compositions": "LiFePO4,NaMnO2",
+            "condition_lists": ["0.1", "0.2"],
+            "mode": "paired"
+        })
+        assert response.status_code == 200
+        cmd = response.json()["command"]
+        assert "--manual" in cmd
+        assert "--mode paired" in cmd
+
+    def test_evaluate_cifs_extended_args(self):
+        """Verify evaluate-cifs forwards metrics_out and debug flags."""
+        response = self.client.post("/generate/evaluate-cifs", json={
+            "input_parquet": "/tmp/generated.parquet",
+            "metrics_out": "/tmp/metrics.parquet",
+            "num_workers": 4,
+            "save_valid_parquet": "/tmp/valid.parquet",
+            "debug": True
+        })
+        assert response.status_code == 200
+        cmd = response.json()["command"]
+        assert "--metrics_out /tmp/metrics.parquet" in cmd
+        assert "--save_valid_parquet /tmp/valid.parquet" in cmd
+        assert "--debug" in cmd
+
+    def test_postprocess_column_name_passthrough(self):
+        """Verify postprocess forwards the CIF column override."""
+        response = self.client.post("/generate/postprocess", json={
+            "input_parquet": "/tmp/generated.parquet",
+            "output_parquet": "/tmp/post.parquet",
+            "num_workers": 4,
+            "column_name": "CIF"
+        })
+        assert response.status_code == 200
+        cmd = response.json()["command"]
+        assert "--column_name CIF" in cmd

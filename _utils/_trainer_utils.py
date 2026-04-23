@@ -235,7 +235,7 @@ class DualLRLogger(TrainerCallback):
     
 def start_codecarbon_tracker(args):
     """Start the CodeCarbon tracker to log emissions during training."""
-    output_directory = os.path.join('_comp_metrics', args.output_dir)
+    output_directory = os.path.join('__comp_metrics', args.output_dir)
     os.makedirs(output_directory, exist_ok=True)
 
     tracker = OfflineEmissionsTracker(
@@ -290,68 +290,6 @@ def params_stats_check(model):
     print(f"Number of base transformer parameters: {transformer_params}")
     print(f"Percentage of conditioning parameters: {percentage_condition:.2f}%\n")
 
-# def setup_scheduler(args, model):
-#     """Setup the optimizer and scheduler for training.
-    
-#     If we finetune, we use different learning rates for conditioning vs base params.
-#     This is because backbone is already trained, we dont want to edit them too much.
-#     But we want to train the conditioning params more.
-#     """
-#     extra_sched_kwargs = args.lr_scheduler_kwargs or {}
-#     num_training_steps = args.max_steps
-#     warmup_steps = args.warmup_steps if args.warmup_steps is not None else int(args.warmup_ratio * num_training_steps)
-
-#     if args.activate_conditionality in ["PKV", "Prepend", "Slider"]:
-#         base_params, cond_params = [], []
-#         for n, p in model.named_parameters():
-#             if not p.requires_grad:
-#                 continue
-#             if any(k in n.lower() for k in ["slider", "conditioning"]):
-#                 cond_params.append(p)
-#             else:
-#                 base_params.append(p)
-
-#         print(f"Base params: {len(base_params)}, Conditioning params: {len(cond_params)}")
-
-#         optimizer = AdamW(
-#             [
-#                 {"params": base_params,  "lr": args.learning_rate,
-#                 "weight_decay": args.weight_decay},
-#                 {"params": cond_params, "lr": args.cond_lr,
-#                 "weight_decay": args.cond_wd},
-#             ],
-#             betas=(args.adam_beta1, args.adam_beta2),
-#             eps=1e-8
-#         )
-
-#         lr_scheduler = get_scheduler(
-#             name=args.lr_scheduler_type,
-#             optimizer=optimizer,
-#             num_warmup_steps=warmup_steps,
-#             num_training_steps=num_training_steps,
-#             scheduler_specific_kwargs=extra_sched_kwargs,
-#         )
-#         print(f"Using different learning rates for base and conditioning params: {args.learning_rate} and {args.cond_lr}")
-
-#     else:
-#         print("Using same learning rate for all params")
-#         optimizer = AdamW(
-#             model.parameters(),
-#             lr=args.learning_rate,
-#             betas=(args.adam_beta1, args.adam_beta2),
-#             eps=1e-8,
-#             weight_decay=args.weight_decay
-#         )
-
-#         lr_scheduler = get_scheduler(
-#             name=args.lr_scheduler_type,
-#             optimizer=optimizer,
-#             num_warmup_steps=warmup_steps,
-#             num_training_steps=num_training_steps,
-#             scheduler_specific_kwargs=extra_sched_kwargs,
-#         )
-#     return optimizer, lr_scheduler
-
 def setup_scheduler(args, model):
     """Setup the optimizer and scheduler for training.
     
@@ -364,9 +302,9 @@ def setup_scheduler(args, model):
     warmup_steps = args.warmup_steps if args.warmup_steps is not None else int(args.warmup_ratio * num_training_steps)
 
     if args.optimizer == "muon":
-        hidden_matrix_params = []  # 2D weights in transformer blocks (Muon)
-        adamw_params = []          # Embeddings, lm_head, 1D params (AdamW)
-        cond_params = []           # Conditioning module params (AdamW with cond_lr)
+        hidden_matrix_params = [] # 2D weights in transformer blocks (Muon)
+        adamw_params = [] # Embeddings, lm_head, 1D params (AdamW)
+        cond_params = [] # Conditioning module params (AdamW with cond_lr)
 
         # Keywords that identify conditioning module parameters
         cond_keywords = ["slider", "conditioning", "prefix_embedding"]

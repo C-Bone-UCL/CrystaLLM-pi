@@ -6,11 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [v1.2.1] - 2026-03-24
+## [v1.3.0] - 2026-03-24
 
 ### Features and Enhancements
 
-- **Slider direct-generation fallback without XRD files**: Updated `_load_and_generate.py` so Slider models (including `c-bone/CrystaLLM-pi_Mattergen-XRD` and `c-bone/CrystaLLM-pi_COD-XRD`) can run even when `--xrd_files` arent provided. These seem to be better than the base model even for conditionless generation.
+- Removed Challenge Benchmark
+- Removed COD stuff, including make disordered ordered things
+- Added mattergen comparison notebook (can handle P1 sg)
+- Added New Chili dataset training and benchmark
+- New polymorph analysis with correct processing
+- No Logit analysis code
+- Now in the cleaning script we can add token counts, and further analysis seen in Dataset_stats.ipynb
+- New models available in the load and generate
+  - mp-20
+  - alex-mp-20
+  - chili
+  - removed COD
+- Removed some of the now dead code
+- Split the notebook_utils.py into a directory in /_utils/_notebook_utils/ where each notebook has its own file and theres a shared utils file.
+- Updated tests for all the new stuff
+- API parity updates for generation, preprocessing, and metrics
+- API docs and test coverage refreshed for the maintained workflows
 
 ---
 

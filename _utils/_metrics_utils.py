@@ -144,25 +144,19 @@ def get_valid(df_proc, num_workers, bond_length_acceptability_cutoff=1.0, allow_
     max_workers = min(num_workers, max_workers_recommended)
     cifs_to_check = df_proc["Generated CIF"].tolist()
     
-    results = [False] * len(df_proc)
-    
+    worker_func = partial(
+        _validity_worker,
+        bond_length_acceptability_cutoff=bond_length_acceptability_cutoff,
+        allow_stated_p1_mismatch=allow_stated_p1_mismatch,
+    )
+    results = {}
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        worker_func = partial(
-            _validity_worker,
-            bond_length_acceptability_cutoff=bond_length_acceptability_cutoff,
-            allow_stated_p1_mismatch=allow_stated_p1_mismatch,
-        )
+        future_to_idx = {executor.submit(worker_func, cif): i for i, cif in enumerate(cifs_to_check)}
+        for future in tqdm(concurrent.futures.as_completed(future_to_idx),
+                           total=len(future_to_idx), desc="Checking validity"):
+            results[future_to_idx[future]] = future.result()
 
-        futures = [executor.submit(worker_func, cif) for cif in cifs_to_check]
-
-        
-        for i, future in enumerate(tqdm(concurrent.futures.as_completed(futures), 
-                                      total=len(futures), desc="Checking validity")):
-            # Find which future completed and store result in correct position
-            future_idx = futures.index(future)
-            results[future_idx] = future.result()
-
-    df_proc["is_valid"] = results
+    df_proc["is_valid"] = [results[i] for i in range(len(cifs_to_check))]
     valid_count = df_proc['is_valid'].sum()
     
     print(f"{valid_count} valid CIFs out of {len(df_proc)} total")
@@ -308,19 +302,15 @@ def get_novelty(df_gen, base_comps, ltol, stol, angle_tol, structures, workers):
         tasks.append((struct, comp_key, base_comps, ltol, stol, angle_tol))
 
     # Run novelty checks in parallel
-    results = [False] * len(tasks)
+    results = {}
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(_novelty_worker, task) for task in tasks]
-        
-        for i, future in enumerate(tqdm(concurrent.futures.as_completed(futures), 
-                                      total=len(futures), desc="Checking novelty")):
-            # Find original task index and store result
-            task_idx = futures.index(future)
-            results[task_idx] = future.result()
+        future_to_idx = {executor.submit(_novelty_worker, task): i for i, task in enumerate(tasks)}
+        for future in tqdm(concurrent.futures.as_completed(future_to_idx),
+                           total=len(future_to_idx), desc="Checking novelty"):
+            results[future_to_idx[future]] = future.result()
 
-    # Assign results back to the dataframe
     df_gen["is_novel"] = False
-    df_gen.loc[df_to_check.index, "is_novel"] = results
+    df_gen.loc[df_to_check.index, "is_novel"] = [results[i] for i in range(len(tasks))]
     
     novel_count = df_gen['is_novel'].sum()
     print(f"Found {novel_count} novel CIFs.")
@@ -578,11 +568,6 @@ def _predict_bandgap(df_valid, num_workers):
     return pd.Series(bg_results)
 
 ### Density and Bandgap main functions
-def _predict_density(df_valid):
-    """Calculate density for structures."""
-    print("Getting density predictions...")
-    return df_valid["Generated CIF"].apply(get_density)
-
 def predict_properties(gen_df_proc, property_targets, num_workers):
     """Run property predictions (ALIGNN + density)."""
     df_valid = gen_df_proc[gen_df_proc["is_valid"]].copy()
@@ -592,8 +577,8 @@ def predict_properties(gen_df_proc, property_targets, num_workers):
             bg_series = _predict_bandgap(df_valid, num_workers)
             gen_df_proc['ALIGNN_bg (eV)'] = bg_series
         elif 'density' in prop.lower() or 'den' in prop.lower():
-            density_series = _predict_density(df_valid)
-            gen_df_proc['gen_density (g/cm3)'] = density_series
+            print("Getting density predictions...")
+            gen_df_proc['gen_density (g/cm3)'] = df_valid["Generated CIF"].apply(get_density)
     
     return gen_df_proc
 
@@ -785,30 +770,4 @@ def is_valid(cif_str, bond_length_acceptability_cutoff=1.0, allow_stated_p1_mism
         return False
     return True
 
-def reconstruct_xrd_peaks(condition_vector_str):
-    """Parse XRD peaks from condition vector."""
-    try:
-        if isinstance(condition_vector_str, str):
-            vector_str = condition_vector_str.strip()
-            if vector_str.startswith('[') and vector_str.endswith(']'):
-                vector_str = vector_str[1:-1]
-            values = [float(x.strip()) for x in vector_str.split(',')]
-        else:
-            values = list(condition_vector_str)
-        
-        # Split into theta and intensity parts
-        mid_point = len(values) // 2
-        theta_values = values[:mid_point]
-        intensity_values = values[mid_point:]
-        
-        # Remove padding (-100 values) and denormalize
-        valid_peaks = []
-        for theta_norm, int_norm in zip(theta_values, intensity_values):
-            if theta_norm != -100 and int_norm != -100:
-                theta = theta_norm * 90.0  # denormalize theta
-                intensity = int_norm * 100.0  # denormalize intensity
-                valid_peaks.append({'two_theta': theta, 'intensity': intensity})
-        
-        return valid_peaks
-    except Exception:
-        return []
+

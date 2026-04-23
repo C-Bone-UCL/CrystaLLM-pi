@@ -252,27 +252,6 @@ def round_numbers(cif_str, decimal_places=4):
     return cif_string_rounded
 
 
-def array_split(arr, num_splits):
-    split_size, remainder = divmod(len(arr), num_splits)
-    splits = []
-    start = 0
-    for i in range(num_splits):
-        end = start + split_size + (i < remainder)
-        splits.append(arr[start:end])
-        start = end
-    return splits
-
-
-def embeddings_from_csv(embedding_csv):
-    df = pd.read_csv(embedding_csv)
-    elements = list(df["element"])
-    df.drop(["element"], axis=1, inplace=True)
-    embeds_array = df.to_numpy()
-    embedding_data = {
-        elements[i]: embeds_array[i] for i in range(len(embeds_array))
-    }
-    return embedding_data
-
 def remove_comments(cif_str: str) -> str:
     """
     Removes comments preceding the 'data_' block in a CIF string.
@@ -281,7 +260,7 @@ def remove_comments(cif_str: str) -> str:
     if match:
         return match.group(1)
 
-    return cif_str  # Return as-is if no 'data_' block is found
+    return cif_str
 
 
 def safe_filename(name: str) -> str:
@@ -290,19 +269,6 @@ def safe_filename(name: str) -> str:
     name = re.sub(r"[^A-Za-z0-9._+-]+", "_", name)
     return name or "entry"
 
-def load_mp_api_key(key_file: str) -> str:
-    """Load MP API key from JSONC file - DEPRECATED: now using MP data file instead."""
-    # This function is kept for backwards compatibility but is no longer used
-    try:
-        with open(key_file, "r") as f:
-            data = commentjson.load(f)
-        mp_key = str(data["MP_key"]).strip()
-        if not mp_key:
-            raise KeyError("MP_key empty in API key file")
-        return mp_key
-    except Exception as e:
-        raise RuntimeError(f"Failed to read MP API key from '{key_file}': {e}")
-    
 
 # make a function that loads key dictionary from API_keys.jsonc
 def load_api_keys(key_file: str = "API_keys.jsonc") -> dict:
@@ -324,72 +290,6 @@ def load_api_keys(key_file: str = "API_keys.jsonc") -> dict:
             f"Failed to read API keys from '{key_file}' and no env fallback found: {file_error}"
         )
 
-
-
-def _snap_site_to_int(site, ROUND_TOL=0.05):
-    """
-    Return (species, coords) if the site's majority species occupancy
-    can be snapped to 1 or 0 within ROUND_TOL, else None.
-    """
-    sp, occ = max(site.species.items(), key=lambda kv: kv[1])
-    if abs(occ - 1) <= ROUND_TOL:
-        return sp, 1.0, site.frac_coords
-    if abs(occ - 0) <= ROUND_TOL:
-        return None                           
-    return "FAIL"
-
-
-def _round_structure(struct, ROUND_TOL=0.05):
-    """
-    Try to round *all* sites in the existing unit cell.
-    Returns a new Structure or None on failure.
-    """
-    new_species, new_coords = [], []
-    for site in struct:
-        snapped = _snap_site_to_int(site, ROUND_TOL=ROUND_TOL)
-        if snapped == "FAIL":
-            return None
-        if snapped is not None:               # keep full-occupancy site
-            sp, _, fc = snapped
-            new_species.append(sp)
-            new_coords.append(fc)
-
-    new_struct = Structure(struct.lattice, new_species, new_coords)
-    return new_struct
-
-
-def order_or_round_cif(cif_str, MANDATORY_ELEMENTS=None, ROUND_TOL=0.05):
-    """
-    Make every occupancy exactly 1 (or remove site) *without*
-    expanding the cell.  Preserve element set; otherwise
-    return None so the caller can skip the CIF.
-    """
-    try:
-        struct = CifParser(StringIO(cif_str)).get_structures(primitive=False)[0]
-        comp0  = struct.composition
-
-        if all(abs(v - round(v)) < 1e-6 for v in comp0.values()):
-            # already integer stoichiometry
-            return cif_str
-
-        rounded = _round_structure(struct, ROUND_TOL=ROUND_TOL)
-        if rounded is None:
-            return None
-
-        comp1 = rounded.composition
-        # element-set check
-        if MANDATORY_ELEMENTS and set(comp1.elements) != set(comp0.elements):
-            return None
-
-        new_cif = rounded.to(fmt="cif")
-        print(f"Non-rounded formula: {comp0}")
-        print(f"Rounded  formula: {comp1}")
-        return new_cif
-
-    except Exception as e:
-        print("Rounding failed:", e)
-        return None
-    
 
 def normalize_property_column(dataframe, prop_name, norm_method):
     """Apply normalization to a single property column."""

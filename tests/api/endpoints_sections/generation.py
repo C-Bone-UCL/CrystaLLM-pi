@@ -103,14 +103,14 @@ class GenerationEndpointTests(IntegrationMixin):
         if self.is_integration and self.verbose:
             self._show_generated_cifs(output_parquet)
         
-    def test_direct_generation_cod_xrd_early_stop(self):
-        """Test Early-Stopping Z-Search with COD-XRD."""
+    def test_direct_generation_mattergen_xrd_early_stop(self):
+        """Test Early-Stopping Z-Search with Mattergen-XRD."""
         if self._should_skip_integration():
             return
 
-        output_parquet = self._test_output("gen_xrd_early_stop.parquet")
+        output_parquet = self._test_output("gen_mattergen_xrd_early_stop.parquet")
         response = self.client.post("/generate/direct", json={
-            "hf_model_path": "c-bone/CrystaLLM-pi_COD-XRD",
+            "hf_model_path": "c-bone/CrystaLLM-pi_Mattergen-XRD",
             "output_parquet": output_parquet,
             "reduced_formula_list": "TiO2",
             "spacegroups": "P4_2/mnm",
@@ -122,7 +122,8 @@ class GenerationEndpointTests(IntegrationMixin):
             "target_valid_cifs": 1,
             "scoring_mode": "none"
         })
-        data = self._wait_and_assert(response, job_name="generate_xrd_early_stop", timeout=600)
+        data = self._wait_and_assert(response, job_name="generate_mattergen_xrd_early_stop", timeout=600)
+        assert "c-bone/CrystaLLM-pi_Mattergen-XRD" in data["command"]
         assert "--search_zs" in data["command"]
         assert "--target_valid_cifs 1" in data["command"]
         assert "--xrd_files" in data["command"]

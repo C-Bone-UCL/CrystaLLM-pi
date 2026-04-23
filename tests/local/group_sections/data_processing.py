@@ -108,7 +108,7 @@ class DataProcessingTests:
 
     def test_logit_analysis_reconstruction(self):
         """Reconstruct generated CIFs with the canonical bracket helper."""
-        from _utils._logit_analysis.cif_parser import reconstruct_bracketed_cif
+        from _utils._notebook_utils.y_logits_utils import reconstruct_bracketed_cif
 
         bracketed_cif = reconstruct_bracketed_cif(RAW_GENERATED_CIF_SIO2)
 
@@ -129,7 +129,7 @@ class DataProcessingTests:
 
     def test_logit_analysis_condition_dtype_matches_model(self):
         """Condition tensor dtype should match the model's conditioning path."""
-        from _utils._logit_analysis import logit_extraction
+        from _utils._notebook_utils import y_logits_utils as logit_extraction
 
         class DummyTokenizer:
             bos_token = "<bos>"
