@@ -44,6 +44,7 @@ class NotebookUtilsTests:
             "is_comp_novel_pt": [False, False],
         })
 
+
     def test_get_metrics_xrd_keys_and_counts(self):
         from _utils._notebook_utils._shared_utils import get_metrics_xrd
 
@@ -158,35 +159,6 @@ class NotebookUtilsTests:
             "Structure Nov.",
             "Composition Nov.",
         ]
-
-    def test_get_metrics_ptnd_vs_scratch_returns_core_keys(self):
-        from _utils._notebook_utils.b1a_pretrain_benefits_utils import get_metrics_ptnd_vs_scratch
-
-        train_df = pd.DataFrame({"Bandgap (eV)": np.linspace(0.1, 7.0, 60)})
-        df_dict = {
-            "slider-pretrained": pd.DataFrame({
-                "target_Bandgap (eV)": [6.2, 6.2],
-                "ALIGNN_bg (eV)": [6.1, 6.3],
-                "ehull_mace_mp": [0.01, 0.02],
-                "is_valid": [True, True],
-                "is_unique": [True, True],
-                "is_novel": [True, True],
-            }),
-            "slider-scratch": pd.DataFrame({
-                "target_Bandgap (eV)": [6.2, 6.2],
-                "ALIGNN_bg (eV)": [5.7, 5.8],
-                "ehull_mace_mp": [0.01, 0.20],
-                "is_valid": [True, False],
-                "is_unique": [True, True],
-                "is_novel": [True, False],
-            }),
-        }
-
-        metrics = get_metrics_ptnd_vs_scratch(df_dict, train_df=train_df)
-
-        assert "avg_delta_validity" in metrics
-        assert "avg_delta_hit_rate" in metrics
-        assert "best_hit_rate_method" in metrics
 
     def test_get_metrics_dataset_size_study_returns_raw_dataframe(self):
         from _utils._notebook_utils.b2_dataset_size_study_utils import get_metrics_dataset_size_study

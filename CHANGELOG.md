@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Updated tests for all the new stuff
 - API parity updates for generation, preprocessing, and metrics
 - API docs and test coverage refreshed for the maintained workflows
+- Plot codes release in the notebook utils
 
 ---
 
