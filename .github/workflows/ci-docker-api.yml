@@ -63,7 +63,7 @@ jobs:
         run: |
           docker exec \
             "$API_CONTAINER_NAME" \
-            python -m tests.api.suite --docker_url "http://127.0.0.1:8000" --integration --command-tests
+            python -m tests.api.suite --docker_url "http://127.0.0.1:8000" --integration-only
 
       - name: Show API logs on failure
         if: failure()

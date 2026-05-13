@@ -172,11 +172,11 @@ class DockerTestClient:
         self.session = requests.Session()
         
     def get(self, path: str) -> 'MockResponse':
-        resp = self.session.get(f"{self.base_url}{path}")
+        resp = self.session.get(f"{self.base_url}{path}", timeout=30)
         return MockResponse(resp)
         
     def post(self, path: str, json: dict = None) -> 'MockResponse':
-        resp = self.session.post(f"{self.base_url}{path}", json=json)
+        resp = self.session.post(f"{self.base_url}{path}", json=json, timeout=30)
         return MockResponse(resp)
 
 class MockResponse:

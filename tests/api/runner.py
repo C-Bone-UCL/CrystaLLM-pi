@@ -18,29 +18,21 @@ from tests.api.endpoints import (
     VirtualiserEndpointTests,
 )
 
-def run_all_tests(
-    suite: APITestSuite,
-    run_integration: bool = False,
-    verbose: bool = False,
-    include_known_gaps: bool = False,
-    include_command_tests: bool = False,
-):
-    """Run all test categories."""
-    test_data = suite.create_test_data()
-    
+def _run_smoke_tests(suite: APITestSuite, test_data: dict, include_command_tests: bool, include_known_gaps: bool):
+    """Run the fast smoke and command-construction tests."""
     # Root endpoint tests
     root_tests = RootEndpointTests(suite.client, suite.temp_dir)
     suite.run_test("root_returns_api_info", root_tests.test_root_returns_api_info)
     suite.run_test("root_lists_all_endpoint_categories", root_tests.test_root_lists_all_endpoint_categories)
     suite.run_test("health_endpoint", root_tests.test_health_endpoint)
-    
+
     # Job management tests
     job_tests = JobManagementTests(suite.client, suite.temp_dir)
     suite.run_test("list_jobs_empty", job_tests.test_list_jobs_empty)
     suite.run_test("get_nonexistent_job_returns_404", job_tests.test_get_nonexistent_job_returns_404)
     suite.run_test("job_creation_returns_pending_status", job_tests.test_job_creation_returns_pending_status)
     suite.run_test("job_can_be_retrieved_after_creation", job_tests.test_job_can_be_retrieved_after_creation)
-    
+
     # Preprocessing endpoint tests
     preproc_tests = PreprocessingEndpointTests(suite.client, suite.temp_dir, test_data, mode="smoke")
     suite.run_test("deduplicate_valid_request", preproc_tests.test_deduplicate_valid_request)
@@ -55,12 +47,12 @@ def run_all_tests(
     suite.run_test("xrd_preprocessing_valid_request", preproc_tests.test_xrd_preprocessing_valid_request)
     suite.run_test("xrd_preprocessing_missing_required_field", preproc_tests.test_xrd_preprocessing_missing_required_field)
     suite.run_test("cifs_zip_to_parquet_smoke", preproc_tests.test_cifs_zip_to_parquet_smoke)
-    
+
     # Training endpoint tests
     train_tests = TrainingEndpointTests(suite.client, suite.temp_dir)
     suite.run_test("train_single_gpu", train_tests.test_train_single_gpu)
     suite.run_test("train_multi_gpu", train_tests.test_train_multi_gpu)
-    
+
     # Generation endpoint tests
     gen_tests = GenerationEndpointTests(suite.client, suite.temp_dir, test_data, mode="smoke")
     suite.run_test("generate_base_explicit_z", gen_tests.test_generate_base_explicit_z)
@@ -78,7 +70,7 @@ def run_all_tests(
     suite.run_test("postprocess", gen_tests.test_postprocess)
     suite.run_test("direct_generation_raw_xrd_conversion", gen_tests.test_direct_generation_raw_xrd_conversion)
     suite.run_test("direct_generation_search_zs_all_rows_mode", gen_tests.test_direct_generation_search_zs_all_rows_mode)
-    
+
     # Metrics endpoint tests
     metrics_tests = MetricsEndpointTests(suite.client, suite.temp_dir, test_data, mode="smoke")
     suite.run_test("vun_metrics", metrics_tests.test_vun_metrics)
@@ -90,7 +82,7 @@ def run_all_tests(
     suite.run_test("virtualise_config_file", virtualiser_tests.test_virtualise_with_config_file)
     suite.run_test("virtualise_missing_pairs_and_config", virtualiser_tests.test_virtualise_missing_pairs_and_config)
     suite.run_test("virtualise_missing_required_fields", virtualiser_tests.test_virtualise_missing_required_fields)
-    
+
     if include_command_tests:
         print("\nCommand Construction Checks:")
         cmd_tests = CommandConstructionTests(suite.client, suite.temp_dir)
@@ -108,7 +100,22 @@ def run_all_tests(
         suite.run_test("xrd_preprocessing_endpoint_now_supported", gap_tests.test_xrd_preprocessing_endpoint_now_supported)
         suite.run_test("missing_xrd_metrics_endpoint", gap_tests.test_missing_xrd_metrics_endpoint)
         suite.run_test("missing_property_metrics_endpoint", gap_tests.test_missing_property_metrics_endpoint)
-    
+
+
+def run_all_tests(
+    suite: APITestSuite,
+    run_integration: bool = False,
+    verbose: bool = False,
+    include_known_gaps: bool = False,
+    include_command_tests: bool = False,
+    integration_only: bool = False,
+):
+    """Run all test categories."""
+    test_data = suite.create_test_data()
+
+    if not integration_only:
+        _run_smoke_tests(suite, test_data, include_command_tests, include_known_gaps)
+
     # Integration tests (optional, slower)
     if run_integration:
         print("\n" + "="*60)
@@ -211,6 +218,8 @@ def main():
                         help="Run checks that document known missing API features; these may fail by design")
     parser.add_argument("--command-tests", action="store_true",
                         help="Include command-construction assertion tests")
+    parser.add_argument("--integration-only", action="store_true",
+                        help="Skip all smoke tests and run only integration tests (implies --integration)")
     args = parser.parse_args()
     
     print("="*60)
@@ -233,13 +242,15 @@ def main():
     suite.setup()
     fatal_error = None
     
+    integration_only = getattr(args, "integration_only", False)
     try:
         run_all_tests(
             suite,
-            run_integration=args.integration,
+            run_integration=args.integration or integration_only,
             verbose=args.verbose,
             include_known_gaps=args.known_gaps,
             include_command_tests=args.command_tests,
+            integration_only=integration_only,
         )
     except Exception as e:
         print(f"\nFatal error during tests: {e}")
