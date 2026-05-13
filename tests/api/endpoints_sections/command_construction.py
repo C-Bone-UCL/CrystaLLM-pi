@@ -6,6 +6,17 @@ class CommandConstructionTests:
     def __init__(self, client, temp_dir: str):
         self.client = client
         self.temp_dir = temp_dir
+
+    def _command_from_response(self, response: object) -> str:
+        """Extract the returned command and cancel any spawned background job."""
+        data = response.json()
+        job_id = data.get("job_id")
+        if job_id:
+            cancel_response = self.client.post(f"/jobs/{job_id}/cancel")
+            assert cancel_response.status_code in (200, 409), (
+                f"Unexpected cancel response for {job_id}: {cancel_response.status_code}"
+            )
+        return data["command"]
         
     def test_deduplicate_command_structure(self):
         """Verify deduplicate command has correct structure."""
@@ -14,7 +25,7 @@ class CommandConstructionTests:
             "output_parquet": "/data/out.parquet",
             "property_columns": "[\"Bandgap\"]"
         })
-        cmd = response.json()["command"]
+        cmd = self._command_from_response(response)
         
         # check command structure
         assert cmd.startswith("python -m _utils._preprocessing._deduplicate")
@@ -30,7 +41,7 @@ class CommandConstructionTests:
             "level": "level_1",
             "condition_lists": ["24.7"]
         })
-        cmd = response.json()["command"]
+        cmd = self._command_from_response(response)
         
         # condition_lists should be space-separated after the flag
         assert "--condition_lists 24.7" in cmd, f"Expected condition_lists format not found in: {cmd}"
@@ -49,7 +60,7 @@ class CommandConstructionTests:
             "max_return_attempts": 10,
             "temperature": 0.9
         })
-        cmd = response.json()["command"]
+        cmd = self._command_from_response(response)
         
         # all params should be present
         assert "--spacegroups P4_2/mnm" in cmd
@@ -69,7 +80,7 @@ class CommandConstructionTests:
             "condition_lists": ["1.82,0.0"],
             "scoring_mode": "logp"
         })
-        cmd = response.json()["command"]
+        cmd = self._command_from_response(response)
         assert "--scoring_mode logp" in cmd
 
     def test_direct_generation_logp_zero_target_rejected(self):
@@ -98,7 +109,7 @@ class CommandConstructionTests:
             "target_valid_cifs": 0
         })
         assert response.status_code == 200
-        cmd = response.json()["command"]
+        cmd = self._command_from_response(response)
         assert "--scoring_mode None" in cmd
         assert "--target_valid_cifs 0" in cmd
         
@@ -109,7 +120,7 @@ class CommandConstructionTests:
             "multi_gpu": True,
             "nproc_per_node": 2
         })
-        cmd = response.json()["command"]
+        cmd = self._command_from_response(response)
         
         assert cmd.startswith("torchrun"), f"Should start with torchrun: {cmd}"
         assert "--nproc_per_node=2" in cmd

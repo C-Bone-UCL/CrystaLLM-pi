@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **Maintained Main Branch**: After tagging `v1.3.0` for paper reproduction, `main` restores the maintained generation and validation behavior. Relative to the paper snapshot, `main` re-enables bond-length validity checks during generation-time validation, scores each generated batch before truncating to `target_valid_cifs`, and uses the stricter structure-aware `is_formula_consistent` check in the metrics utilities.
 
+### CI's and Testing
+- **Github Actions**: Now we can run test suites via github actions (See `Contributing.md` for details). 
+- **CPU API Tests Compatibility**: Now we have a CPU only possible toggle for the full API suite in case environment has no GPU tests will run accordingly on CPU.
+
 ## [v1.3.0] - 2026-05-13
 
 ### Features and Enhancements

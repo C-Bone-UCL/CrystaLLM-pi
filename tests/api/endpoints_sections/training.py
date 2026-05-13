@@ -9,6 +9,17 @@ class TrainingEndpointTests:
     def __init__(self, client, temp_dir: str):
         self.client = client
         self.temp_dir = temp_dir
+
+    def _extract_command_and_cancel(self, response):
+        """Return command string and cancel spawned background job when present."""
+        data = response.json()
+        job_id = data.get("job_id")
+        if job_id:
+            cancel_response = self.client.post(f"/jobs/{job_id}/cancel")
+            assert cancel_response.status_code in (200, 409), (
+                f"Unexpected cancel response for {job_id}: {cancel_response.status_code}"
+            )
+        return data
         
     def test_train_single_gpu(self):
         """Test train with single GPU config."""
@@ -26,7 +37,7 @@ class TrainingEndpointTests:
             "multi_gpu": False
         })
         assert response.status_code == 200
-        data = response.json()
+        data = self._extract_command_and_cancel(response)
         assert "python" in data["command"]
         assert "_train" in data["command"]
         assert "torchrun" not in data["command"]
@@ -43,6 +54,6 @@ class TrainingEndpointTests:
             "nproc_per_node": 2
         })
         assert response.status_code == 200
-        data = response.json()
+        data = self._extract_command_and_cancel(response)
         assert "torchrun" in data["command"]
         assert "--nproc_per_node=2" in data["command"]

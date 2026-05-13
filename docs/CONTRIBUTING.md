@@ -42,7 +42,6 @@ To ensure stability and reproducibility, this project relies on a three-tier tes
 * **Description:** Builds the Docker container and runs API smoke tests to verify the deployment environment. An optional flag can be set during dispatch to run the slower, full integration suite. Note: This runs on standard GitHub-hosted runners (CPU), while production deployments would need GPU environments.
 
 ## Governance and Support
-
 CrystaLLM-pi is primarily developed and maintained by Cyprien Bone (PhD Student @ UCL). 
 
 Please note that this repository is maintained on a **best-effort basis**. While we value community input and strive to review pull requests, investigate bug reports, and answer questions in a timely manner, we cannot guarantee immediate responses or resolution. Support and maintenance are provided as time and research resources permit.
