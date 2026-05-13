@@ -54,22 +54,16 @@ jobs:
 
       - name: Run API smoke tests
         run: |
-          docker run --rm \
-            --network "$CI_DOCKER_NETWORK" \
-            -e HF_KEY \
-            -e WANDB_KEY \
-            "$IMAGE_NAME" \
-            python -m tests.api.suite --docker_url "http://$API_CONTAINER_NAME:8000" --command-tests
+          docker exec \
+            "$API_CONTAINER_NAME" \
+            python -m tests.api.suite --docker_url "http://127.0.0.1:8000" --command-tests
 
       - name: Run API integration tests
         if: ${{ inputs.run_integration }}
         run: |
-          docker run --rm \
-            --network "$CI_DOCKER_NETWORK" \
-            -e HF_KEY \
-            -e WANDB_KEY \
-            "$IMAGE_NAME" \
-            python -m tests.api.suite --docker_url "http://$API_CONTAINER_NAME:8000" --integration --command-tests
+          docker exec \
+            "$API_CONTAINER_NAME" \
+            python -m tests.api.suite --docker_url "http://127.0.0.1:8000" --integration --command-tests
 
       - name: Show API logs on failure
         if: failure()
