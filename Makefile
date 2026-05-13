@@ -39,7 +39,7 @@ api-test:
 	python -m tests.api.suite --docker_url http://localhost:8000
 
 api-test-with-integration:
-	python -m tests.api.suite --docker_url http://localhost:8000 --integration
+	python -m tests.api.suite --docker_url http://localhost:8000 --integration-only
 
 api-apptainer-build:
 	docker tag $(APPTAINER_DOCKER_IMAGE):$(APPTAINER_DOCKER_SOURCE_TAG) $(APPTAINER_DOCKER_IMAGE):$(APPTAINER_DOCKER_TAG)

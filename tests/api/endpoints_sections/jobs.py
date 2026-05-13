@@ -31,6 +31,11 @@ class JobManagementTests:
         assert data["status"] == "pending", f"Expected 'pending', got {data['status']}"
         assert "job_id" in data, "Response should have job_id"
         assert "command" in data, "Response should have command"
+
+        cancel_response = self.client.post(f"/jobs/{data['job_id']}/cancel")
+        assert cancel_response.status_code in (200, 409), (
+            f"Unexpected cancel response: {cancel_response.status_code}"
+        )
         
     def test_job_can_be_retrieved_after_creation(self):
         """Test that a created job can be retrieved."""
@@ -45,3 +50,8 @@ class JobManagementTests:
         response = self.client.get(f"/jobs/{job_id}")
         assert response.status_code == 200
         assert response.json()["job_id"] == job_id
+
+        cancel_response = self.client.post(f"/jobs/{job_id}/cancel")
+        assert cancel_response.status_code in (200, 409), (
+            f"Unexpected cancel response: {cancel_response.status_code}"
+        )

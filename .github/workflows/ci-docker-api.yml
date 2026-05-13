@@ -53,6 +53,7 @@ jobs:
           exit 1
 
       - name: Run API smoke tests
+        if: ${{ !inputs.run_integration }}
         run: |
           docker exec \
             "$API_CONTAINER_NAME" \

@@ -68,7 +68,15 @@ class IntegrationMixin:
     def _wait_and_assert(self, response, *, job_name: str, timeout: int = 300):
         assert response.status_code == 200, f"Request failed: {response.status_code}"
         if not self.is_integration:
-            return response.json()
+            payload = response.json()
+            if isinstance(payload, dict):
+                job_id = payload.get("job_id")
+                if job_id:
+                    cancel_response = self.client.post(f"/jobs/{job_id}/cancel")
+                    assert cancel_response.status_code in (200, 409), (
+                        f"Unexpected cancel response for {job_id}: {cancel_response.status_code}"
+                    )
+            return payload
         job = self.wait_for_job(response.json()["job_id"], timeout=timeout, job_name=job_name)
         assert job["status"] == "completed", f"Job failed: {job.get('error')}"
         return job
