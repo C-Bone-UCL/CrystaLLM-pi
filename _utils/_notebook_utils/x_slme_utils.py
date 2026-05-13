@@ -39,7 +39,10 @@ def structure_to_cif(struct):
 
 def extract_formula(struct):
     """Extract the reduced formula from a pymatgen Structure."""
-    return struct.composition.reduced_formula
+    try:
+        return struct.composition.reduced_formula
+    except AttributeError:
+        return "UnknownFormula"
 
 
 def build_finetuning_dataset(structure_path: str, slme_path: str, output_parquet: str):

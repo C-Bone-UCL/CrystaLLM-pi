@@ -17,27 +17,13 @@ import re
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import concurrent.futures
+from tqdm import tqdm
 
 # Local application imports
 import __init__
 from _utils import extract_numeric_property, get_unit_cell_volume, extract_formula_nonreduced
 from ._shared_utils import get_stratified_metrics_xrd, _extract_atom_counts_worker
-
-
-# Global plotting styling constants (paper-ready defaults)
-# FIGSIZE = (12, 12)
-# TITLE_FONTSIZE = 20
-# LABEL_FONTSIZE = 18
-# TICKS_FONTSIZE = 16
-# LEGEND_FONTSIZE = 16
-# ANNOT_FONTSIZE = 16
-# MIN_MARKER_SIZE = 5 
-# SIZE_MULTIPLIER = 5.0  
-# SCATTER_EDGE_WIDTH = 0.3
-# ALPHA_MATCHED = 0.9
-# ALPHA_UNMATCHED = 0.5
-# DIAG_LINE_WIDTH = 1.0
-# AXES_LINEWIDTH = 1.0
 
 PLOT_PROPERTIES = [
     {"t_key": "True a", "g_key": "Gen a", "title": "Lattice const. a", "xlab": "Target a [Å]", "ylab": "Pred. a [Å]"},
@@ -94,13 +80,6 @@ def calculate_lattice_metrics(x_array, y_array):
     r2 = np.corrcoef(x_array, y_array)[0, 1] ** 2
     
     return mae, r2
-
-
-import concurrent.futures
-from tqdm import tqdm
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 
 def plot_true_vs_gen(df, 
                     figsize=(14, 14),

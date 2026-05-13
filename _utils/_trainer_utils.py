@@ -208,7 +208,8 @@ class LossTrack_EarlyStop_Callback(TrainerCallback):
         if self.patience_counter >= self.early_stopping_patience:
             control.should_training_stop = True
         return control
-    
+
+
 class DualLRLogger(TrainerCallback):
     """Logs learning rates for both base and conditioning parameter groups.
     

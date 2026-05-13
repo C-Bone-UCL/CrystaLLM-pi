@@ -17,7 +17,7 @@ from _args import parse_args
 from _dataloader import load_data
 from _tokenizer import CustomCIFTokenizer
 from _utils import (
-    LossTrack_EarlyStop_Callback, 
+    LossTrack_EarlyStop_Callback,
     CIFFormattingTrainer, 
     DualLRLogger,
     tokenizer_ID_check, 
@@ -242,7 +242,7 @@ def main():
 
     # Setup callbacks based on evaluation strategy
     callbacks = [DualLRLogger()]
-    
+
     # Only add early stopping if evaluation is enabled
     if args.eval_strategy != "no" and hasattr(args, 'early_stopping_patience'):
         callbacks.append(

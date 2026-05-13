@@ -1,9 +1,4 @@
-"""Helpers for B2_Dataset_size_study.ipynb to evaluate structural and property metrics.
-
-This module provides functions to calculate performance metrics (validity, uniqueness, 
-novelty, and stability) and generate summary and parity plots for crystalline 
-structure generation models across various dataset sizes.
-"""
+"""Helpers for B2_Dataset_size_study.ipynb density metrics and plots."""
 
 import string
 import numpy as np
@@ -15,13 +10,9 @@ from matplotlib.ticker import MaxNLocator
 from scipy.stats import pearsonr, ttest_rel, gaussian_kde
 from sklearn.metrics import r2_score
 
-from ._shared_utils import _sem
-
 from pathlib import Path
 
 # Constants & Layout Config
-# Map internal codebase names to the official paper nomenclature
-INTERNAL_METH_MAP = {"Prefix": "PKV", "Residual": "Slider", "Prepend": "Prepend"}
 PAPER_METH_MAP = {"PKV": "Prefix", "Slider": "Residual", "Prepend": "Prepend"}
 
 OKABE_ITO_DENSITY = {"Prefix": "#990099", "Residual": "#E69F00", "Prepend": "#56B4E9"}
@@ -134,7 +125,7 @@ def preprocess_density_data(df_dict, stability_threshold=0.157):
         is_unique = df.get("is_unique", pd.Series(False, index=df.index)).fillna(False).astype(bool)
         is_novel = df.get("is_novel", pd.Series(False, index=df.index)).fillna(False).astype(bool)
         
-        ehull = pd.to_numeric(df.get("ehull_mace_mp", np.nan), errors="coerce")
+        ehull = pd.to_numeric(df.get("ehull_mace_mp", pd.Series(np.nan, index=df.index)), errors="coerce")
         is_stable = ehull.le(stability_threshold).fillna(False)
         
         df["valid_mask"] = is_valid
@@ -228,54 +219,85 @@ def _density_sort_sizes(df_dict):
     unique_sizes = {_get_frame_metadata(df, "_size", "full") for df in df_dict.values()}
     return sorted(unique_sizes, key=lambda size: DENSITY_SIZE_ORDER_MAP.get(size, 99))
 
-
-# Metrics & Calculation Functions
-
 def get_metrics_dataset_size_study(
     dfs_dict,
     train_df,
     *,
-    train_col="Density (g/cm^3)",
     target_col="target_Density (g/cm^3)",
     gen_col="gen_density (g/cm3)",
-    targets=(1.2747, 15.30, 22.94),
+    q_mask_col="q_vsun_mask",
+    hit_tolerance=1.0,
+    targets=(1.27, 2.55, 6.37, 10.20, 12.747, 15.30, 19.12, 22.94),
 ):
-    """Calculates core statistical metrics (MAE, std, Pearson) for the dataset size study."""
+    """Calculates paper-facing selected-target summary metrics on the valid subset, prioritizing Q-Hit Yield."""
     proc_dict = preprocess_density_data(dfs_dict)
+    selected_targets = tuple(float(target) for target in targets)
     
-    def _subset(frame: pd.DataFrame, tgt_col: str, tgt: float, pred_col: str):
-        mask = np.isclose(frame[tgt_col], tgt, atol=1e-2) & frame["valid_mask"] & frame[pred_col].notna()
-        return pd.to_numeric(frame.loc[mask, pred_col], errors="coerce").dropna()
+    def _get_target_metrics(frame: pd.DataFrame, tgt_col: str, tgt: float, pred_col: str, q_col: str, tol: float):
+        # Find all rows where this specific target was requested
+        req_mask = np.isclose(frame[tgt_col], tgt, atol=1e-2)
+        total_requested = req_mask.sum()
+        
+        if total_requested == 0:
+            return None
+            
+        # Get the generated values for this requested target (valid subset)
+        valid_mask = req_mask & frame["valid_mask"] & frame[pred_col].notna()
+        valid_values = pd.to_numeric(frame.loc[valid_mask, pred_col], errors="coerce").dropna()
+        
+        # Calculate standard MAE on valid structures
+        mae = np.mean(np.abs(valid_values.values - tgt)) if not valid_values.empty else np.nan
+        
+        # A "Q-Hit" is requested target AND high-quality AND generated property within tolerance
+        if q_col in frame.columns:
+            q_hit_mask = req_mask & frame[q_col] & (np.abs(frame[pred_col] - tgt) <= tol)
+            q_hit_count = q_hit_mask.sum()
+            q_hit_yield = (q_hit_count / total_requested) * 100
+        else:
+            q_hit_count = np.nan
+            q_hit_yield = np.nan
+
+        return {
+            "count_valid": len(valid_values),
+            "mae": mae,
+            "q_hit_count": q_hit_count,
+            "q_hit_yield": q_hit_yield
+        }
 
     metrics_list = []
-    for target in targets:
+    for target in selected_targets:
         for key, frame in proc_dict.items():
             method = _get_frame_metadata(frame, "_paper_method")
             size = _get_frame_metadata(frame, "_size")
-            values = _subset(frame, target_col, target, gen_col)
             
-            if values.empty:
+            tgt_metrics = _get_target_metrics(frame, target_col, target, gen_col, q_mask_col, hit_tolerance)
+            
+            if tgt_metrics is None or tgt_metrics["count_valid"] == 0:
                 continue
 
             metrics_list.append({
                 "method": method,
                 "size": size,
                 "target": target,
-                "count": len(values),
-                "mean": float(np.mean(values.values)),
-                "mae": np.mean(np.abs(values.values - target)),
-                "std": np.std(values.values, ddof=0),
+                "count": tgt_metrics["count_valid"],
+                "mae": tgt_metrics["mae"],
+                "q_hit_count": tgt_metrics["q_hit_count"],
+                "q_hit_yield": tgt_metrics["q_hit_yield"],
             })
 
     met_df = pd.DataFrame(metrics_list)
+    metrics = {}
+    if met_df.empty:
+        metrics["raw_dataframe"] = met_df
+        return metrics
+
     if "size" in met_df.columns:
         met_df["size"] = met_df["size"].astype(str).str.strip()
 
     size_map = {"full": len(train_df), "100k": 1e5, "10k": 1e4, "1k": 1e3}
     met_df["size_numeric"] = met_df["size"].map(size_map)
 
-    metrics = {}
-
+    # 1. Pearson Correlation (Maintained)
     for method in met_df.method.unique():
         subset = met_df[met_df.method == method]
         if len(subset) >= 2:
@@ -283,33 +305,8 @@ def get_metrics_dataset_size_study(
             metrics[f"{method}_count_vs_size_correlation"] = corr
             metrics[f"{method}_count_vs_size_pvalue"] = p_value
 
-    for method in met_df.method.unique():
-        mae_values = met_df[met_df.method == method]["mae"].values
-        if len(mae_values) > 0:
-            metrics[f"{method}_avg_mae"] = mae_values.mean()
-            metrics[f"{method}_sem_mae"] = _sem(mae_values)
-
-        std_values = met_df[met_df.method == method]["std"].values
-        if len(std_values) > 0:
-            metrics[f"{method}_avg_std"] = std_values.mean()
-            metrics[f"{method}_sem_std"] = _sem(std_values)
-
-    df_1k = met_df[met_df["size"] == "1k"]
-    for method in DENSITY_METHODS:
-        method_counts = df_1k[df_1k["method"] == method]["count"]
-        if not method_counts.empty:
-            metrics[f"{method}_1k_avg_valid_count"] = method_counts.mean()
-            metrics[f"{method}_1k_sem_valid_count"] = _sem(method_counts.values, single_value=0.0)
-
-    for method in met_df.method.unique():
-        for size in DENSITY_SIZE_ORDER:
-            subset = met_df[(met_df.method == method) & (met_df.size == size)]
-            if not subset.empty:
-                values = subset["mae"].values
-                metrics[f"{method}_{size}_mae"] = values.mean()
-                metrics[f"{method}_{size}_mae_sem"] = _sem(values)
-
-    df_wide = met_df.pivot_table(index=["target", "size"], columns="method", values="mae").dropna()
+    # We drop any NAs to ensure the paired arrays are exactly the same length
+    df_wide = met_df.pivot_table(index=["target", "size"], columns="method", values="q_hit_yield").dropna()
 
     if {"Residual", "Prefix"}.issubset(df_wide.columns):
         t_stat, p_value = ttest_rel(df_wide["Residual"], df_wide["Prefix"])
@@ -321,29 +318,6 @@ def get_metrics_dataset_size_study(
         metrics["ttest_prepend_vs_prefix_t"] = t_stat
         metrics["ttest_prepend_vs_prefix_p"] = p_value
 
-    # Print nicely formatted summary
-    for method in met_df.method.unique():
-        if f"{method}_count_vs_size_correlation" in metrics:
-            print(f"{method}: Pearson r (valid count vs size) = {metrics[f'{method}_count_vs_size_correlation']:.3f}")
-    
-    print("\n")
-    for label, mean_suffix, sem_suffix in (("Avg MAE", "avg_mae", "sem_mae"), ("Avg std", "avg_std", "sem_std")):
-        for method in met_df.method.unique():
-            if f"{method}_{mean_suffix}" in metrics:
-                print(f"{method}: {label} = {metrics[f'{method}_{mean_suffix}']:.3f} +/- {metrics[f'{method}_{sem_suffix}']:.3f}")
-    
-    print("\n")
-    for method in DENSITY_METHODS:
-        if f"{method}_1k_avg_valid_count" in metrics:
-            print(f"{method} (1k): Avg valid count = {metrics[f'{method}_1k_avg_valid_count']:.1f} +/- {metrics[f'{method}_1k_sem_valid_count']:.1f}")
-
-    print("\n")
-    if "ttest_residual_vs_prefix_t" in metrics:
-        print(f"t-test Residual vs Prefix MAE: t={metrics['ttest_residual_vs_prefix_t']:.3f}, p={metrics['ttest_residual_vs_prefix_p']:.3f}")
-
-    if "ttest_prepend_vs_prefix_t" in metrics:
-        print(f"t-test Prepend vs Prefix MAE: t={metrics['ttest_prepend_vs_prefix_t']:.3f}, p={metrics['ttest_prepend_vs_prefix_p']:.3f}")
-
     metrics["raw_dataframe"] = met_df
     return metrics
 
@@ -354,7 +328,11 @@ def calculate_vsun_parity_metrics(
     pred_col="gen_density (g/cm3)", 
     hit_tol=1.0
 ):
-    """Extracts R2, MAE, and Yield percentages for the Parity plot data."""
+    """Extracts paper-facing parity metrics.
+
+    $R^2$, MAE, and SE are computed on the Q_VSUN subset. Yield percentages use
+    all generations as the denominator and count hits within `hit_tol`.
+    """
     metrics_data = []
 
     for key, data_frame in processed_dict.items():
@@ -396,12 +374,21 @@ def calculate_vsun_parity_metrics(
 
     return pd.DataFrame(
         metrics_data,
-        columns=["Method", "Training Set", "$R^2$", "MAE [g/cm$^3$]", "SE [g/cm$^3$]", "N_Valid", "Valid Target Yield [%]", "Q_VSUN Target Yield [%]"],
+        columns=[
+            "Method",
+            "Training Set",
+            "$R^2$",
+            "MAE [g/cm$^3$]",
+            "SE [g/cm$^3$]",
+            "N_Valid",
+            "Valid Target Yield [%]",
+            "Q_VSUN Target Yield [%]",
+        ],
     )
 
 
 def format_density_metrics_table(metrics_df):
-    """Cleans up the parity metrics dataframe for direct printing or LaTeX export."""
+    """Formats the paper table view from the richer parity metrics dataframe."""
     table = metrics_df.copy()
     if table.empty:
         return table
@@ -425,7 +412,7 @@ def format_density_metrics_table(metrics_df):
 
 # Plotting Functions
 
-def _draw_density_summary_legend(ax, legend_fontsize=14, title_fontsize=16):
+def _draw_density_summary_legend(ax, legend_fontsize=18, title_fontsize=20):
     """Renders the standard legends for the output space density summary."""
     ax.axis("off")
 
@@ -447,7 +434,7 @@ def _draw_density_summary_legend(ax, legend_fontsize=14, title_fontsize=16):
         Patch(facecolor=LEGEND_PURPLE, edgecolor=LEGEND_PURPLE, alpha=0.95),
     ]
     encoding_legend = ax.legend(
-        encoding_handles, ["$\mathregular{Q_{VSUN}}$", "Valid subset"],
+        encoding_handles, ["$\mathregular{Q_{VSUN}}$", "Valid"],
         title="Bar", loc="center", bbox_to_anchor=(0.53, 0.52), frameon=False,
         fontsize=legend_fontsize, ncol=2, columnspacing=1.3, handlelength=1.8, borderaxespad=0.0,
     )
@@ -457,24 +444,24 @@ def _draw_density_summary_legend(ax, legend_fontsize=14, title_fontsize=16):
 
     reference_handles = [
         Patch(facecolor=REFERENCE_FILL, alpha=0.22, edgecolor="none"),
-        Line2D([], [], color=CLUSTER_GUIDE, alpha=0.28, linestyle="--", linewidth=1.0),
+        Line2D([], [], color=CLUSTER_GUIDE, alpha=0.99, linestyle="--", linewidth=1.0),
     ]
     reference_legend = ax.legend(
         reference_handles, ["Training-set density", "Requested target"],
         title="Reference", loc="center right", bbox_to_anchor=(1.00, 0.52),
-        frameon=False, fontsize=legend_fontsize, handlelength=1.9, borderaxespad=0.0,
+        frameon=False, fontsize=legend_fontsize, ncol=2, columnspacing=1.4,
+        handlelength=1.9, borderaxespad=0.0,
     )
     reference_legend.get_title().set_fontsize(title_fontsize)
     reference_legend.get_title().set_fontweight("bold")
     ax.add_artist(reference_legend)
 
-
 def plot_density_output_space_summary(
     df_dict,
-    train_df=None,
+    train_dfs=None,
     train_den_col="Density (g/cm^3)",
-    target_den_col="target_Density (g/cm^3)",
-    pred_den_col="gen_density (g/cm3)",
+    target_col="target_Density (g/cm^3)",
+    pred_col="gen_density (g/cm3)",
     max_density=25.0,
     bin_width=1.0,
     min_bin_count=10,
@@ -483,6 +470,7 @@ def plot_density_output_space_summary(
     label_fontsize=16,
     ticks_fontsize=14,
     axes_linewidth=1.5,
+    legend_fontsize=18,
     num_yticks=5,
     num_yticks_ref=3,
     wspace=0.025,
@@ -496,14 +484,15 @@ def plot_density_output_space_summary(
     bin_centers, x_tick_values, x_tick_labels = _cluster_ticks(bins, target_spacing=5.0 if max_density > 12 else 2.0)
 
     requested_targets = set()
-    target_columns = (target_den_col, "target_Density (g/cm3)")
+    target_columns = (target_col, "target_Density (g/cm3)")
+
     for data_frame in proc_dict.values():
-        for target_column in target_columns:
-            if target_column in data_frame.columns:
-                numeric_targets = pd.to_numeric(data_frame[target_column], errors="coerce").dropna()
-                requested_targets.update(map(float, numeric_targets.unique()))
+        for t_col in target_columns:
+            if t_col in data_frame.columns:
+                numeric_targets = pd.to_numeric(data_frame[t_col], errors="coerce").dropna().unique()
+                requested_targets.update(numeric_targets)
                 
-    requested_target_positions = np.asarray(sorted(target for target in requested_targets if 0.0 <= target <= max_density), dtype=float)
+    requested_target_positions = np.asarray(sorted(t for t in requested_targets if 0.0 <= t <= max_density), dtype=float)
     plot_sizes = [
         size for size in DENSITY_SIZE_ORDER
         if any(_get_frame_metadata(df, "_size", "full") == size for df in proc_dict.values())
@@ -514,7 +503,22 @@ def plot_density_output_space_summary(
     ]
     offsets, bar_width = _density_group_offsets(len(ordered_models), actual_bin_width)
 
-    xs, dens_norm = _calculate_reference_kde(train_df, train_den_col, max_density)
+    # Compute reference KDEs per size subset and scale by relative dataset size
+    kde_per_size = {}
+    for _size in plot_sizes:
+        _tdf = train_dfs.get(_size) if isinstance(train_dfs, dict) else None
+        if _tdf is not None:
+            kde_per_size[_size] = _calculate_reference_kde(_tdf, train_den_col, max_density)
+        else:
+            kde_per_size[_size] = (None, None)
+
+    _n_counts = {
+        _size: len(train_dfs[_size])
+        for _size in plot_sizes
+        if isinstance(train_dfs, dict) and _size in train_dfs
+    }
+    _n_max = max(_n_counts.values()) if _n_counts else 1
+    kde_scale = {_size: _n_counts.get(_size, _n_max) / _n_max for _size in plot_sizes}
 
     fig = plt.figure(figsize=figsize, constrained_layout=True)
     grid = fig.add_gridspec(2, len(plot_sizes), height_ratios=[1.0, 0.25], hspace=hspace, wspace=wspace)
@@ -532,14 +536,14 @@ def plot_density_output_space_summary(
     for col, size_label in enumerate(plot_sizes):
         ax = axes[col]
         for label, data_frame in proc_dict.items():
-            if _get_frame_metadata(data_frame, "_size", "full") != size_label or pred_den_col not in data_frame.columns:
+            if _get_frame_metadata(data_frame, "_size", "full") != size_label or pred_col not in data_frame.columns:
                 continue
 
             method = _get_frame_metadata(data_frame, "_paper_method")
             if method not in ordered_models:
                 continue
 
-            predicted = pd.to_numeric(data_frame[pred_den_col], errors="coerce")
+            predicted = pd.to_numeric(data_frame[pred_col], errors="coerce")
             
             total_counts = _density_count_series_per_bin(predicted, None, bins)
             valid_counts = _density_count_series_per_bin(predicted, data_frame["valid_mask"], bins)
@@ -556,12 +560,12 @@ def plot_density_output_space_summary(
             valid_only_plot = np.clip(valid_plot - q_plot, 0, None)
 
             color = OKABE_ITO_DENSITY[method]
-            # Plot Q_VSUN (inner dark bar)
+            # inner dark bar (Q_VSUN)
             ax.bar(
                 x_plot, q_plot, width=bar_width, color=color, alpha=0.95, 
                 edgecolor=color, linewidth=axes_linewidth * 0.8, zorder=3, align="center"
             )
-            # Plot Valid Only (outer light bar)
+            # outer light bar (Valid Only)
             ax.bar(
                 x_plot, valid_only_plot, bottom=q_plot, width=bar_width, color=color, alpha=0.28, 
                 edgecolor=color, linewidth=axes_linewidth * 0.8, zorder=3, align="center"
@@ -574,11 +578,19 @@ def plot_density_output_space_summary(
     column_titles = [DENSITY_SIZE_TITLES[size] for size in plot_sizes]
     y_limit = (0, max(1.0, y_max * 1.12))
 
-    for col, ax in enumerate(axes):
+    for col, size_label in enumerate(plot_sizes):
+        ax = axes[col]
+        xs, dens_norm = kde_per_size.get(size_label, (None, None))
+        
+        # Plot log-scaled reference KDE specific to this subset
         if dens_norm is not None:
             density_ax = ax.twinx()
-            density_ax.fill_between(xs, dens_norm, color=REFERENCE_FILL, alpha=0.22, zorder=0)
-            density_ax.set_ylim(0, 1)
+            scaled_dens = dens_norm * kde_scale.get(size_label, 1.0)
+            
+            density_ax.fill_between(xs, np.maximum(scaled_dens, 1e-5), color=REFERENCE_FILL, alpha=0.22, zorder=0)
+            density_ax.set_yscale("log")
+            density_ax.set_ylim(1e-4, 2)
+            
             density_ax.spines["top"].set_visible(False)
             density_ax.spines["left"].set_visible(False)
             density_ax.spines["bottom"].set_visible(False)
@@ -593,6 +605,7 @@ def plot_density_output_space_summary(
                 density_ax.spines["right"].set_position(("outward", 5))
                 density_ax.tick_params(axis="y", which="major", labelsize=ticks_fontsize, colors="gray", right=True, labelright=True)
                 density_ax.set_ylabel("Reference density", fontsize=label_fontsize, color="gray")
+                density_ax.set_yticks([1e-3, 1e-2, 1e-1, 1], minor=False)
             else:
                 density_ax.spines["right"].set_visible(False)
                 density_ax.tick_params(axis="y", which="both", right=False, labelright=False)
@@ -623,13 +636,14 @@ def plot_density_output_space_summary(
         ax.set_title(column_titles[col], fontsize=title_fontsize)
         ax.set_xlabel("Generated density [g/cm$^{3}$]", fontsize=label_fontsize)
 
-    _draw_density_summary_legend(legend_ax, legend_fontsize=ticks_fontsize, title_fontsize=title_fontsize)
+    title_fontsize = legend_fontsize + 2
+    _draw_density_summary_legend(legend_ax, legend_fontsize=legend_fontsize, title_fontsize=title_fontsize)
     return fig
 
 
 def plot_vsun_parity_grid_density(
     df_dict,
-    train_df=None,
+    train_dfs=None,
     train_den_col="Density (g/cm^3)",
     target_col="target_Density (g/cm^3)",
     pred_col="gen_density (g/cm3)",
@@ -663,9 +677,25 @@ def plot_vsun_parity_grid_density(
     elif len(DENSITY_METHODS) == 1: axes = np.expand_dims(axes, axis=0)
     elif len(plot_sizes) == 1: axes = np.expand_dims(axes, axis=1)
 
-    # Reference KDE Logic
-    train_max = pd.to_numeric(train_df[train_den_col], errors="coerce").max() if train_df is not None else 25.0
-    xs, dens_norm = _calculate_reference_kde(train_df, train_den_col, train_max)
+    # Per-column Reference KDE (keyed by size)
+    kde_per_size = {}
+    for _size in plot_sizes:
+        _tdf = train_dfs.get(_size) if isinstance(train_dfs, dict) else None
+        if _tdf is not None:
+            _train_max = pd.to_numeric(_tdf[train_den_col], errors="coerce").max()
+            kde_per_size[_size] = _calculate_reference_kde(_tdf, train_den_col, _train_max)
+        else:
+            kde_per_size[_size] = (None, None)
+
+    # Scale KDE heights by relative dataset size so smaller training sets appear shorter
+    _n_counts = {
+        _size: len(train_dfs[_size])
+        for _size in plot_sizes
+        if isinstance(train_dfs, dict) and _size in train_dfs
+    }
+    _n_max = max(_n_counts.values()) if _n_counts else 1
+
+    kde_scale = {_size: _n_counts.get(_size, _n_max) / _n_max for _size in plot_sizes}
 
     all_target_values = set()
     for data_frame in proc_dict.values():
@@ -709,7 +739,7 @@ def plot_vsun_parity_grid_density(
         mapped[finite_mask] = mapped_values
         return mapped
 
-    x_limits = (-0.45, max(len(common_targets) - 0.55, 0.55))
+    x_limits = (-1, max(len(common_targets) - 0.55, 0.55))
     y_plot_limits = x_limits
     flier_marker_size = max(4.0, np.sqrt(scatter_size) / 3.0)
     line_positions = np.asarray([target_to_position[target] for target in common_targets], dtype=float) if common_targets else np.array([])
@@ -722,11 +752,21 @@ def plot_vsun_parity_grid_density(
             # Find matching preprocessed dataset
             dict_key = f"{target_method}_{current_size}"
             data_frame = proc_dict.get(dict_key)
+            xs_col, dens_norm_col = kde_per_size.get(current_size, (None, None))
 
             if row == 0:
                 ax.set_title(f"Trained on: {DENSITY_SIZE_TITLES[current_size]}", fontsize=title_fontsize, weight="bold")
             if col == 0:
-                ax.set_ylabel(f"{target_method}\nGenerated density [g/cm$^{{3}}$]", fontsize=label_fontsize)
+                ax.set_ylabel("Generated density [g/cm$^{3}$]", fontsize=label_fontsize)
+                ax.text(
+                    0.03, 0.97, target_method,
+                    transform=ax.transAxes,
+                    fontsize=title_fontsize - 1,
+                    fontweight="bold",
+                    color=OKABE_ITO_DENSITY.get(target_method, "#000000"),
+                    ha="left",
+                    va="top",
+                )
             if row == len(DENSITY_METHODS) - 1:
                 ax.set_xlabel("Target density [g/cm$^{3}$]", fontsize=label_fontsize)
 
@@ -763,11 +803,13 @@ def plot_vsun_parity_grid_density(
             if len(line_positions) > 0:
                 ax.plot(line_positions, line_positions, "k--", lw=line_width * 0.8, alpha=0.8, zorder=0)
 
-            if dens_norm is not None and len(common_targets) > 1:
+            if dens_norm_col is not None and len(common_targets) > 1:
                 density_ax = ax.twinx()
-                mapped_xs = _map_to_target_axis(xs)
-                density_ax.fill_between(mapped_xs, dens_norm, color="gray", alpha=0.15, zorder=0)
-                density_ax.set_ylim(0, 1)
+                mapped_xs = _map_to_target_axis(xs_col)
+                scaled_dens = dens_norm_col * kde_scale.get(current_size, 1.0)
+                density_ax.fill_between(mapped_xs, np.maximum(scaled_dens, 1e-5), color="gray", alpha=0.22, zorder=0)
+                density_ax.set_yscale("log")
+                density_ax.set_ylim(1e-4, 2)                
                 density_ax.spines["top"].set_visible(False)
                 density_ax.spines["left"].set_visible(False)
                 density_ax.spines["bottom"].set_visible(False)
@@ -782,6 +824,8 @@ def plot_vsun_parity_grid_density(
                     density_ax.tick_params(axis="y", which="major", labelsize=ticks_fontsize, colors="gray", right=True, labelright=True)
                     if row == 1:
                         density_ax.set_ylabel("Reference density", fontsize=label_fontsize, color="gray")
+                    # set some ticks for 10^n densities if space allows
+                    density_ax.set_yticks([1e-3, 1e-2, 1e-1, 1], minor=False)
                 else:
                     density_ax.spines["right"].set_visible(False)
                     density_ax.tick_params(axis="y", which="both", right=False, labelright=False)

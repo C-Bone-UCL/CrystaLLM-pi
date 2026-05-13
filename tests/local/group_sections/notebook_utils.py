@@ -7,7 +7,7 @@ import pandas as pd
 
 
 class NotebookUtilsTests:
-    """Test notebook utility helpers from the _utils._notebook_utils package."""
+    """Test notebook utility helpers from _utils/_notebook_utils.py."""
 
     def __init__(self, temp_dir, test_data):
         self.temp_dir = temp_dir
@@ -44,9 +44,8 @@ class NotebookUtilsTests:
             "is_comp_novel_pt": [False, False],
         })
 
-
     def test_get_metrics_xrd_keys_and_counts(self):
-        from _utils._notebook_utils._shared_utils import get_metrics_xrd
+        from _utils._notebook_utils import get_metrics_xrd
 
         metrics = get_metrics_xrd(self._toy_metrics_df(), n_test=3, verbose=False)
 
@@ -56,7 +55,7 @@ class NotebookUtilsTests:
         assert "Average Score" in metrics
 
     def test_get_stratified_metrics_xrd_tiers(self):
-        from _utils._notebook_utils._shared_utils import get_stratified_metrics_xrd
+        from _utils._notebook_utils import get_stratified_metrics_xrd
 
         metrics = get_stratified_metrics_xrd(self._toy_metrics_df(), verbose=False)
 
@@ -67,7 +66,7 @@ class NotebookUtilsTests:
         assert "Atom Count (matched mean)" in metrics.columns
 
     def test_get_stratified_metrics_xrd_only_matched_and_missing_score(self):
-        from _utils._notebook_utils._shared_utils import get_stratified_metrics_xrd
+        from _utils._notebook_utils import get_stratified_metrics_xrd
 
         df = self._toy_metrics_df().drop(columns=["Score"])
         metrics = get_stratified_metrics_xrd(df, only_matched=True, verbose=False)
@@ -77,7 +76,7 @@ class NotebookUtilsTests:
         assert "Vol MAE" in metrics.columns
 
     def test_process_xrd_to_condition_vector_output_length(self):
-        from _utils._preprocessing._calculate_theor_XRD import process_xrd_to_condition_vector
+        from _utils._notebook_utils import process_xrd_to_condition_vector
 
         raw_pattern = "two_theta intensity\n10 100\n20 50\n"
         vec = process_xrd_to_condition_vector(raw_pattern)
@@ -88,7 +87,7 @@ class NotebookUtilsTests:
         assert values[20] == "1.0"
 
     def test_build_and_parse_novelty_round_trip(self):
-        from _utils._notebook_utils.x_slme_utils import build_novelty_tag, parse_novelty_from_tag
+        from _utils._notebook_utils import build_novelty_tag, parse_novelty_from_tag
 
         row = pd.Series({
             "is_novel": True,
@@ -105,7 +104,7 @@ class NotebookUtilsTests:
         assert comp_nov == "pt"
 
     def test_select_top_materials_returns_summary(self):
-        from _utils._notebook_utils.x_slme_utils import select_top_materials
+        from _utils._notebook_utils import select_top_materials
 
         materials, summary_df = select_top_materials(
             self._toy_selection_df(),
@@ -119,7 +118,7 @@ class NotebookUtilsTests:
         assert set(summary_df["Metric"]) == {"SLME", "HHI-SLME"}
 
     def test_export_and_run_material_selection_write_files(self):
-        from _utils._notebook_utils.x_slme_utils import run_material_selection
+        from _utils._notebook_utils import run_material_selection
 
         input_path = os.path.join(self.temp_dir, "toy_materials.parquet")
         output_dir = os.path.join(self.temp_dir, "selected_cifs")
@@ -132,12 +131,12 @@ class NotebookUtilsTests:
         assert any(name.endswith(".cif") for name in os.listdir(output_dir))
 
     def test_extract_formula_fallback(self):
-        from _utils._notebook_utils.x_slme_utils import extract_formula
+        from _utils._notebook_utils import extract_formula
 
         assert extract_formula("not a cif") == "UnknownFormula"
 
     def test_run_material_selection_preserves_summary_columns(self):
-        from _utils._notebook_utils.x_slme_utils import run_material_selection
+        from _utils._notebook_utils import run_material_selection
 
         input_path = os.path.join(self.temp_dir, "summary_cols_input.parquet")
         output_dir = os.path.join(self.temp_dir, "summary_cols_cifs")
@@ -160,8 +159,37 @@ class NotebookUtilsTests:
             "Composition Nov.",
         ]
 
+    def test_get_metrics_ptnd_vs_scratch_returns_core_keys(self):
+        from _utils._notebook_utils import get_metrics_ptnd_vs_scratch
+
+        train_df = pd.DataFrame({"Bandgap (eV)": np.linspace(0.1, 7.0, 60)})
+        df_dict = {
+            "slider-pretrained": pd.DataFrame({
+                "target_Bandgap (eV)": [6.2, 6.2],
+                "ALIGNN_bg (eV)": [6.1, 6.3],
+                "ehull_mace_mp": [0.01, 0.02],
+                "is_valid": [True, True],
+                "is_unique": [True, True],
+                "is_novel": [True, True],
+            }),
+            "slider-scratch": pd.DataFrame({
+                "target_Bandgap (eV)": [6.2, 6.2],
+                "ALIGNN_bg (eV)": [5.7, 5.8],
+                "ehull_mace_mp": [0.01, 0.20],
+                "is_valid": [True, False],
+                "is_unique": [True, True],
+                "is_novel": [True, False],
+            }),
+        }
+
+        metrics = get_metrics_ptnd_vs_scratch(df_dict, train_df=train_df)
+
+        assert "avg_delta_validity" in metrics
+        assert "avg_delta_hit_rate" in metrics
+        assert "avg_delta_quality" in metrics
+
     def test_get_metrics_dataset_size_study_returns_raw_dataframe(self):
-        from _utils._notebook_utils.b2_dataset_size_study_utils import get_metrics_dataset_size_study
+        from _utils._notebook_utils import get_metrics_dataset_size_study
 
         train_df = pd.DataFrame({"Density (g/cm^3)": [1.0, 2.0, 3.0, 4.0]})
         dfs_dict = {
@@ -180,15 +208,15 @@ class NotebookUtilsTests:
         metrics = get_metrics_dataset_size_study(dfs_dict, train_df, targets=(1.2747,))
 
         assert "raw_dataframe" in metrics
-        assert "Slider_avg_mae" in metrics
-        assert "PKV_avg_mae" in metrics
+        assert "ttest_residual_vs_prefix_t" in metrics
+        assert "ttest_residual_vs_prefix_p" in metrics
 
     def test_plot_dataset_stats_writes_png(self):
         import matplotlib
 
         matplotlib.use("Agg")
 
-        from _utils._notebook_utils.y_dataset_stats_utils import plot_dataset_stats
+        from _utils._notebook_utils import plot_dataset_stats
 
         loaded = [(
             "toy_plot",

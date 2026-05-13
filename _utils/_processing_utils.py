@@ -15,6 +15,7 @@ import commentjson
 from io import StringIO
 from typing import List
 from concurrent.futures import ProcessPoolExecutor
+from itertools import repeat
 from tqdm import tqdm
 
 reload(_tokenizer)
@@ -532,6 +533,9 @@ def _count_cif_tokens(cif_str: str) -> int:
     except Exception:
         return 0
 
+def _check_cif_fits_context(cif_str: str, context: int) -> bool:
+    return _count_cif_tokens(cif_str) <= context
+
 def filter_df_to_context(
     df: pd.DataFrame,
     context: int = 1024,
@@ -549,16 +553,13 @@ def filter_df_to_context(
         )
         mask = [len(tokenizer.tokenize(x)) <= context for x in tqdm(cif_strings)]
     else:
-        def _check_cif_fits_context(cif_str: str) -> bool:
-            return _count_cif_tokens(cif_str) <= context
-            
         with ProcessPoolExecutor(
             max_workers=num_workers,
             initializer=_init_tokenizer_worker,
             initargs=(tokenizer_dir, '<pad>'),
         ) as executor:
             mask = list(tqdm(
-                executor.map(_check_cif_fits_context, cif_strings, chunksize=100), 
+                executor.map(_check_cif_fits_context, cif_strings, repeat(context), chunksize=100), 
                 total=len(cif_strings)
             ))
 

@@ -37,7 +37,30 @@ def main():
     parser = argparse.ArgumentParser(description="CrystaLLM-pi Test Suite")
     parser.add_argument("--cpu", action="store_true", help="Force CPU execution")
     parser.add_argument("--gpu", action="store_true", help="Force GPU execution")
+    tier_group = parser.add_mutually_exclusive_group()
+    tier_group.add_argument(
+        "--offline",
+        action="store_true",
+        help="Run only offline tests suitable for public CI/reviewer verification",
+    )
+    tier_group.add_argument(
+        "--secrets",
+        action="store_true",
+        help="Include secret/network-dependent local tests (HF/W&B-backed)",
+    )
+    tier_group.add_argument(
+        "--full",
+        action="store_true",
+        help="Run the full local suite (default behavior)",
+    )
     args = parser.parse_args()
+
+    if args.offline:
+        tier = "offline"
+    elif args.secrets:
+        tier = "secrets"
+    else:
+        tier = "full"
     
     # Set device
     if args.cpu:
@@ -54,6 +77,8 @@ def main():
         # Auto-detect
         DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"🔧 Running tests on {DEVICE.type} (auto-detected)")
+
+    print(f"🧪 Local test tier: {tier}")
     
     suite = TestSuite()
     suite.setup()
@@ -184,15 +209,22 @@ def main():
         print("\n🤗 HF Load & Generate Tests:")
         suite.run_test("hf_model_loading", load_gen_tests.test_hf_model_loading)
         suite.run_test("prompt_generation_from_args", load_gen_tests.test_prompt_generation_from_args)
-        suite.run_test("mattergen_xrd_generation_smoke", load_gen_tests.test_mattergen_xrd_generation_smoke)
-        suite.run_test("direct_generation_logp_smoke", load_gen_tests.test_direct_generation_logp_smoke)
         suite.run_test("multi_gpu_single_prompt_worker_resolution", load_gen_tests.test_multi_gpu_single_prompt_worker_resolution)
         suite.run_test("scoring_mode_normalization_helper", load_gen_tests.test_scoring_mode_normalization_helper)
         suite.run_test("reduced_formula_prompt_expansion", load_gen_tests.test_reduced_formula_prompt_expansion)
         suite.run_test("reduced_formula_selection_modes", load_gen_tests.test_reduced_formula_selection_modes)
         suite.run_test("reduced_formula_selection_uses_provided_cif_text", load_gen_tests.test_reduced_formula_selection_uses_provided_cif_text)
+        suite.run_test("mattergen_xrd_allows_missing_xrd_inputs", load_gen_tests.test_mattergen_xrd_allows_missing_xrd_inputs)
+        suite.run_test("level1_dummy_formula_canonicalization", load_gen_tests.test_level1_dummy_formula_canonicalization)
+        suite.run_test("logp_zero_target_is_invalid_configuration", load_gen_tests.test_logp_zero_target_is_invalid_configuration)
         suite.run_test("search_zs_zero_target_keeps_all_generated_rows", load_gen_tests.test_search_zs_zero_target_keeps_all_generated_rows)
         suite.run_test("xrd_raw_file_parsing_and_conversion", load_gen_tests.test_xrd_raw_file_parsing_and_conversion)
+
+        if tier in ("secrets", "full"):
+            suite.run_test("mattergen_xrd_generation_smoke", load_gen_tests.test_mattergen_xrd_generation_smoke)
+            suite.run_test("direct_generation_logp_smoke", load_gen_tests.test_direct_generation_logp_smoke)
+        else:
+            print("Skipping secret/network-dependent local generation smoke tests in offline tier")
         
         # Integration tests
         print("\n🔗 Integration Tests:")

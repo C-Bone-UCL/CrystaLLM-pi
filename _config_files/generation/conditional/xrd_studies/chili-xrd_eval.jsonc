@@ -5,7 +5,7 @@
   "top_k": 10,
   "top_p": 0.95,
   "temperature": 0.75,
-  "model_ckpt_dir": "model_ckpts/chili100k-xrd-slider-opt/checkpoint-2500",
+  "model_ckpt_dir": "model_ckpts/chili100k/chili100k-xrd-slider-opt/checkpoint-2500",
   "num_return_sequences": 20,
   "input_parquet": "_artifacts/chili-xrd/chili-test_prompts.parquet",
   "output_parquet": "_artifacts/chili-xrd/chili-ft-20perp-test_gen.parquet",

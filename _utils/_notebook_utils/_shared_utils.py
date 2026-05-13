@@ -46,15 +46,13 @@ def _atom_count_stats(frame: pd.DataFrame) -> dict:
     matched_counts = frame.loc[frame["RMS-d"].notna(), "atom_counts"].dropna()
     unmatched_counts = frame.loc[frame["RMS-d"].isna(), "atom_counts"].dropna()
     mean_matched = matched_counts.mean() if len(matched_counts) > 0 else np.nan
+    max_matched = matched_counts.max() if len(matched_counts) > 0 else np.nan
     mean_unmatched = unmatched_counts.mean() if len(unmatched_counts) > 0 else np.nan
-    matched_se = matched_counts.sem() if len(matched_counts) > 1 else np.nan
-    unmatched_se = unmatched_counts.sem() if len(unmatched_counts) > 1 else np.nan
 
     return {
         "Atom Count (matched mean)": mean_matched,
-        "Atom Count (matched SE)": matched_se,
+        "Atom Count (matched max)": max_matched,
         "Atom Count (unmatched mean)": mean_unmatched,
-        "Atom Count (unmatched SE)": unmatched_se,
         "Delta Atom Count (match - unmatch)": (
             mean_matched - mean_unmatched
             if not (np.isnan(mean_matched) or np.isnan(mean_unmatched))
@@ -297,7 +295,11 @@ def compute_atom_counts(loaded: list[tuple], num_workers: int = 32) -> list[tupl
             updated.append((name, df, ctx))
             continue
 
-        cifs = df["CIF"].tolist()
+        try:
+            cifs = df["CIF"].tolist()
+        except KeyError:
+            cifs = df["Generated CIF"].tolist()
+            
         print(f"{name}: parsing {len(cifs):,} CIFs with {num_workers} workers")
         chunksize = max(1, len(cifs) // (num_workers * 4))
 

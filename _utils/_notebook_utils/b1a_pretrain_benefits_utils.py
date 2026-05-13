@@ -122,16 +122,24 @@ def get_metrics_ptnd_vs_scratch(
                 continue
 
             hit = np.nan
+            q_hit = np.nan 
             if {pred_bg_col, target_bg_col}.issubset(subset.columns):
                 pred = np.asarray(subset[pred_bg_col], dtype=float)
                 true = np.asarray(subset[target_bg_col], dtype=float)
-                # Hit rate is naturally restricted to N items with this specific target
-                hit = (np.abs(pred - true) <= hit_tol_eV).mean()
+                
+                # Create a boolean mask for hits
+                is_hit_mask = (np.abs(pred - true) <= hit_tol_eV)
+                hit = is_hit_mask.mean()
+                
+                # Quality-Filtered Hit Rate (Must be a hit AND pass VSUN)
+                subset_vsun_mask = vsun_mask.loc[subset.index]
+                q_hit = (is_hit_mask & subset_vsun_mask).mean()
 
             valid = valid_mask.loc[subset.index].mean()
             quality = vsun_mask.loc[subset.index].mean()
                 
-            rows.append({"m": method, "p": is_pretrained, "x": condition, "n": count, "hit": hit, "valid": valid, "q": quality})
+            # Add q_hit to the appended row
+            rows.append({"m": method, "p": is_pretrained, "x": condition, "n": count, "hit": hit, "valid": valid, "q": quality, "q_hit": q_hit})
 
     met = pd.DataFrame(rows)
 
@@ -148,13 +156,14 @@ def get_metrics_ptnd_vs_scratch(
             "hit_rate": "hit_rate_density_correlation",
             "valid": "validity_density_correlation",
             "q": "quality_density_correlation",
+            "q_hit": "q_hit_density_correlation",
         }
         for column_name, metric_name in density_metrics.items():
             _, _, corr = _fit_line_and_corr(met["density"], met[column_name])
             metrics[metric_name] = corr
 
     # Calculate average deltas (Pretrained - Scratch)
-    for metric, prefix in zip(["valid", "q", "hit_rate"], ["validity", "quality", "hit_rate"]):
+    for metric, prefix in zip(["valid", "q", "hit_rate", "q_hit"], ["validity", "quality", "hit_rate", "q_hit_rate"]):
         diffs = []
         for method in met.m.unique():
             group = met[met.m == method]
@@ -295,7 +304,10 @@ def plot_vsun_parity_grid_bandgap(
 ):
     """
     Creates a parity grid mapping generated band-gaps against requested targets.
-    Calculates yields strictly out of the population that had an explicit target assigned.
+    Calculates yields out of all generated structures in each model/regime slice.
+
+    $R^2$, MAE, and SE are computed only on Q_VSUN rows with valid target/prediction
+    pairs. Valid/Q_VSUN target-yield percentages use all generated rows as denominator.
     """
     plot_methods = ["Prefix", "Residual", "Prepend"] + (["Raw"] if include_raw_row else [])
     
@@ -363,8 +375,8 @@ def plot_vsun_parity_grid_bandgap(
                 if row == 1:
                     density_ax.set_ylabel("Reference density", fontsize=label_fontsize, color="gray")
 
-        ax.set_xlim(-0.45, max(len(common_targets) - 0.55, 0.55))
-        ax.set_ylim(-0.45, max(len(common_targets) - 0.55, 0.55))
+        ax.set_xlim(-0.45, max(len(common_targets), 0.55))
+        ax.set_ylim(-0.45, max(len(common_targets), 0.55))
 
         if len(target_positions) > 0:
             ax.set_xticks(target_positions)
@@ -426,13 +438,13 @@ def plot_vsun_parity_grid_bandgap(
             target_all = pd.to_numeric(data_frame[target_bg_col], errors="coerce")
             pred_all = pd.to_numeric(data_frame[pred_bg_col], errors="coerce")
             has_target = target_all.notna()
-            n_targeted = has_target.sum()
+            total_len = len(data_frame)
             
             is_hit = (pred_all - target_all).abs().le(hit_tol_eV)
             
-            # Hit yield percentages strictly out of targeted pop
-            valid_yield = ((valid_mask & is_hit & has_target).sum() / n_targeted * 100) if n_targeted > 0 else 0.0
-            vsun_yield = ((vsun_mask & is_hit & has_target).sum() / n_targeted * 100) if n_targeted > 0 else 0.0
+            # Yield percentages are always normalized by all generated rows.
+            valid_yield = ((valid_mask & is_hit & has_target).sum() / total_len * 100) if total_len > 0 else 0.0
+            vsun_yield = ((vsun_mask & is_hit & has_target).sum() / total_len * 100) if total_len > 0 else 0.0
 
             t_vsun = pd.to_numeric(df_vsun[target_bg_col], errors="coerce")
             p_vsun = pd.to_numeric(df_vsun[pred_bg_col], errors="coerce")
@@ -661,12 +673,12 @@ def plot_bandgap_output_space_summary(
     legend_ax.add_artist(m_leg)
 
     e_handles = [Patch(fc="#990099", ec="#990099", alpha=0.95), Patch(fc="#CF81CF", ec="#CF81CF", alpha=0.95)]
-    e_leg = legend_ax.legend(e_handles, ["$\mathregular{Q_{VSUN}}$ subset", "Structurally valid subset"], title="Bar", loc="center", bbox_to_anchor=(0.53, 0.52), frameon=False, fontsize=ticks_fontsize, ncol=2)
+    e_leg = legend_ax.legend(e_handles, ["$\mathregular{Q_{VSUN}}$", "Valid"], title="Bar", loc="center", bbox_to_anchor=(0.53, 0.52), frameon=False, fontsize=ticks_fontsize, ncol=2)
     e_leg.get_title().set_fontproperties({'size':title_fontsize, 'weight':'bold'})
     legend_ax.add_artist(e_leg)
 
-    r_handles = [Patch(fc="#888888", alpha=0.22, ec="none"), Line2D([], [], color="#000000", alpha=0.28, ls="--", lw=1.0)]
-    r_leg = legend_ax.legend(r_handles, ["Training-set density", "Requested target"], title="Reference", loc="center right", bbox_to_anchor=(1.00, 0.52), frameon=False, fontsize=ticks_fontsize)
+    r_handles = [Patch(fc="#888888", alpha=0.22, ec="none"), Line2D([], [], color="#000000", alpha=0.99, ls="--", lw=1.0)]
+    r_leg = legend_ax.legend(r_handles, ["Training-set density", "Requested target"], title="Reference", loc="center right", bbox_to_anchor=(1.00, 0.52), frameon=False, fontsize=ticks_fontsize, ncol=2)
     r_leg.get_title().set_fontproperties({'size':title_fontsize, 'weight':'bold'})
     legend_ax.add_artist(r_leg)
 

@@ -1,6 +1,7 @@
 <div align="center">
 
-<h1> CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> </h1>
+<h1> CrystaLLM-<span style="font-size: 1.2em;">&pi; </span> (property injection) </h1>
+  <img src="images/Logo.png" alt="CrystaLLM-pi logo" width="150" />
   <p>
     <strong>A Transformer-based model for property-guided crystal structure generation
     </strong>
@@ -105,6 +106,7 @@ For property prediction (bandgap), set up a separate environment to avoid depend
 conda create -n alignn_env python=3.10
 conda activate alignn_env
 pip install dgl -f https://data.dgl.ai/wheels/torch-2.1/cu121/repo.html
+pip install git+https://github.com/KellerJordan/Muon
 pip install -r requirements-alignn.txt
 ```
 

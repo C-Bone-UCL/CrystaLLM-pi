@@ -22,6 +22,11 @@ import pandas as pd
 import numpy as np
 from transformers import GPT2LMHeadModel
 
+# # set CUDA visible to "1"
+# os.environ["CUDA_AVAILABLE_DEVICES"] = "1"
+# # only do on GPU 1 (not 0)
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
 # Global constants
 DEFAULT_MAX_LENGTH = 1024
 TOKENIZER_PAD_TOKEN = "<pad>"
@@ -62,7 +67,8 @@ def check_cif(cif_str):
         return True
     except Exception:
         return False
-    
+        
+
 def _score_transition_slice(generated_scores, original_sequence, input_length, eos_token_id=None):
     """Score one generated sequence from a precomputed transition-score row."""
     scoring_length = len(original_sequence)
@@ -130,7 +136,6 @@ def score_outputs_logp(model, scores, full_sequences, input_length, eos_token_id
         )
 
     return scored_outputs
-        
 
 def init_tokenizer(pretrained_tokenizer_dir):
     """Initialize tokenizer with standard config."""
@@ -384,7 +389,7 @@ def generate_on_gpu(
                     if row["condition_vector"] not in (None, "None"):
                         values = parse_condition_vector(row["condition_vector"])
                         if values:
-                            condition_tensor = torch.tensor([values], device=device)
+                            condition_tensor = torch.tensor([values], device=device, dtype=model.dtype)
                     
                     with torch.inference_mode():
                         outputs = model.generate(
@@ -464,7 +469,9 @@ def generate_on_gpu(
                     if len(valid_cifs) >= target_generations:
                         break
                         
-            except Exception:
+            except Exception as e:
+                print(f"Error during generation/validation for prompt index {idx} on GPU {gpu_id}, attempt {generation_attempts}")
+                print(f"Error details: {e}")
                 continue
         
         # Process results based on scoring mode

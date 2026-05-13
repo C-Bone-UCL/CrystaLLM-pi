@@ -37,9 +37,9 @@
   // Trainer Arguments
   //###################
   // Batching
-  "train_batch_size": 16,
-  "eval_batch_size": 16,
-  "gradient_accumulation_steps": 2,
+  "train_batch_size": 32,
+  "eval_batch_size": 32,
+  "gradient_accumulation_steps": 1,
   "auto_find_batch_size": false,
   // Learning Rate and Optimizer
   "learning_rate": 0.001,

@@ -6,28 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [v1.3.0] - 2026-03-24
+## [v1.3.0] - 2026-05-13
 
 ### Features and Enhancements
 
-- Removed Challenge Benchmark
-- Removed COD stuff, including make disordered ordered things
-- Added mattergen comparison notebook (can handle P1 sg)
-- Added New Chili dataset training and benchmark
-- New polymorph analysis with correct processing
-- No Logit analysis code
-- Now in the cleaning script we can add token counts, and further analysis seen in Dataset_stats.ipynb
-- New models available in the load and generate
-  - mp-20
-  - alex-mp-20
-  - chili
-  - removed COD
-- Removed some of the now dead code
-- Split the notebook_utils.py into a directory in /_utils/_notebook_utils/ where each notebook has its own file and theres a shared utils file.
-- Updated tests for all the new stuff
-- API parity updates for generation, preprocessing, and metrics
-- API docs and test coverage refreshed for the maintained workflows
-- Plot codes release in the notebook utils
+- **Challenge Benchmark Removal**: Removed the Challenge benchmark workflow from the maintained codebase.
+- **COD Workflow Retirement**: Removed the deprecated COD workflow, including the utilities for converting disordered structures into ordered representations.
+- **MatterGen Comparison Notebook**: Added a MatterGen comparison notebook with P1 space-group handling.
+- **New Chili Dataset Support**: Added new Chili dataset training and benchmark workflows.
+- **Polymorph Analysis Refresh**: Updated the polymorph analysis workflow with corrected processing.
+- **Logit Analysis**: New notebook on how to analyse the model's logits during generation of a crystal for mechanistic understanding `Logits.ipynb`.
+- **Loss Landscape Analysis**: New notebook on to show plots of loss ladnscapes as used in the paper appendices.
+- **Dataset Cleaning Improvements**: The cleaning script can now add token counts and support the downstream analyses used in `Dataset_stats.ipynb`.
+- **Model Availability Updates**: Updated load-and-generate script support to include `mp-20`, `alex-mp-20`, and `chili100k` models and removed the retired COD one.
+- **Notebook Plot Utilities**: Released plotting utilities through the notebook utils package with updated plots for v2 of paper.
+
+### For API/direct generation
+- **Load-and-Generate Prompt Mapping**: Updated `_load_and_generate.py` so prompt inputs are provided as aligned per-prompt lists rather than implicitly expanding one reduced formula across multiple Z values. Generation inputs should now be passed with a 1:1 mapping across the prompt-defining arguments, example in the updated `X_XRD_TiO2.ipynb` notebook.
+
+### Repo Structure and Testing
+
+- **Notebook Utils Reorganization**: Split `_utils/_notebook_utils.py` into the `_utils/_notebook_utils/` package, with notebook-specific modules and shared utilities.
+- **Code Cleanup**: Removed dead code left behind by retired workflows.
+- **Maintained Workflow**: Updated tests, API parity, API documentation, and coverage for the maintained generation, preprocessing, and metrics workflows.
+- **Project Metadata**: Added `CODE_OF_CONDUCT.md` and `CONTRIBUTING.md`, refreshed GitHub workflows, and introduced a new `pyproject.toml`.
+
+### Reproducibility and Branching
+
+- **Repository Split**: `reproduce-paper-vs` preserves the paper-reproduction workflow and therefore excludes the post-paper generation and validation updates previously introduced on `main`: redundant transition-score removal during perplexity ranking, extra validity checks, full-batch perplexity scoring before slicing to `target_valid_cifs`, and stricter formula-consistency handling. `main` remains the maintained branch and includes those updates.
 
 ---
 

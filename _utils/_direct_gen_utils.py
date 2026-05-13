@@ -90,7 +90,7 @@ MODEL_INFO = {
         "model_type": "Slider",
     },
     "c-bone/CrystaLLM-pi_Chili100K-XRD": {
-        "description": "Theoretical XRD conditioning",
+        "description": "Experimental Struct. XRD conditioning",
         "conditions": 40,
         "example_conditions": "See tests/fixtures/test_rutile_processed.csv",
         "max": [90.0, 100.0],
@@ -193,17 +193,17 @@ def parse_reduced_formula_list_arg(reduced_formula_list: str) -> List[str]:
     return [item.strip() for item in str(reduced_formula_list).split(",") if item.strip()]
 
 def canonicalize_reduced_formulas(formulas: Sequence[str]) -> List[str]:
-    """Canonicalize formulas using pymatgen reduced formula representation."""
-    ordered = OrderedDict()
+    """Canonicalize formulas using pymatgen reduced formula representation, preserving duplicates."""
+    result = []
     for raw_formula in formulas:
         token = str(raw_formula).strip()
         if token == "X":
-            ordered["X"] = True
-            continue
-        ordered[Composition(token).reduced_formula] = True
-    if not ordered:
+            result.append("X")
+        else:
+            result.append(Composition(token).reduced_formula)
+    if not result:
         raise ValueError("No valid reduced formulas were provided")
-    return list(ordered.keys())
+    return result
 
 def _parse_formula_tokens(reduced_formula: str) -> List[Tuple[str, float]]:
     """Extract chemical symbols and their amounts, maintaining string order."""
@@ -231,55 +231,53 @@ def reduced_formula_to_explicit_formula(reduced_formula: str, z_value: int) -> s
 
 def build_reduced_formula_specs(
     formulas: List[str],
-    z_mapping: Dict[str, List[int]],
-    property_map: Dict[str, dict],
+    z_values: List[int],
+    properties: List[dict],
     is_xrd: bool = False,
     xrd_wavelength: float = 1.54056
 ) -> List[dict]:
-    """Build reduced-formula prompt specs using strictly mapped Z values and properties."""
+    """Build one prompt spec per formula row using strictly parallel lists.
+
+    Each index i in formulas/z_values/properties corresponds to one output spec.
+    properties[i] must be a dict with keys: xrd (file path or None), sg (str or None),
+    cond (condition-vector string or None).
+    """
     specs = []
-    prompt_order = 0
-    
-    for formula in formulas:
-        zs = z_mapping.get(formula, [1])
-        cond_str = None
-        
-        if is_xrd:
-            xrd_file = property_map.get(formula, {}).get("xrd")
-            if xrd_file:
-                cond_str = ", ".join(str(v) for v in parse_xrd_file_to_condition_vector(xrd_file, xrd_wavelength))
+    for prompt_order, (formula, z_val, prop) in enumerate(zip(formulas, z_values, properties), start=1):
+        xrd_source = prop.get("xrd") if is_xrd else None
+        cond_str = prop.get("cond")
+
+        if is_xrd and xrd_source:
+            cond_str = ", ".join(
+                str(v) for v in parse_xrd_file_to_condition_vector(xrd_source, xrd_wavelength)
+            )
+
+        sg = prop.get("sg")
+
+        if formula == "X":
+            mat_id = "Level1"
+            comp_expanded = "X"
         else:
-            cond_str = property_map.get(formula, {}).get("cond")
-            
-        sg = property_map.get(formula, {}).get("sg")
+            base_formula = formula.replace(" ", "")
+            mat_id = f"{base_formula}_Z{z_val}"
+            comp_expanded = reduced_formula_to_explicit_formula(formula, z_val)
 
-        for z_val in zs:
-            prompt_order += 1
-            
-            if formula == "X":
-                mat_id = "Level1"
-                comp_expanded = "X"
-            else:
-                base_formula = formula.replace(' ', '')
-                mat_id = f"{base_formula}_Z{z_val}"
-                comp_expanded = reduced_formula_to_explicit_formula(formula, z_val)
-
-            specs.append({
-                "reduced_formula_target": formula,
-                "Z_search": z_val,
-                "composition_expanded": comp_expanded,
-                "prompt_order": prompt_order,
-                "condition_vector": cond_str,
-                "spacegroup": sg,
-                "Material ID": mat_id,
-            })
+        specs.append({
+            "reduced_formula_target": formula,
+            "Z_search": z_val,
+            "composition_expanded": comp_expanded,
+            "prompt_order": prompt_order,
+            "condition_vector": cond_str,
+            "spacegroup": sg,
+            "Material ID": mat_id,
+        })
 
     return specs
 
-def build_formula_condition_map(formulas: List[str], condition_lists_arg: Optional[List[str]], model_path: str) -> Dict[str, Optional[str]]:
-    """Map reduced formulas to normalized condition-vector strings."""
+def build_formula_condition_map(formulas: List[str], condition_lists_arg: Optional[List[str]], model_path: str) -> List[Optional[str]]:
+    """Return one normalized condition-vector string per formula row (positional)."""
     if not condition_lists_arg:
-        return {formula: None for formula in formulas}
+        return [None] * len(formulas)
 
     raw_condition_vectors = parse_condition_list_args(condition_lists_arg)
     transposed = [list(x) for x in zip(*raw_condition_vectors)]
@@ -305,9 +303,9 @@ def build_formula_condition_map(formulas: List[str], condition_lists_arg: Option
     as_str = [", ".join(str(v) for v in vec) for vec in normalized_vectors]
 
     if len(as_str) == 1:
-        return {formula: as_str[0] for formula in formulas}
+        return [as_str[0]] * len(formulas)
     if len(as_str) == len(formulas):
-        return {formula: cond for formula, cond in zip(formulas, as_str)}
+        return list(as_str)
 
     raise ValueError(f"Need either 1 condition vector or one per formula. Got {len(as_str)}.")
 
