@@ -7,7 +7,8 @@
   "temperature": 0.7,
   "model_ckpt_dir": "model_ckpts/pretraining_benefits/mpdb_2prop_scratch/raw",
   "num_return_sequences": 10,
-  "num_repeats": 100,
-  "parquet_in": "_artifacts/pretrain_benefits/mpdb-2prop-raw_prompts.parquet",
-  "parquet_out": "_artifacts/pretrain_benefits/scratch-methods/mpdb-scratch-raw_gen.parquet"
+  "max_return_attempts": 100,
+  "target_valid_cifs": 0,
+  "input_parquet": "_artifacts/pretrain_benefits/mpdb-2prop-raw_prompts.parquet",
+  "output_parquet": "_artifacts/pretrain_benefits/scratch-methods/mpdb-scratch-raw_gen.parquet"
 }

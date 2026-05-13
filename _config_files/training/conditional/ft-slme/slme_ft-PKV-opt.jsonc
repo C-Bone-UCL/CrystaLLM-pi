@@ -75,5 +75,5 @@
   // CodeCarbon Arguments
   //######################
   "codecarbon": true,
-  "tracker_project": "CrystaLLMv2"
+  "tracker_project": "CrystaLLM-pi"
 }

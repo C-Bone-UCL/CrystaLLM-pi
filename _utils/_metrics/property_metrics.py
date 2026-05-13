@@ -1,6 +1,7 @@
-"""
-Calculate property metrics for CIF structures.
-Only really relevant for bandgap and density at the moment. But could be adapted for other properties.
+"""Calculates bandgap and density property metrics for generated CIF structures.
+
+Loads generated structures, applies normalizations to property targets,
+predicts properties using ALIGNN, and outputs metrics grouping by condition vector.
 """
 
 import argparse
@@ -11,6 +12,9 @@ import os
 
 import numpy as np
 import pandas as pd
+
+# set CUDA visible to only gpu 1
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import (
@@ -30,11 +34,8 @@ def linear_normalization(normed, x_min, x_max):
 
 def inverse_signed_log_normalization(normed, x_min, x_max, beta=0.8):
     """Inverse signed-log normalization for property values."""
-    def signed_log(x):
-        return np.sign(x) * np.log1p(np.abs(x))
-    
-    signed_min = signed_log(x_min)
-    signed_max = signed_log(x_max)
+    signed_min = np.sign(x_min) * np.log1p(np.abs(x_min))
+    signed_max = np.sign(x_max) * np.log1p(np.abs(x_max))
     unpow = normed ** (1 / beta)
     signed_val = unpow * (signed_max - signed_min) + signed_min
     return np.sign(signed_val) * (np.expm1(np.abs(signed_val)))
@@ -72,7 +73,7 @@ def compute_property_mae(df: pd.DataFrame, property_targets):
         target_col = f"target_{prop}"
         mae_value = _get_property_mae(df, prop, target_col)
         mae_results[f'MAE_{prop}'] = mae_value
-    
+        
     return mae_results
 
 def _denormalize_property_value(val, norm_method, x_min, x_max):
@@ -90,7 +91,7 @@ def _denormalize_property_value(val, norm_method, x_min, x_max):
     else:
         return x
 
-def process_property_targets(gen_df_proc, property_targets, norm_methods, max_values, min_values, num_workers):
+def process_property_targets(gen_df_proc, property_targets, norm_methods, max_values, min_values):
     """Process property targets and add denormalized target columns."""
     condition_column_name = 'condition_vector' if 'condition_vector' in gen_df_proc.columns else 'Condition Vector'
     
@@ -113,73 +114,53 @@ def process_property_targets(gen_df_proc, property_targets, norm_methods, max_va
     for j, prop in enumerate(property_targets):
         target_col = f"target_{prop}"
         
-        # Extract the j-th value from each condition vector
-        gen_df_proc[f'raw_val_{j}'] = gen_df_proc['parsed_conditions'].apply(
-            lambda cond_vals: cond_vals[j] if j < len(cond_vals) else -100
+        # Extract and denormalize directly into the target column
+        gen_df_proc[target_col] = gen_df_proc['parsed_conditions'].apply(
+            lambda cond_vals: _denormalize_property_value(
+                cond_vals[j] if j < len(cond_vals) else -100, 
+                norm_methods[j], 
+                min_values[j], 
+                max_values[j]
+            )
         )
         
-        # Denormalize values vectorized
-        gen_df_proc[target_col] = gen_df_proc[f'raw_val_{j}'].apply(
-            lambda val: _denormalize_property_value(val, norm_methods[j], min_values[j], max_values[j])
-        )
-        
-        # Clean up temporary column
-        gen_df_proc.drop(f'raw_val_{j}', axis=1, inplace=True)
-    
     # Clean up temporary column
     gen_df_proc.drop('parsed_conditions', axis=1, inplace=True)
     
     return gen_df_proc
 
-def _get_metric_header(property_targets):
-    """Generate CSV header for metrics based on property types."""
-    header_parts = ["CV"]
-    for prop in property_targets:
-        prop_type = _get_property_type(prop)
-        if prop_type == 'bandgap':
-            header_parts.append("MAE_BG")
-        elif prop_type == 'density':
-            header_parts.append("MAE_density")
-    return ",".join(header_parts) + "\n"
-
-def _get_metric_row(cond_vec_str, mae_results, property_targets):
-    """Generate CSV row for metrics based on property types."""
-    row_parts = [cond_vec_str]
-    for prop in property_targets:
-        mae_key = f'MAE_{prop}'
-        row_parts.append(str(mae_results.get(mae_key, "")))
-    return ",".join(row_parts) + "\n"
-
-def save_property_metrics(df, property_targets, metrics_out, condition_column_name, sort_metrics_by):
+def save_property_metrics(df, property_targets, output_metrics, condition_column_name, sort_metrics_by):
     """Save property metrics to CSV file."""
-    if not metrics_out:
+    if not output_metrics:
         return
-    
-    mode = "w"
-    
-    # Save overall metrics if requested
-    if sort_metrics_by in ["all", "both"]:
-        print(f"Saving property metrics to {metrics_out}...")
-        mae_results = compute_property_mae(df, property_targets)
         
-        with open(metrics_out, mode) as f:
-            f.write(_get_metric_header(property_targets))
-            f.write(_get_metric_row("all_CVs", mae_results, property_targets))
-        mode = "a"
+    rows = []
     
-    # Save metrics by condition vector if requested
+    # Process overall metrics if requested
+    if sort_metrics_by in ["all", "both"]:
+        print(f"\nSaving overall property metrics to {output_metrics}...")
+        mae_results = compute_property_mae(df, property_targets)
+        row_data = {"CV": "all_CVs"}
+        row_data.update(mae_results)
+        rows.append(row_data)
+    
+    # Process metrics by condition vector if requested
     if sort_metrics_by in ["Condition Vector", "both"]:
-        print(f"Saving property metrics by Condition Vector to {metrics_out}...")
-        with open(metrics_out, mode) as f:
-            if mode == "w":
-                f.write(_get_metric_header(property_targets))
+        print(f"\nSaving property metrics by Condition Vector to {output_metrics}...")
+        groups = df.groupby(condition_column_name)
+        for cond_vec, subdf in groups:
+            cond_vec_str = str(cond_vec).replace(',', ';')
+            mae_results = compute_property_mae(subdf, property_targets)
+            row_data = {"CV": cond_vec_str}
+            row_data.update(mae_results)
+            rows.append(row_data)
             
-            # Group by condition vector and save metrics for each group
-            groups = df.groupby(condition_column_name)
-            for cond_vec, subdf in groups:
-                cond_vec_str = str(cond_vec).replace(',', ';')
-                mae_results = compute_property_mae(subdf, property_targets)
-                f.write(_get_metric_row(cond_vec_str, mae_results, property_targets))
+    # Export cleanly via Pandas
+    if rows:
+        metrics_df = pd.DataFrame(rows)
+        # Reorder to keep 'CV' as the first column
+        cols = ["CV"] + [col for col in metrics_df.columns if col != "CV"]
+        metrics_df[cols].to_csv(output_metrics, index=False)
 
 def _print_mae_results(mae_results, property_targets):
     """Print MAE results for given property targets."""
@@ -196,13 +177,13 @@ def print_property_metrics(df, property_targets, condition_column_name, sort_met
     """Print property metrics to console."""
     # Print overall metrics if requested
     if sort_metrics_by in ["all", "both"]:
-        print("\nOverall Property Metrics")
+        print("\nOverall Property Metrics:")
         mae_results = compute_property_mae(df, property_targets)
         _print_mae_results(mae_results, property_targets)
 
     # Print metrics by condition vector if requested
     if sort_metrics_by in ["Condition Vector", "both"]:
-        print("\nProperty Metrics by Condition Vector")
+        print("\nProperty Metrics by Condition Vector:")
         groups = df.groupby(condition_column_name)
         for cond_vec, subdf in groups:
             print(f"\nCondition Vector: {cond_vec}")
@@ -213,8 +194,8 @@ def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Calculate property metrics for CIF structures.")
     parser.add_argument("--post_parquet", required=True, help="Path to processed parquet file with VUN metrics.")
-    parser.add_argument("--parquet_out", default=None, help="Path to save updated parquet with property metrics.")
-    parser.add_argument("--metrics_out", default=None, help="Path to save property metrics CSV.")
+    parser.add_argument("--output_parquet", default=None, help="Path to save updated parquet with property metrics.")
+    parser.add_argument("--output_metrics", default=None, help="Path to save property metrics CSV.")
     parser.add_argument("--sort_metrics_by", default="all", choices=["all", "Condition Vector", "both"], help="How to group results for metrics.")
     parser.add_argument("--num_workers", required=False, default=8, type=int, help="Number of parallel workers.")
     parser.add_argument("--property_targets", type=str, default="[]", help='List of property columns (unnormalised), in the same order as in the condition vector. E.g. \'["Bandgap (eV)", "Energy Above Hull (eV)"]\'.')
@@ -232,7 +213,7 @@ def main():
     args = parse_arguments()
     
     # Load processed data
-    print(f"Loading processed data from {args.post_parquet}...")
+    print(f"\nLoading processed data from {args.post_parquet}...")
     gen_df_proc = pd.read_parquet(args.post_parquet)
     
     # Parse property targets
@@ -242,13 +223,13 @@ def main():
             property_targets = [property_targets]
     except Exception:
         property_targets = []
-        print("No valid property targets provided; skipping property calculation.")
+        print("\nNo valid property targets provided; skipping property calculation.")
     
     if not property_targets:
-        print("No property targets specified. Exiting.")
+        print("\nNo property targets specified. Exiting.")
         sys.exit(0)
     
-    print(f"Processing property targets: {property_targets}")
+    print(f"\nProcessing property targets: {property_targets}")
     
     # Set up normalization parameters
     norm_methods = [getattr(args, f'property{i}_normaliser') for i in range(1, len(property_targets) + 1)]
@@ -256,11 +237,11 @@ def main():
     min_values = [getattr(args, f'min_property{i}') for i in range(1, len(property_targets) + 1)]
     
     # Process property targets and denormalize condition vectors
-    print("Processing property targets and denormalizing condition vectors...")
-    gen_df_proc = process_property_targets(gen_df_proc, property_targets, norm_methods, max_values, min_values, args.num_workers)
+    print("\nProcessing property targets and denormalizing condition vectors...")
+    gen_df_proc = process_property_targets(gen_df_proc, property_targets, norm_methods, max_values, min_values)
     
     # Predict properties
-    print("Predicting properties...")
+    print("\nPredicting properties...")
     gen_df_proc = predict_properties(gen_df_proc, property_targets, args.num_workers)
     
     # Determine condition column name
@@ -268,14 +249,14 @@ def main():
     
     # Print and save metrics
     print_property_metrics(gen_df_proc, property_targets, condition_column_name, args.sort_metrics_by)
-    save_property_metrics(gen_df_proc, property_targets, args.metrics_out, condition_column_name, args.sort_metrics_by)
+    save_property_metrics(gen_df_proc, property_targets, args.output_metrics, condition_column_name, args.sort_metrics_by)
     
     # Save updated dataframe
-    if args.parquet_out:
-        print(f"Saving updated dataframe with property metrics to {args.parquet_out}...")
-        gen_df_proc.to_parquet(args.parquet_out)
+    if args.output_parquet:
+        print(f"\nSaving updated dataframe with property metrics to {args.output_parquet}...")
+        gen_df_proc.to_parquet(args.output_parquet)
     
-    print("\nProperty metrics calculation completed")
+    print("\nProperty metrics calculation completed.")
 
 if __name__ == "__main__":
     main()

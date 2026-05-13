@@ -103,14 +103,14 @@ class GenerationEndpointTests(IntegrationMixin):
         if self.is_integration and self.verbose:
             self._show_generated_cifs(output_parquet)
         
-    def test_direct_generation_cod_xrd_early_stop(self):
-        """Test Early-Stopping Z-Search with COD-XRD."""
+    def test_direct_generation_chili_xrd_early_stop(self):
+        """Test Early-Stopping Z-Search with Chili-100K-XRD."""
         if self._should_skip_integration():
             return
 
         output_parquet = self._test_output("gen_xrd_early_stop.parquet")
         response = self.client.post("/generate/direct", json={
-            "hf_model_path": "c-bone/CrystaLLM-pi_COD-XRD",
+            "hf_model_path": "c-bone/CrystaLLM-pi_Chili100K-XRD",
             "output_parquet": output_parquet,
             "reduced_formula_list": "TiO2",
             "spacegroups": "P4_2/mnm",

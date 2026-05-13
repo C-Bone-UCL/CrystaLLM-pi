@@ -1,4 +1,4 @@
-"""VUN metrics and property calculations for CrystaLLMv2."""
+"""VUN metrics and property calculations for CrystaLLM-pi."""
 
 import argparse
 import os
@@ -73,7 +73,10 @@ def load_and_process_generated_data(gen_data_path, num_workers):
         gen_df['condition_vector'] = -100
     
     if "Generated CIF" not in gen_df.columns:
-        raise ValueError("Input DataFrame must contain 'Generated CIF' column.")
+        if "CIF" in gen_df.columns:
+            gen_df.rename(columns={"CIF": "Generated CIF"}, inplace=True)
+        else:
+            raise ValueError("Input DataFrame must contain 'Generated CIF' column.")
 
     print("Processing the generated CIFs...")
     return process_dataframe(gen_df, num_workers=num_workers, column_name='Generated CIF')
@@ -117,18 +120,23 @@ def extract_generated_formulas(structures):
 
 
 # VUN metrics
-def _validity_worker(cif_str: str) -> bool:
+def _validity_worker(cif_str: str, bond_length_acceptability_cutoff: float, allow_stated_p1_mismatch: bool = False) -> bool:
     """Worker function to check if a single CIF string is valid."""
     _configure_pymatgen_warning_filters()
     if not cif_str or not isinstance(cif_str, str):
         return False
     try:
         # is_valid contains multiple checks (formula, multiplicity, bonds, etc.)
-        return is_valid(cif_str, bond_length_acceptability_cutoff=1.0,debug=True)
+        return is_valid(
+            cif_str,
+            bond_length_acceptability_cutoff=bond_length_acceptability_cutoff,
+            allow_stated_p1_mismatch=allow_stated_p1_mismatch,
+            debug=True,
+        )
     except Exception:
         return False
 
-def get_valid(df_proc, num_workers):
+def get_valid(df_proc, num_workers, bond_length_acceptability_cutoff=1.0, allow_stated_p1_mismatch=False):
     """Check CIF validity in parallel."""
     print("\nValidity Metrics")
     
@@ -136,18 +144,19 @@ def get_valid(df_proc, num_workers):
     max_workers = min(num_workers, max_workers_recommended)
     cifs_to_check = df_proc["Generated CIF"].tolist()
     
-    results = [False] * len(df_proc)
-    
+    worker_func = partial(
+        _validity_worker,
+        bond_length_acceptability_cutoff=bond_length_acceptability_cutoff,
+        allow_stated_p1_mismatch=allow_stated_p1_mismatch,
+    )
+    results = {}
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(_validity_worker, cif) for cif in cifs_to_check]
-        
-        for i, future in enumerate(tqdm(concurrent.futures.as_completed(futures), 
-                                      total=len(futures), desc="Checking validity")):
-            # Find which future completed and store result in correct position
-            future_idx = futures.index(future)
-            results[future_idx] = future.result()
+        future_to_idx = {executor.submit(worker_func, cif): i for i, cif in enumerate(cifs_to_check)}
+        for future in tqdm(concurrent.futures.as_completed(future_to_idx),
+                           total=len(future_to_idx), desc="Checking validity"):
+            results[future_to_idx[future]] = future.result()
 
-    df_proc["is_valid"] = results
+    df_proc["is_valid"] = [results[i] for i in range(len(cifs_to_check))]
     valid_count = df_proc['is_valid'].sum()
     
     print(f"{valid_count} valid CIFs out of {len(df_proc)} total")
@@ -164,7 +173,13 @@ def _uniqueness_worker(args_tuple: Tuple[int, str, float]) -> Tuple[int, str, fl
     
     try:
         struct = Structure.from_str(cif_str, fmt="cif")
-        hash_val = BAWLHasher().get_material_hash(struct)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r".*No oxidation states specified on sites!.*",
+                category=UserWarning,
+            )
+            hash_val = BAWLHasher().get_material_hash(struct)
         
         # Use ehull if available, otherwise fallback to volume per formula unit
         if ehull_val is not None and not np.isnan(ehull_val):
@@ -287,19 +302,15 @@ def get_novelty(df_gen, base_comps, ltol, stol, angle_tol, structures, workers):
         tasks.append((struct, comp_key, base_comps, ltol, stol, angle_tol))
 
     # Run novelty checks in parallel
-    results = [False] * len(tasks)
+    results = {}
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(_novelty_worker, task) for task in tasks]
-        
-        for i, future in enumerate(tqdm(concurrent.futures.as_completed(futures), 
-                                      total=len(futures), desc="Checking novelty")):
-            # Find original task index and store result
-            task_idx = futures.index(future)
-            results[task_idx] = future.result()
+        future_to_idx = {executor.submit(_novelty_worker, task): i for i, task in enumerate(tasks)}
+        for future in tqdm(concurrent.futures.as_completed(future_to_idx),
+                           total=len(future_to_idx), desc="Checking novelty"):
+            results[future_to_idx[future]] = future.result()
 
-    # Assign results back to the dataframe
     df_gen["is_novel"] = False
-    df_gen.loc[df_to_check.index, "is_novel"] = results
+    df_gen.loc[df_to_check.index, "is_novel"] = [results[i] for i in range(len(tasks))]
     
     novel_count = df_gen['is_novel'].sum()
     print(f"Found {novel_count} novel CIFs.")
@@ -309,7 +320,7 @@ def get_novelty(df_gen, base_comps, ltol, stol, angle_tol, structures, workers):
 def load_and_filter_training_data(hf_dataset, processed_data_path, num_workers, gen_formulas):
     """Load training data and filter to relevant compositions."""
     print("\nLoading Training Dataset (for novelty check)")
-    
+
     if processed_data_path and os.path.exists(processed_data_path):
         print(f"Loading pre-processed training data from {processed_data_path}.")
         proc_train_df = pd.read_parquet(processed_data_path)
@@ -557,11 +568,6 @@ def _predict_bandgap(df_valid, num_workers):
     return pd.Series(bg_results)
 
 ### Density and Bandgap main functions
-def _predict_density(df_valid):
-    """Calculate density for structures."""
-    print("Getting density predictions...")
-    return df_valid["Generated CIF"].apply(get_density)
-
 def predict_properties(gen_df_proc, property_targets, num_workers):
     """Run property predictions (ALIGNN + density)."""
     df_valid = gen_df_proc[gen_df_proc["is_valid"]].copy()
@@ -571,8 +577,8 @@ def predict_properties(gen_df_proc, property_targets, num_workers):
             bg_series = _predict_bandgap(df_valid, num_workers)
             gen_df_proc['ALIGNN_bg (eV)'] = bg_series
         elif 'density' in prop.lower() or 'den' in prop.lower():
-            density_series = _predict_density(df_valid)
-            gen_df_proc['gen_density (g/cm3)'] = density_series
+            print("Getting density predictions...")
+            gen_df_proc['gen_density (g/cm3)'] = df_valid["Generated CIF"].apply(get_density)
     
     return gen_df_proc
 
@@ -638,7 +644,7 @@ def bond_length_reasonableness_score(cif_str, tolerance=0.32, h_factor=2.5):
 
     return normalized_score
 
-def is_space_group_consistent(cif_str):
+def is_space_group_consistent(cif_str, allow_stated_p1_mismatch=False):
     structure = Structure.from_str(cif_str, fmt="cif")
     parser = CifParser.from_str(cif_str)
     cif_data = parser.as_dict()
@@ -654,43 +660,50 @@ def is_space_group_consistent(cif_str):
 
     # Check if the detected space group matches the stated space group
     is_match = stated_space_group.strip() == detected_space_group.strip()
+    if not is_match and allow_stated_p1_mismatch:
+        stated_normalized = stated_space_group.replace(" ", "").upper()
+        if stated_normalized == "P1":
+            return True
 
     return is_match
 
 
-# def is_formula_consistent(cif_str):
-#     parser = CifParser.from_str(cif_str)
-#     cif_data = parser.as_dict()
-
-#     formula_data = Composition(extract_data_formula(cif_str))
-#     formula_sum = Composition(cif_data[list(cif_data.keys())[0]]["_chemical_formula_sum"])
-#     formula_structural = Composition(cif_data[list(cif_data.keys())[0]]["_chemical_formula_structural"])
-
-#     return formula_data.reduced_formula == formula_sum.reduced_formula == formula_structural.reduced_formula
-
 def is_formula_consistent(cif_str):
-    try:
-        parser = CifParser.from_str(cif_str)
-        cif_data = parser.as_dict()
-        key = list(cif_data.keys())[0]
+    parser = CifParser.from_str(cif_str)
+    cif_data = parser.as_dict()
 
-        # metadata check
-        formula_data = Composition(extract_data_formula(cif_str))
-        formula_sum = Composition(cif_data[key].get("_chemical_formula_sum", ""))
-        formula_structural = Composition(cif_data[key].get("_chemical_formula_structural", ""))
+    formula_data = Composition(extract_data_formula(cif_str))
+    formula_sum = Composition(cif_data[list(cif_data.keys())[0]]["_chemical_formula_sum"])
+    formula_structural = Composition(cif_data[list(cif_data.keys())[0]]["_chemical_formula_structural"])
+
+    return formula_data.reduced_formula == formula_sum.reduced_formula == formula_structural.reduced_formula
+
+
+# Below is new more comprehensive one which includes structure object check, not present during paper publication
+
+# def is_formula_consistent(cif_str):
+#     try:
+#         parser = CifParser.from_str(cif_str)
+#         cif_data = parser.as_dict()
+#         key = list(cif_data.keys())[0]
+
+#         # metadata check
+#         formula_data = Composition(extract_data_formula(cif_str))
+#         formula_sum = Composition(cif_data[key].get("_chemical_formula_sum", ""))
+#         formula_structural = Composition(cif_data[key].get("_chemical_formula_structural", ""))
        
-        # New check: actual atoms in the unit cell
-        structure = parser.parse_structures(primitive=False)[0]
-        formula_geometry = structure.composition
-        # Check if all 4 agree
-        # .reduced_composition to handle supercells
-        # almost_equals with some tolerance to handle minor discrepancies in atom counts because because of minor disorder
-        return (formula_data.reduced_formula == formula_sum.reduced_formula ==
-                formula_structural.reduced_formula and
-                formula_sum.reduced_composition.almost_equals(formula_geometry.reduced_composition, rtol=0.1, atol=0.1))
+#         # New check: actual atoms in the unit cell
+#         structure = parser.parse_structures(primitive=False)[0]
+#         formula_geometry = structure.composition
+#         # Check if all 4 agree
+#         # .reduced_composition to handle supercells
+#         # almost_equals with some tolerance to handle minor discrepancies in atom counts because because of minor disorder
+#         return (formula_data.reduced_formula == formula_sum.reduced_formula ==
+#                 formula_structural.reduced_formula and
+#                 formula_sum.reduced_composition.almost_equals(formula_geometry.reduced_composition, rtol=0.1, atol=0.1))
 
-    except Exception:
-        return False
+#     except Exception:
+#         return False
 
 
 def is_atom_site_multiplicity_consistent(cif_str):
@@ -737,7 +750,7 @@ def is_sensible(cif_str, length_lo=0.5, length_hi=1000., angle_lo=10., angle_hi=
 
     return True
 
-def is_valid(cif_str, bond_length_acceptability_cutoff=1.0, debug=False):
+def is_valid(cif_str, bond_length_acceptability_cutoff=1.0, allow_stated_p1_mismatch=False, debug=False):
     if not is_formula_consistent(cif_str):
         if debug:
             print(f"Formula is inconsistent for {cif_str}")
@@ -751,36 +764,10 @@ def is_valid(cif_str, bond_length_acceptability_cutoff=1.0, debug=False):
         if debug:
             print(f"Bond length is unreasonable for {cif_str}")
         return False
-    if not is_space_group_consistent(cif_str):
+    if not is_space_group_consistent(cif_str, allow_stated_p1_mismatch=allow_stated_p1_mismatch):
         if debug:
             print(f"Space group is inconsistent for {cif_str}")
         return False
     return True
 
-def reconstruct_xrd_peaks(condition_vector_str):
-    """Parse XRD peaks from condition vector."""
-    try:
-        if isinstance(condition_vector_str, str):
-            vector_str = condition_vector_str.strip()
-            if vector_str.startswith('[') and vector_str.endswith(']'):
-                vector_str = vector_str[1:-1]
-            values = [float(x.strip()) for x in vector_str.split(',')]
-        else:
-            values = list(condition_vector_str)
-        
-        # Split into theta and intensity parts
-        mid_point = len(values) // 2
-        theta_values = values[:mid_point]
-        intensity_values = values[mid_point:]
-        
-        # Remove padding (-100 values) and denormalize
-        valid_peaks = []
-        for theta_norm, int_norm in zip(theta_values, intensity_values):
-            if theta_norm != -100 and int_norm != -100:
-                theta = theta_norm * 90.0  # denormalize theta
-                intensity = int_norm * 100.0  # denormalize intensity
-                valid_peaks.append({'two_theta': theta, 'intensity': intensity})
-        
-        return valid_peaks
-    except Exception:
-        return []
+

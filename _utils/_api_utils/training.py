@@ -3,7 +3,7 @@
 import uuid
 from typing import Callable, Optional, List, Any
 
-from fastapi import BackgroundTasks, FastAPI
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 
@@ -33,12 +33,20 @@ def register_training_routes(
             gpu_count = 0
 
         if request.multi_gpu is None:
+            # Auto mode: only select torchrun when 2+ GPUs are visible.
             use_multi_gpu = gpu_count >= 2
         else:
-            use_multi_gpu = request.multi_gpu and gpu_count >= 2
+            # Explicit mode: honor caller intent regardless of runtime detection.
+            use_multi_gpu = request.multi_gpu
 
         if use_multi_gpu:
+            if request.nproc_per_node is not None and request.nproc_per_node < 1:
+                raise HTTPException(status_code=422, detail="nproc_per_node must be >= 1")
+
             chosen_nproc = request.nproc_per_node if request.nproc_per_node is not None else gpu_count
+            if chosen_nproc < 1:
+                # Keep torchrun valid when multi-GPU is forced but no GPUs are visible.
+                chosen_nproc = 2
             if gpu_count > 0:
                 chosen_nproc = min(chosen_nproc, gpu_count)
 

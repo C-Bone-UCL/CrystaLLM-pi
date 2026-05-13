@@ -7,9 +7,8 @@
   "temperature": 1.0,
   "model_ckpt_dir": "model_ckpts/mpdb_slme/PKV-opt/checkpoint-6250",
   "num_return_sequences": 5,
-  "num_repeats": 20000,
-  // "prompt": "<bos>\ndata_[",
-  // "condition_vector": "0.059, 0.05",
+  "max_return_attempts": 20000,
+  "target_valid_cifs": 0,
   "input_parquet": "_artifacts/slme/slme-PKV-opt_prompt.parquet",
-  "output_parquet": "test.parquet"
+  "output_parquet": "_artifacts/slme/slme-PKV-opt_gen.parquet"
 }

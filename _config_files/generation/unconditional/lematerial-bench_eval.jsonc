@@ -1,0 +1,13 @@
+{
+  "activate_conditionality": "None",
+  "gen_max_length": 1024,
+  "top_k": 50,
+  "top_p": 0.95,
+  "temperature": 0.5,
+  "model_ckpt_dir": "model_ckpts/mpdb-small-base-lematerial/checkpoint-1250000",
+  "num_return_sequences": 20,
+  "max_return_attempts": 125,
+  "target_valid_cifs": 0,
+  "input_parquet": "_artifacts/lemat_bench/an-init_prompt.parquet",
+  "output_parquet": "_artifacts/lemat_bench/lematerial-bench_gen.parquet"
+}

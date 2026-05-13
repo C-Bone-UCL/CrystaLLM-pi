@@ -10,6 +10,7 @@ from tests.local.group_sections import TrainingTests
 from tests.local.group_sections import GenerationPipelineTests
 from tests.local.group_sections import EvaluationPipelineTests
 from tests.local.group_sections import DataUtilsTests
+from tests.local.group_sections import NotebookUtilsTests
 from tests.local.group_sections import IntegrationTests
 from tests.local.group_sections import LoadAndGenerateTests
 from tests.local.group_sections import VirtualiserTests
@@ -25,6 +26,7 @@ __all__ = [
     "GenerationPipelineTests",
     "EvaluationPipelineTests",
     "DataUtilsTests",
+    "NotebookUtilsTests",
     "IntegrationTests",
     "LoadAndGenerateTests",
     "VirtualiserTests",

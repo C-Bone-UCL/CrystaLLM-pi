@@ -165,6 +165,49 @@ class GenerationPipelineTests:
                 for r, e in zip(result, expected):
                     assert abs(r - e) < 1e-6, f"Value mismatch for {input_val}"
 
+    def test_generation_mode_resolution(self):
+        """None scoring should validate when target_valid_cifs is positive, but return all rows when it is zero."""
+        from _utils._generating.generate_CIFs import resolve_generation_plan
+
+        validate_only = resolve_generation_plan(
+            scoring_mode="None",
+            target_valid_cifs=3,
+            max_return_attempts=5,
+            num_return_sequences=2,
+            total_samples=4,
+        )
+        assert validate_only["normalized_scoring_mode"] == "none"
+        assert validate_only["need_scores"] is False
+        assert validate_only["check_validity"] is True
+        assert validate_only["target_per_prompt"] == 3
+        assert validate_only["total_expected_generations"] == 12
+
+        raw_generation = resolve_generation_plan(
+            scoring_mode="None",
+            target_valid_cifs=0,
+            max_return_attempts=5,
+            num_return_sequences=2,
+            total_samples=4,
+        )
+        assert raw_generation["normalized_scoring_mode"] == "none"
+        assert raw_generation["need_scores"] is False
+        assert raw_generation["check_validity"] is False
+        assert raw_generation["target_per_prompt"] == 10
+        assert raw_generation["total_expected_generations"] == 40
+
+        ranked_generation = resolve_generation_plan(
+            scoring_mode="LOGP",
+            target_valid_cifs=3,
+            max_return_attempts=5,
+            num_return_sequences=2,
+            total_samples=4,
+        )
+        assert ranked_generation["normalized_scoring_mode"] == "logp"
+        assert ranked_generation["need_scores"] is True
+        assert ranked_generation["check_validity"] is True
+        assert ranked_generation["target_per_prompt"] == 3
+        assert ranked_generation["total_expected_generations"] == 12
+
     def test_evaluation_script(self):
         """Test CIF evaluation script."""
         try:

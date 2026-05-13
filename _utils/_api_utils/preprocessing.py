@@ -23,6 +23,9 @@ class CleaningRequest(BaseModel):
     property_columns: Optional[str] = Field(None, description="JSON list of property columns")
     property1_normaliser: Optional[Literal["linear", "power_log", "signed_log", "log10", "None"]] = None
     property2_normaliser: Optional[Literal["linear", "power_log", "signed_log", "log10", "None"]] = None
+    property3_normaliser: Optional[Literal["linear", "power_log", "signed_log", "log10", "None"]] = None
+    filter_to: Optional[int] = Field(None, description="Optional context-length filter for cleaned CIFs")
+    count_tokens: bool = Field(False, description="Whether to add token counts to the cleaned output")
 
 
 class SaveDatasetRequest(BaseModel):
@@ -100,6 +103,12 @@ def register_preprocessing_routes(
             cmd.extend(["--property1_normaliser", request.property1_normaliser])
         if request.property2_normaliser:
             cmd.extend(["--property2_normaliser", request.property2_normaliser])
+        if request.property3_normaliser:
+            cmd.extend(["--property3_normaliser", request.property3_normaliser])
+        if request.filter_to is not None:
+            cmd.extend(["--filter_to", str(request.filter_to)])
+        if request.count_tokens:
+            cmd.append("--count_tokens")
 
         background_tasks.add_task(run_command, job_id, cmd, request.output_parquet)
         return create_pending_job(job_id, cmd)

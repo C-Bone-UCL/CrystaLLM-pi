@@ -9,15 +9,10 @@ import argparse
 import ast
 import os
 import warnings
-from io import StringIO
 import multiprocessing as mp
-import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import sys
-
-from pymatgen.core import Structure, Composition
-from pymatgen.io.cif import CifParser
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import (
@@ -27,7 +22,6 @@ from _utils import (
     add_atomic_props_block,
     round_numbers,
     remove_comments,
-    order_or_round_cif,
     add_variable_brackets_to_cif,
     normalize_property_column
 )
@@ -35,8 +29,6 @@ from _utils import (
 warnings.filterwarnings("ignore")
 
 # Configuration constants
-ROUND_TOL = 0.10
-MANDATORY_ELEMENTS = True
 CHUNK_SIZE = 1000
 DECIMAL_PLACES = 4
 OXI_DEFAULT = False  # Default value for oxidation states if not provided
@@ -55,16 +47,11 @@ def progress_listener(progress_queue, total):
     pbar.close()
 
 
-def augment_cif_chunk(chunk, oxi, progress_queue, make_ordered=False):
+def augment_cif_chunk(chunk, oxi, progress_queue):
     """Process a chunk of CIF strings, applying various transformations."""
     results = []
     for (idx, cif_str) in chunk:
         try:
-            if make_ordered:
-                cif_str = order_or_round_cif(cif_str, 
-                                             MANDATORY_ELEMENTS=MANDATORY_ELEMENTS, 
-                                             ROUND_TOL=ROUND_TOL)
-            
             if cif_str is None:
                 continue
 
@@ -95,8 +82,6 @@ if __name__ == "__main__":
                         help="Path to the output file. (Parquet format)")
     parser.add_argument("--num_workers", type=int, default=4,
                         help="The number of workers to use for processing. Adding too many workers may slow down processing due to overhead.")
-    parser.add_argument("--make_disordered_ordered", action="store_true",
-                        help="Attempt to convert disordered structures to ordered ones before preprocessing (for COD XRD experiment).")
     parser.add_argument("--property_columns", type=str, default="[]",
                         help="List of property columns to normalize, e.g., \"['Bandgap (eV)', 'ehull']\". Default is empty list.")
     parser.add_argument("--property1_normaliser", type=str, choices=["power_log", "linear", "signed_log", "log10", "None"], default="None",
@@ -108,13 +93,15 @@ if __name__ == "__main__":
     # add a --filter_to argument to filter dataframe to context length with given max length
     parser.add_argument("--filter_to", type=int, default=None,
                         help="If provided, filter dataframe to context length with given max length.")
+    # add a --count_tokens to count tokens, add a new column to the dataframe with the token coount, but no filtering
+    parser.add_argument("--count_tokens", action="store_true",
+                        help="If provided, count tokens in CIFs and add a new column to the dataframe with the token count, without filtering.")
 
     args = parser.parse_args()
 
     input_fname = args.input_parquet
     output_fname = args.output_parquet
     num_workers = args.num_workers
-    make_ordered = args.make_disordered_ordered
 
     print(f"Loading data from {input_fname} as Parquet with zstd compression...")
     dataframe = pd.read_parquet(input_fname)
@@ -169,7 +156,7 @@ if __name__ == "__main__":
     with mp.Pool(processes=num_workers) as pool:
         chunked_results = pool.starmap(
             augment_cif_chunk,
-            [(chunk, OXI_DEFAULT, progress_queue, make_ordered) for chunk in chunks]
+            [(chunk, OXI_DEFAULT, progress_queue) for chunk in chunks]
         )
 
     progress_queue.put(None)
@@ -189,8 +176,14 @@ if __name__ == "__main__":
     if args.filter_to is not None:
         from _utils import filter_df_to_context
         print(f"\nFiltering dataframe of len {len(dataframe)} to context length {args.filter_to}")
-        dataframe = filter_df_to_context(dataframe, context=args.filter_to)
+        dataframe = filter_df_to_context(dataframe, context=args.filter_to, num_workers=num_workers)
         print(f"Filtered dataframe length: {len(dataframe)}")
+
+    if args.count_tokens:
+        from _utils import count_tokens_df
+        print("\nCounting tokens in CIFs and adding 'token_count' column...")
+        dataframe = count_tokens_df(dataframe, num_workers=num_workers)
+        print("Token counting completed.")
 
     if os.path.dirname(output_fname) != "":
         os.makedirs(os.path.dirname(output_fname), exist_ok=True)

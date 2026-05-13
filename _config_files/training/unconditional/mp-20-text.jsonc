@@ -1,0 +1,65 @@
+{
+  // Data Arguments
+  //################
+  "dataset_HF": "c-bone/mp_20",
+  "pretrained_tokenizer_dir": "HF-cif-tokenizer",
+  "context_length": 1024,
+  "remove_CIFs_above_context": false,
+  "remove_CIFs_with_unk": false,
+  "remove_corrupt_graph_embeddings": false,
+
+  // Conditioning Arguments
+  //#######################
+  "activate_conditionality": "None",
+
+  // Model Arguments
+  //#################
+  "n_embd": 512,
+  "n_layer": 8,
+  "n_head": 8,
+  "residual_dropout": 0.1,
+  "embedding_dropout": 0.1,
+  "attention_dropout": 0.1,
+
+  // Trainer Arguments
+  //###################
+  "train_batch_size": 32,
+  "eval_batch_size": 32,
+  "gradient_accumulation_steps": 1,
+  "learning_rate": 0.002,
+  "lr_scheduler_type": "cosine_with_min_lr",
+  "lr_scheduler_kwargs": {
+    "min_lr_rate": 0.001
+  },
+  "warmup_ratio": 0.0,
+  "adam_beta1": 0.9,
+  "adam_beta2": 0.98,
+  "grad_clip": 1.0,
+  "weight_decay": 0.1,
+  // optimizer
+  "optimizer": "muon",
+  "muon_lr": 0.02,
+  "muon_momentum": 0.95,
+  // Logging
+  "output_dir": "model_ckpts/mp_20_text/",
+  "save_total_limit": 2,
+  "report_to": "wandb",
+  "wandb_project_folder": "CrystaLLM-lematbench",
+  "eval_strategy": "steps",
+  "eval_steps": 1000,
+  "logging_steps": 100,
+  "save_strategy": "steps",
+  "max_steps": 5000,
+  "early_stopping_patience": 15,
+  "early_stopping_threshold": 0.000005,
+  // Utils
+  "seed": 1,
+  "data_seed": 1,
+  "load_best_model_at_end": true,
+  "torch_compile": true,
+  "deepspeed_config": "_config_files/deepspeed_default.json",
+
+  // CodeCarbon
+  "codecarbon": true,
+  "tracker_project": "CrystaLLM-graph"
+}

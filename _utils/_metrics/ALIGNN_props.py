@@ -66,7 +66,9 @@ def get_figshare_model(model_name="mp_gappbe_alignn"):
     zfile = "alignn_model_ckpts/"+ model_name + ".zip"
     path = str(os.path.join(os.path.dirname(__file__), zfile))
     if not os.path.isfile(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         response = requests.get(url, stream=True)
+        response.raise_for_status()
         total_size_in_bytes = int(response.headers.get("content-length", 0))
         block_size = 1024  # 1 KiB
         progress_bar = tqdm(total=total_size_in_bytes, unit="iB", unit_scale=True)
