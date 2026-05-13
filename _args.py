@@ -117,11 +117,11 @@ def parse_args():
     parser.add_argument("--input_parquet", type=str, default=None, help="Input parquet file containing Prompts for generation, and also 'condition_vector' (normalised accoridng to pre-processing) if conditioning output.")
     parser.add_argument("--max_samples", type=int, default=None, help="Maximum number of prompts to process from the input parquet file.")
     parser.add_argument("--output_parquet", type=str, default=None, help="Output parquet file to save generated CIF structures.")
-    parser.add_argument("--max_return_attempts", type=int, default=1, help="Number of generation batches per prompt. For 'logp' mode: stops when target_valid_cifs reached or max_return_attempts hit. For 'None' mode: runs this many batches of num_return_sequences.")
-    parser.add_argument("--scoring_mode", type=str, default="None", help="Scoring mode for ranking generated structures: 'logp' for perplexity-based ranking (validates and ranks CIFs), or 'None' for no validation/scoring.")
+    parser.add_argument("--max_return_attempts", type=int, default=1, help="Number of generation batches per prompt. In validation-targeted modes, generation stops when target_valid_cifs is reached or max_return_attempts is hit. In raw mode, returns max_return_attempts * num_return_sequences CIFs per prompt.")
+    parser.add_argument("--scoring_mode", type=str, default="None", help="Scoring mode for generated structures: 'logp' validates and ranks CIFs by perplexity. 'None' disables ranking, and either validates until target_valid_cifs valid CIFs are found or returns all raw generations when target_valid_cifs is 0.")
 
-    # If scoring_mode is 'logp', the model will compute log-perplexity scores for 'target_valid_cifs' amount of valid generated CIFs to rank them.
-    parser.add_argument("--target_valid_cifs", type=int, default=1, help="Target number of valid CIFs per prompt (only used with scoring_mode='logp'). Generation continues until this target or max_return_attempts is reached.")
+    # If scoring_mode is 'logp', the model will compute log-perplexity scores for target_valid_cifs valid generated CIFs to rank them.
+    parser.add_argument("--target_valid_cifs", type=int, default=1, help="Target number of valid CIFs per prompt. With scoring_mode='logp', valid CIFs are ranked by perplexity. With scoring_mode='None', target_valid_cifs > 0 enables validation-only early stop, while 0 returns all generated CIFs without validation.")
 
 
     # CodeCarbon arguments

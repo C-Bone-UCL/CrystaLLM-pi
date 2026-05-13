@@ -42,6 +42,7 @@ DO_SAMPLE = "True"
 TOP_K = 15
 TOP_P = 0.95
 GEN_MAX_LENGTH = 1024
+# GEN_MAX_LENGTH = 1536
 DEFAULT_Z_LIST = [1, 2, 3, 4, 6]
 
 def _postprocess_non_empty_cifs(df: pd.DataFrame, num_workers: int, column_name: str = "Generated CIF") -> pd.DataFrame:
@@ -187,18 +188,23 @@ def main():
     elif args.reduced_formula_list:
         raw_formulas = parse_reduced_formula_list_arg(args.reduced_formula_list)
         canonical_formulas = canonicalize_reduced_formulas(raw_formulas)
-        
-        if len(canonical_formulas) != len(raw_formulas):
-            raise ValueError("Duplicate formulas detected. Please provide strictly unique reduced formulas.")
-            
         n_formulas = len(canonical_formulas)
-        property_map = {}
-        
-        if args.xrd_files and len(args.xrd_files) != n_formulas:
-            raise ValueError(f"Expected {n_formulas} XRD files, got {len(args.xrd_files)}.")
+
+        # --search_zs iterates Z values internally and uses formula-name dedup to track
+        # completion, so duplicate formulas would produce incorrect early-stop behaviour.
+        if args.search_zs:
+            if len(set(canonical_formulas)) != n_formulas:
+                raise ValueError("--search_zs requires unique formulas. Repeat detection is name-based.")
+
+        # Validate list lengths (1:1 with formulas, or 1 for broadcast)
+        if args.xrd_files and len(args.xrd_files) not in (1, n_formulas):
+            raise ValueError(f"Expected 1 or {n_formulas} XRD files, got {len(args.xrd_files)}.")
 
         sg_list = []
         if args.spacegroups:
+            # if --level arg was not specified, print a warning that spacegroups will be ignored since they are only used in level_3 and level_4 prompts
+            if not args.level or args.level in ("level_1", "level_2"):
+                print("\nWarning: --spacegroups provided but prompt level is not level_3 or level_4. Spacegroups will be ignored.")
             raw_sg = [s.strip() for s in args.spacegroups.split(",")]
             if len(raw_sg) == 1:
                 sg_list = raw_sg * n_formulas
@@ -206,12 +212,14 @@ def main():
                 sg_list = raw_sg
             else:
                 raise ValueError(f"Expected 1 or {n_formulas} spacegroups, got {len(raw_sg)}.")
-                
+
         if args.z_list:
             z_list = [int(z.strip()) for z in args.z_list.split(",")]
             if len(z_list) != n_formulas:
                 raise ValueError(f"Expected {n_formulas} Z integers, got {len(z_list)}.")
-        
+        else:
+            z_list = None
+
         is_slider_model = model_info["model_type"] == "Slider"
         if is_slider_model and not args.xrd_files:
             print(
@@ -220,69 +228,79 @@ def main():
             )
 
         if args.condition_lists and not is_slider_model:
-            formula_cond_map = build_formula_condition_map(canonical_formulas, args.condition_lists, args.hf_model_path)
+            cond_list = build_formula_condition_map(canonical_formulas, args.condition_lists, args.hf_model_path)
         else:
-            formula_cond_map = {}
+            cond_list = [None] * n_formulas
 
-        property_map = {
-            formula: {
-                "xrd": args.xrd_files[i] if args.xrd_files else None,
+        xrd_files_expanded = (
+            args.xrd_files * n_formulas if args.xrd_files and len(args.xrd_files) == 1
+            else (args.xrd_files if args.xrd_files else [None] * n_formulas)
+        )
+        row_properties = [
+            {
+                "xrd": xrd_files_expanded[i],
                 "sg": sg_list[i] if sg_list else None,
-                "cond": formula_cond_map.get(formula),
+                "cond": cond_list[i],
             }
-            for i, formula in enumerate(canonical_formulas)
-        }
-            
+            for i in range(n_formulas)
+        ]
+
         is_early_stop = args.search_zs and normalized_scoring_mode == "none" and args.target_valid_cifs > 0
-        
+
         if is_early_stop:
             print(f"\nExecuting Early-Stopping Z_search ({DEFAULT_Z_LIST[0]} to {DEFAULT_Z_LIST[-1]})")
-            active_formulas = canonical_formulas.copy()
+            active_rows = list(zip(canonical_formulas, row_properties))
             completed_dfs = []
-            
+
             for z in DEFAULT_Z_LIST:
-                if not active_formulas: break
-                print(f"\nSearching Z={z} for {len(active_formulas)} formulas...")
-                z_mapping = {f: [z] for f in active_formulas}
-                specs = build_reduced_formula_specs(active_formulas, z_mapping, property_map, is_slider_model, args.xrd_wavelength)
+                if not active_rows:
+                    break
+                active_fs = [r[0] for r in active_rows]
+                active_ps = [r[1] for r in active_rows]
+                print(f"\nSearching Z={z} for {len(active_rows)} formulas...")
+                specs = build_reduced_formula_specs(active_fs, [z] * len(active_rows), active_ps, is_slider_model, args.xrd_wavelength)
                 df_prompts = generate_prompts_from_specs(specs, args)
-                
+
                 worker_count = resolve_multi_gpu_workers(args, len(df_prompts))
                 df_gen = generate_cifs_with_hf_model(df_prompts, args.hf_model_path, args, worker_count)
-                
+
                 if not df_gen.empty:
                     df_gen["Base Material ID"] = df_gen["Material ID"].str.rsplit('_', n=1).str[0]
                     df_gen = df_gen.merge(
                         df_prompts[["Material ID", "reduced_formula_target"]]
                         .rename(columns={"Material ID": "Base Material ID"})
                         .drop_duplicates(),
-                        on="Base Material ID", 
+                        on="Base Material ID",
                         how="left"
                     )
                     best_valid = df_gen.drop_duplicates(subset=["reduced_formula_target"], keep="first")
                     completed_dfs.append(best_valid)
-                    found = best_valid["reduced_formula_target"].dropna().tolist()
-                    active_formulas = [f for f in active_formulas if f not in found]
+                    found = set(best_valid["reduced_formula_target"].dropna().tolist())
+                    active_rows = [(f, p) for f, p in active_rows if f not in found]
                     print(f"  Found valid structures for {len(found)} formulas.")
-            
-            if active_formulas:
-                print(f"\nFailed to find valid structures for: {', '.join(active_formulas)}")
+
+            remaining = [f for f, _ in active_rows]
+            if remaining:
+                print(f"\nFailed to find valid structures for: {', '.join(remaining)}")
             df_work = pd.concat(completed_dfs, ignore_index=True) if completed_dfs else pd.DataFrame()
 
         else:
             print("\nExecuting Batch Generation")
             if args.search_zs:
-                z_mapping = {f: DEFAULT_Z_LIST for f in canonical_formulas}
+                # Expand each formula × DEFAULT_Z_LIST
+                expanded_formulas = [f for f in canonical_formulas for _ in DEFAULT_Z_LIST]
+                expanded_z_values = [z for _ in canonical_formulas for z in DEFAULT_Z_LIST]
+                expanded_properties = [p for p in row_properties for _ in DEFAULT_Z_LIST]
+                specs = build_reduced_formula_specs(expanded_formulas, expanded_z_values, expanded_properties, is_slider_model, args.xrd_wavelength)
             else:
-                z_mapping = {f: [z] for f, z in zip(canonical_formulas, z_list)} if args.z_list else {f: [1] for f in canonical_formulas}
+                flat_z_values = z_list if z_list else [1] * n_formulas
+                specs = build_reduced_formula_specs(canonical_formulas, flat_z_values, row_properties, is_slider_model, args.xrd_wavelength)
 
-            specs = build_reduced_formula_specs(canonical_formulas, z_mapping, property_map, is_slider_model, args.xrd_wavelength)
-            
             df_prompts = generate_prompts_from_specs(specs, args)
 
             worker_count = resolve_multi_gpu_workers(args, len(df_prompts))
             df_gen = generate_cifs_with_hf_model(df_prompts, args.hf_model_path, args, worker_count)
-            
+
             if args.search_zs and args.target_valid_cifs > 0:
                 df_work = reduce_rows_for_reduced_formula_search(
                     df_gen, df_prompts, canonical_formulas, normalized_scoring_mode

@@ -88,10 +88,11 @@ class IntegrationTests:
         )
         
         # Run 2 training steps
-        trainer.train()
-        
-        # Verify model updated (loss should be computed)
-        assert True, "Training loop completed without crash"
+        train_result = trainer.train()
+
+        # Verify the trainer actually executed steps and produced a finite loss
+        assert train_result.global_step == 2, "Expected exactly 2 training steps"
+        assert train_result.training_loss == train_result.training_loss, "Training loss should be finite"
     
     def test_conditional_training_loop(self):
         """Test conditional model training loop."""
@@ -163,8 +164,9 @@ class IntegrationTests:
             data_collator=data_collator
         )
         
-        trainer.train()
-        assert True, "Conditional training loop completed"
+        train_result = trainer.train()
+        assert train_result.global_step == 2, "Expected exactly 2 conditional training steps"
+        assert train_result.training_loss == train_result.training_loss, "Conditional training loss should be finite"
     
     def test_generation_after_training(self):
         """Test model can generate after training."""

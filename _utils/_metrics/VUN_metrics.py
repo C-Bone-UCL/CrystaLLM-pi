@@ -107,26 +107,46 @@ def print_vun_metrics(df, condition_column_name, sort_metrics_by):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Calculate Valid, Unique, and Novel metrics for generated CIFs.")
     parser.add_argument("--input_parquet", required=True, help="Path to parquet file with generated CIFs.")
-    parser.add_argument("--huggingface_dataset", required=True, help="Hugging Face dataset path for novelty check.")
+    parser.add_argument("--huggingface_dataset", default=None, help="Hugging Face dataset path for novelty check.")
     parser.add_argument("--output_parquet", default=None, help="Path to save processed parquet with VUN metric columns.")
     parser.add_argument("--output_csv", default=None, help="Path to save VUN metrics summary CSV.")
     parser.add_argument("--sort_metrics_by", default="all", choices=["all", "Condition Vector", "both"], help="How to group results for metrics.")
     parser.add_argument("--num_workers", default=8, type=int, help="Number of parallel workers.")
     parser.add_argument("--load_processed_data", type=str, default=None, help="Path to a pre-processed training dataset to speed up novelty.")
     parser.add_argument("--check_comp_novelty", action="store_true", help="Also check compositional novelty (reduced formula level).")
-    
+    # add an arg where we can specify to skip validity and or uniqueness
+    parser.add_argument("--skip_validity", action="store_true", help="Skip validity checks (assumes all structures are valid).")
+    parser.add_argument("--skip_uniqueness", action="store_true", help="Skip uniqueness checks (assumes all structures are unique).")
+    # add bond_length_acce
+    parser.add_argument("--bond_length_acceptability_cutoff", type=float, default=1.0, help="Cutoff for bond length acceptability in validity checks")
+    parser.add_argument("--allow_stated_p1_mismatch", action="store_true", help="Allow space-group mismatch when CIF states P1 (for mattergen comaprison).")
+
     args = parser.parse_args()
-    
+
+    if not args.huggingface_dataset and not args.load_processed_data:
+        parser.error("At least one of --huggingface_dataset or --load_processed_data must be provided.")
+
     print(f"Starting VUN metrics calculation with {args.num_workers} workers.")
     
     # Load and process generated data
     gen_df_proc = load_and_process_generated_data(args.input_parquet, args.num_workers)
     
     # Compute Validity
-    gen_df_proc = get_valid(gen_df_proc, args.num_workers)
+    if args.skip_validity:
+        gen_df_proc['is_valid'] = True
+    else:
+        gen_df_proc = get_valid(
+            gen_df_proc,
+            args.num_workers,
+            bond_length_acceptability_cutoff=args.bond_length_acceptability_cutoff,
+            allow_stated_p1_mismatch=args.allow_stated_p1_mismatch,
+        )
 
     # Compute Uniqueness
-    gen_df_proc = get_unique(gen_df_proc, args.num_workers)
+    if args.skip_uniqueness:
+        gen_df_proc['is_unique'] = True
+    else:
+        gen_df_proc = get_unique(gen_df_proc, args.num_workers)
     
     # Build structures and extract formulas for novelty checks
     gen_structures = build_generated_structures(gen_df_proc)

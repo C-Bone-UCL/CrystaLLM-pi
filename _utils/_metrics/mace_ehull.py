@@ -32,47 +32,50 @@ from _utils import (
     download_mp_data,
 )
 
+# set CUDA visible to only gpu 1
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
 warnings.filterwarnings("ignore")
 logging.getLogger().setLevel(logging.ERROR)
 
-def generate_CSE(structure, mace_energy):
-    """Generate ComputedStructureEntry exactly like the reference script"""
-    # Write VASP inputs files as if we were going to do a standard MP run
-    # this is mainly necessary to get the right U values / etc
-    b = MPRelaxSet(structure)
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        b.write_input(f"{tmpdirname}/", potcar_spec=True)
-        poscar = Poscar.from_file(f"{tmpdirname}/POSCAR")
-        incar = Incar.from_file(f"{tmpdirname}/INCAR")
-        clean_structure = Structure.from_file(f"{tmpdirname}/POSCAR")
+# def generate_CSE(structure, mace_energy):
+#     """Generate ComputedStructureEntry exactly like the reference script"""
+#     # Write VASP inputs files as if we were going to do a standard MP run
+#     # this is mainly necessary to get the right U values / etc
+#     b = MPRelaxSet(structure)
+#     with tempfile.TemporaryDirectory() as tmpdirname:
+#         b.write_input(f"{tmpdirname}/", potcar_spec=True)
+#         poscar = Poscar.from_file(f"{tmpdirname}/POSCAR")
+#         incar = Incar.from_file(f"{tmpdirname}/INCAR")
+#         clean_structure = Structure.from_file(f"{tmpdirname}/POSCAR")
 
-    # Get the U values and figure out if we should have run a GGA+U calc
-    param = {"hubbards": {}}
-    if "LDAUU" in incar:
-        param["hubbards"] = dict(zip(poscar.site_symbols, incar["LDAUU"]))
-    param["is_hubbard"] = (
-        incar.get("LDAU", True) and sum(param["hubbards"].values()) > 0
-    )
-    if param["is_hubbard"]:
-        param["run_type"] = "GGA+U"
+#     # Get the U values and figure out if we should have run a GGA+U calc
+#     param = {"hubbards": {}}
+#     if "LDAUU" in incar:
+#         param["hubbards"] = dict(zip(poscar.site_symbols, incar["LDAUU"]))
+#     param["is_hubbard"] = (
+#         incar.get("LDAU", True) and sum(param["hubbards"].values()) > 0
+#     )
+#     if param["is_hubbard"]:
+#         param["run_type"] = "GGA+U"
 
-    # Make a ComputedStructureEntry without the correction
-    cse_d = {
-        "structure": clean_structure,
-        "energy": mace_energy,
-        "correction": 0.0,
-        "parameters": param,
-    }
+#     # Make a ComputedStructureEntry without the correction
+#     cse_d = {
+#         "structure": clean_structure,
+#         "energy": mace_energy,
+#         "correction": 0.0,
+#         "parameters": param,
+#     }
 
-    # Apply the MP 2020 correction scheme (anion/+U/etc)
-    cse = ComputedStructureEntry.from_dict(cse_d)
-    _ = MaterialsProject2020Compatibility(check_potcar=False).process_entries(
-        cse,
-        clean=True,
-    )
+#     # Apply the MP 2020 correction scheme (anion/+U/etc)
+#     cse = ComputedStructureEntry.from_dict(cse_d)
+#     _ = MaterialsProject2020Compatibility(check_potcar=False).process_entries(
+#         cse,
+#         clean=True,
+#     )
 
-    # Return the final CSE
-    return cse
+#     # Return the final CSE
+#     return cse
 
 def get_mace_energy(cif_str, calculator):
     """Get MACE energy for a CIF string using pre-loaded calculator"""
@@ -131,8 +134,10 @@ def main():
                        help="Name of CIF column in parquet file")
     parser.add_argument("--num_workers", type=int, default=2, 
                        help="Number of parallel processes")
-    parser.add_argument("--batch_size", type=int, default=100, 
+    parser.add_argument("--batch_size", type=int, default=2, 
                        help="Batch size for processing")
+    parser.add_argument("--apply_system_type_filter", type=int, default=None,
+                       help="If set, only process structures with this many unique elements (e.g. 6 for 6-cation systems)")
     
     args = parser.parse_args()
 
@@ -162,6 +167,14 @@ def main():
     else:
         df_valid = df.copy()
         print(f"Processing all {len(df_valid)} structures")
+
+    if args.apply_system_type_filter is not None and df["system_type"] in df.columns:
+        system_mask = df_valid["system_type"] == args.apply_system_type_filter
+        df_valid = df_valid[system_mask].copy()
+        print(f"After applying system type filter ({args.apply_system_type_filter} unique elements), {len(df_valid)} structures remain")
+    elif args.apply_system_type_filter is not None and "system_type" not in df.columns:
+        print(f"Warning: system_type column not found in data, cannot apply system type filter")
+    
     
     cif_strings = df_valid[args.cif_column].tolist()
     

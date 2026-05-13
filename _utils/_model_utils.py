@@ -72,11 +72,11 @@ def resize_positional_embeddings(model, new_n_positions):
     old_n_positions = model.config.n_positions
     if new_n_positions == old_n_positions:
         return model
-        
+
     old_wpe = model.transformer.wpe.weight.data.clone()
     new_wpe = torch.nn.Parameter(torch.zeros(new_n_positions, old_wpe.size(1), device=old_wpe.device))
     new_wpe.data[:old_n_positions, :] = old_wpe
-    
+
     # Generate position-aware embeddings for new positions using sinusoidal functions
     # This gives the model distinct positional understanding for prefix tokens
     print("\nResizing positional embeddings with sinusoidal function for position awareness")
@@ -86,12 +86,13 @@ def resize_positional_embeddings(model, new_n_positions):
             new_wpe.data[pos, i] = math.sin(pos / (10000 ** (i / dim)))
             if i+1 < dim:
                 new_wpe.data[pos, i+1] = math.cos(pos / (10000 ** (i / dim)))
-    
+
     model.transformer.wpe = torch.nn.Embedding(new_n_positions, old_wpe.size(1))
     model.transformer.wpe.weight = new_wpe
     model.config.n_positions = new_n_positions
     print(f"Resized positional embeddings from {old_n_positions} to {new_n_positions}")
     return model
+
 
 
 def load_pretrained_model(args, tokenizer):
@@ -122,9 +123,9 @@ def load_pretrained_model(args, tokenizer):
             share_layers=getattr(args, 'share_layers', False),
         )
     elif conditionality == "Slider":
+        # Do NOT pass n_positions here, load at checkpoint's native size
         config = config_class.from_pretrained(
             args.pretrained_model_dir,
-            n_positions=target_n_positions,
             vocab_size=vocab_size,
             slider_on=True,
             slider_n_variables=args.n_prefix_tokens,
@@ -133,9 +134,9 @@ def load_pretrained_model(args, tokenizer):
             slider_dropout=args.cond_dropout,
         )
     elif conditionality == "Raw":
+        # Same, load at checkpoint's native n_positions
         config = config_class.from_pretrained(
             args.pretrained_model_dir,
-            n_positions=target_n_positions,
             vocab_size=vocab_size,
         )
     else:

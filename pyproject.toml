@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crystallm-pi"
+version = "1.3.0"
+description = "A Transformer-based model for property-guided crystal structure generation with containerized API"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "Cyprien Bone", email = "cyprien.bone.24@ucl.ac.uk" }]
+
+[project.urls]
+Homepage = "https://github.com/C-Bone-UCL/CrystaLLM-pi"
+"Bug Tracker" = "https://github.com/C-Bone-UCL/CrystaLLM-pi/issues"
+
+[tool.setuptools]
+py-modules = [
+	"_api",
+	"_args",
+	"_dataloader",
+	"_load_and_generate",
+	"_tokenizer",
+	"_train",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["_models*", "_utils*", "tests*"]
+

@@ -1,6 +1,7 @@
 <div align="center">
 
-<h1> CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> </h1>
+<h1> CrystaLLM-<span style="font-size: 1.2em;">&pi; </span> (property injection) </h1>
+  <img src="images/Logo.png" alt="CrystaLLM-pi logo" width="150" />
   <p>
     <strong>A Transformer-based model for property-guided crystal structure generation
     </strong>
@@ -105,6 +106,7 @@ For property prediction (bandgap), set up a separate environment to avoid depend
 conda create -n alignn_env python=3.10
 conda activate alignn_env
 pip install dgl -f https://data.dgl.ai/wheels/torch-2.1/cu121/repo.html
+pip install git+https://github.com/KellerJordan/Muon
 pip install -r requirements-alignn.txt
 ```
 
@@ -204,16 +206,18 @@ The script automatically:
 4. **Generates structures** using the appropriate conditional model architecture (automatically inferred).
 5. **Validates & Ranks** outputs based on structural integrity and optional LogP perplexity scoring.
 
-Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). Slider models (COD-XRD, Mattergen-XRD) support direct peak conditioning via `--xrd_files`, and can also run without `--xrd_files` by using missing conditioning values.
+Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). The Hub-hosted Slider model (`Mattergen-XRD`) supports direct peak conditioning via `--xrd_files`, and can also run without `--xrd_files` by using missing conditioning values. The maintained second-pass experimental XRD workflow now lives in [`notebooks/X_XRD_chili100k.ipynb`](notebooks/X_XRD_chili100k.ipynb) using the Chili configs under [`_config_files/training/conditional/xrd_studies/`](_config_files/training/conditional/xrd_studies) and [`_config_files/generation/conditional/xrd_studies/`](_config_files/generation/conditional/xrd_studies).
 
 ## Available Pre-trained Models
 
 * `c-bone/CrystaLLM-pi_base`: Unconditional generation (Base model)
+* `c-bone/CrystaLLM-pi_alex_mp_20_base`: Unconditional generation (trained on alex-mp-20)
+* `c-bone/CrystaLLM-pi_mp_20_base`: Unconditional generation (trained on mp-20)
 * `c-bone/CrystaLLM-pi_SLME`: Solar efficiency conditioning (0-33% range) (PKV model)
 * `c-bone/CrystaLLM-pi_bandgap`: Bandgap + stability conditioning (0-18 eV, 0-5 eV/atom) (PKV model)
 * `c-bone/CrystaLLM-pi_density`: Density + stability conditioning (0-25 g/cm³, 0-0.1 eV/atom) (PKV model)
-* `c-bone/CrystaLLM-pi_COD-XRD`: XRD pattern conditioning (Experimental patterns) (Slider model)
 * `c-bone/CrystaLLM-pi_Mattergen-XRD`: XRD pattern conditioning (Theoretical patterns, fully ordered bias) (Slider model)
+* `c-bone/CrystaLLM-pi_Chili100K-XRD`: XRD pattern conditioning (Theoretical patterns, fully ordered bias) (Slider model)
 
 <br>
 
@@ -315,13 +319,13 @@ python _load_and_generate.py \
     --output_parquet solar_screening.parquet
 ```
 
-**XRD Conditioned Output (Pre-processed)**
+**XRD Conditioned Output (Pre-processed Peaks)**
 
 Generate from pre-processed XRD patterns. Mapped 1:1 with the requested formula.
 
 ```bash
 python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-pi_COD-XRD" \
+  --hf_model_path "c-bone/CrystaLLM-pi_Mattergen-XRD" \
     --reduced_formula_list "TiO2" \
     --z_list "2" \
     --xrd_files "tests/fixtures/test_rutile_processed.csv" \
@@ -335,7 +339,7 @@ Provide peaks from a different radiation source (e.g., MoKa at 0.71073 Å). The 
 
 ```bash
 python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-pi_Mattergen-XRD" \
+    --hf_model_path "c-bone/CrystaLLM-pi_Chili100K-XRD" \
     --reduced_formula_list "TiO2" \
     --search_zs \
     --xrd_files "tests/fixtures/test_rutile_raw.xy" \
@@ -428,6 +432,8 @@ python _utils/_virtualiser/crystal_virtualiser.py \
 # Training, Generating & Evaluating from Scratch
 
 Complete pipeline for training your own models from data preprocessing to evaluation. All training and generation parameters and options are defined in [`_args.py`](_args.py). Training & generating should be done via configuration files (`.jsonc` format) which specify all necessary parameters.
+
+> Maintained notebook workflow: [`notebooks/X_XRD_chili100k.ipynb`](notebooks/X_XRD_chili100k.ipynb) covers CHILI-100K preprocessing, second-pass Slider finetuning, conditioned generation, unconditional control runs, and aggregate metrics.
 
 ## Data Processing Pipeline
 
@@ -661,9 +667,9 @@ python _utils/_generating/generate_CIFs.py \
 
 * **Temperature:** Controls randomness (default ~1.0, higher is more exploratory but higher chance of gibberish)
 * **Top-p/Top-k:** Sampling parameters (typical: 0.95, 50)
-* **scoring_mode:** if set to `None`, then we just generate sequences * attempts number of CIFs per Prompt/Condition pair. If set to `LOGP`, we use a perplexity based scoring method (See Note)
+* **scoring_mode:** if set to `None` and `target_valid_cifs = 0`, then we generate `max_return_attempts * num_return_sequences` CIFs per Prompt/Condition pair without validation. If set to `None` and `target_valid_cifs > 0`, then we validate generated CIFs and stop once that many valid CIFs are found, without ranking. If set to `LOGP`, we validate and rank using a perplexity based scoring method.
 * **num_return_sequences:** Batch size for generation (adjust for GPU mem.)
-* **max_return_attempts:** Total generation for each Prompt/Condition pair = max_return_attempts * num_return_sequences
+* **max_return_attempts:** In raw mode, total generation for each Prompt/Condition pair = `max_return_attempts * num_return_sequences`. In validation-targeted modes, generation stops when `target_valid_cifs` valid CIFs are found or `max_return_attempts` is reached.
 
 </details>
 
@@ -740,13 +746,19 @@ Lower E_hull values indicate higher thermodynamic stability. Structures with E_h
 
 ### Additional Metrics
 
-XRD, Bandgap, Density, and challenge set benchmark metrics available in `_utils/_metrics/` folder.
+XRD, bandgap or density property metrics, VUN, and stability metrics are available in `_utils/_metrics/`.
 
 > **Note**: ALIGNN-based scripts require the separate `alignn_env` environment.
 
 # API
 
 Containerized API provides REST endpoints for preprocessing, training, generation, and metrics.
+
+Current API parity notes:
+
+- `/generate/direct` accepts exactly one output target: `output_parquet` or `output_cif_dir`.
+- `/preprocessing/clean` exposes `property3_normaliser`, `filter_to`, and `count_tokens`.
+- Metrics routes include `/metrics/vun`, `/metrics/ehull`, `/metrics/xrd`, and `/metrics/property`.
 
 First-time host setup (Linux + NVIDIA GPU required):
 
@@ -851,6 +863,8 @@ python -m tests.local.suite --cpu
 
 See the examples below.
 
+For `/generate/direct`, provide exactly one of `output_parquet` or `output_cif_dir`.
+
 <details>
 <summary>Expand for comprehensive API generation examples (curl)</summary>
 
@@ -885,13 +899,13 @@ curl -X POST "http://localhost:8000/generate/direct" \
   }'
 ```
 
-### Direct generation (COD-XRD, Early-Stopping Z-Search with Spacegroup)
+### Direct generation (Mattergen-XRD, Early-Stopping Z-Search with Spacegroup)
 
 ```bash
 curl -X POST "http://localhost:8000/generate/direct" \
   -H "Content-Type: application/json" \
   -d '{
-    "hf_model_path": "c-bone/CrystaLLM-pi_COD-XRD",
+    "hf_model_path": "c-bone/CrystaLLM-pi_Mattergen-XRD",
     "reduced_formula_list": "TiO2",
     "spacegroups": "P4_2/mnm",
     "level": "level_4",
@@ -901,17 +915,17 @@ curl -X POST "http://localhost:8000/generate/direct" \
     "max_return_attempts": 2,
     "target_valid_cifs": 1,
     "scoring_mode": "none",
-    "output_parquet": "/app/outputs/xrd_cod_early_stop.parquet"
+    "output_parquet": "/app/outputs/xrd_mattergen_early_stop.parquet"
   }'
 ```
 
-### Direct generation (Mattergen-XRD, LOGP Ranked Z-Search with Raw Wavelength Conversion)
+### Direct generation (Chili100K-XRD, LOGP Ranked Z-Search with Raw Wavelength Conversion)
 
 ```bash
 curl -X POST "http://localhost:8000/generate/direct" \
   -H "Content-Type: application/json" \
   -d '{
-    "hf_model_path": "c-bone/CrystaLLM-pi_Mattergen-XRD",
+    "hf_model_path": "c-bone/CrystaLLM-pi_Chili100K-XRD",
     "reduced_formula_list": "TiO2",
     "search_zs": true,
     "xrd_files": ["/app/tests/fixtures/test_rutile_raw.xy"],
@@ -921,7 +935,7 @@ curl -X POST "http://localhost:8000/generate/direct" \
     "target_valid_cifs": 5,
     "scoring_mode": "LOGP",
     "temperature": 1.0,
-    "output_parquet": "/app/outputs/xrd_mattergen_logp.parquet"
+    "output_cif_dir": "/app/outputs/xrd_chili_logp"
   }'
 ```
 

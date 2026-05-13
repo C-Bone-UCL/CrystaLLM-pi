@@ -12,27 +12,18 @@ class EvaluationTests:
     def test_vun_metrics(self):
         """Test VUN metrics calculation."""
         from _utils._metrics_utils import is_valid
-        
-        # Test basic CIF validation (part of VUN)
-        valid_cifs = [self.test_data['test_cif']]
-        
-        # Test valid CIF - should pass or at least not crash
+
+        valid_result = is_valid(self.test_data['test_cif'])
+        assert isinstance(valid_result, bool), "is_valid should return a boolean"
+        assert valid_result is True, "Known-good fixture CIF should validate"
+
+        malformed = "data_invalid\n_invalid_field 123\ngarbage"
         try:
-            valid_results = [is_valid(cif) for cif in valid_cifs]
-            # Check that we get a boolean result
-            assert all(isinstance(result, bool) for result in valid_results), "Should return boolean"
-        except Exception as e:
-            # If validation throws exception, that's acceptable for this basic test
-            print(f"CIF validation threw exception (acceptable): {e}")
-        
-        # Test invalid CIF handling - should handle gracefully
-        invalid_cifs = ["data_invalid\n_invalid_field 123\ngarbage"]
-        try:
-            invalid_results = [is_valid(cif) for cif in invalid_cifs]
-            assert not any(invalid_results), "Invalid CIF should be rejected"
+            invalid_result = is_valid(malformed)
         except Exception:
-            # Exception for invalid CIF is also acceptable behavior
-            pass
+            # Invalid CIFs are allowed to raise in current metrics utility behavior.
+            invalid_result = False
+        assert invalid_result is False, "Invalid CIF should never validate"
     
     def test_validity_function(self):
         """Test is_valid function with various CIF inputs."""
@@ -41,19 +32,20 @@ class EvaluationTests:
         # Test with structurally valid CIF
         valid_result = is_valid(self.test_data['test_cif'], bond_length_acceptability_cutoff=0.5)
         assert isinstance(valid_result, bool), "is_valid should return boolean"
-        
-        # Test with garbage input - should handle gracefully or return False
+        assert valid_result is True, "Known-good fixture CIF should validate with cutoff"
+
+        # Test with garbage and malformed input
         try:
-            result = is_valid("random garbage text")
-            assert result is False, "Garbage should be invalid"
+            result_garbage = is_valid("random garbage text")
         except Exception:
-            pass  # Exception is acceptable for malformed input
-        
+            result_garbage = False
+        assert result_garbage is False, "Garbage should be invalid"
+
         try:
-            result = is_valid("data_\n_cell_length_a not_a_number")
-            assert result is False, "Malformed should be invalid"
+            result_malformed = is_valid("data_\n_cell_length_a not_a_number")
         except Exception:
-            pass  # Exception is acceptable
+            result_malformed = False
+        assert result_malformed is False, "Malformed CIF should be invalid"
     
     def test_uniqueness_function(self):
         """Test get_unique function for structure deduplication."""
@@ -61,16 +53,13 @@ class EvaluationTests:
         
         # Create dataframe with duplicates (same CIF twice)
         df_gen = pd.DataFrame({
-            "CIF": [self.test_data['test_cif'], self.test_data['test_cif']]
+            "Generated CIF": [self.test_data['test_cif'], self.test_data['test_cif']]
         })
         
-        try:
-            unique_count, unique_rate = get_unique(df_gen, workers=1)
-            assert isinstance(unique_count, int), "unique_count should be int"
-            assert isinstance(unique_rate, float), "unique_rate should be float"
-            assert unique_count <= len(df_gen), "Unique count should be <= total"
-        except Exception as e:
-            print(f"Uniqueness test failed (acceptable if hashing unavailable): {e}")
+        df_gen["is_valid"] = True
+        df_out = get_unique(df_gen, workers=1)
+        assert "is_unique" in df_out.columns, "Expected is_unique column after uniqueness pass"
+        assert int(df_out["is_unique"].sum()) == 1, "Duplicate CIF rows should reduce to one unique row"
     
     def test_novelty_function(self):
         """Test get_novelty function for comparing against training set."""
@@ -83,52 +72,51 @@ class EvaluationTests:
         # Mock training set compositions
         base_comps = set()  # Empty for simplicity
         
-        try:
-            # get_novelty requires additional parameters
-            novel_count, novel_rate = get_novelty(
-                df_gen, base_comps, 
-                ltol=0.2, stol=0.3, angle_tol=5, 
-                structures=[], workers=1
-            )
-            assert isinstance(novel_count, int), "novel_count should be int"
-            assert isinstance(novel_rate, float), "novel_rate should be float"
-        except Exception as e:
-            print(f"Novelty test failed (acceptable if hashing unavailable): {e}")
+        df_gen["is_unique"] = True
+        structures = [None]
+        df_out = get_novelty(
+            df_gen,
+            base_comps,
+            ltol=0.2,
+            stol=0.3,
+            angle_tol=5,
+            structures=structures,
+            workers=1,
+        )
+        assert "is_novel" in df_out.columns, "Expected is_novel column after novelty pass"
+        assert bool(df_out["is_novel"].iloc[0]) is False, "Rows without a parsed structure should not be novel"
     
     def test_density_calculation(self):
         """Test density calculation from CIF."""
         from _utils._metrics_utils import get_density
-        
-        try:
-            density = get_density(self.test_data['test_cif'])
-            assert density is not None, "Should return density"
-            assert isinstance(density, (int, float)), "Density should be numeric"
-            assert density > 0, "Density should be positive"
-        except Exception as e:
-            print(f"Density calculation failed (acceptable): {e}")
+
+        density = get_density(self.test_data['test_cif'])
+        assert density == density, "Density should not be NaN for valid test CIF"
+        assert isinstance(density, (int, float)), "Density should be numeric"
+        assert density > 0, "Density should be positive"
 
     def test_formula_consistency_partial_occupancy(self):
         """Test formula consistency with valid and invalid partial occupancy CIFs."""
-        try:
-            from _utils._metrics_utils import is_formula_consistent
+        from _utils._metrics_utils import is_formula_consistent
 
-            valid_result = is_formula_consistent(self.test_data['partial_occ_valid_cif'])
-            invalid_result = is_formula_consistent(self.test_data['partial_occ_invalid_cif'])
+        valid_result = is_formula_consistent(self.test_data['partial_occ_valid_cif'])
+        mismatched_formula = self.test_data['test_cif'].replace(
+            "_chemical_formula_sum   'Si4 O8'",
+            "_chemical_formula_sum   'Si2 O3'",
+        ).replace(
+            "_chemical_formula_structural   SiO2",
+            "_chemical_formula_structural   Si2O3",
+        )
+        invalid_result = is_formula_consistent(mismatched_formula)
 
-            assert valid_result is True, "Valid partial-occupancy CIF should be consistent"
-            assert invalid_result is False, "Invalid partial-occupancy CIF should be inconsistent"
-        except Exception as e:
-            print(f"Partial occupancy formula-consistency test failed (acceptable): {e}")
+        assert valid_result is True, "Valid partial-occupancy CIF should be consistent"
+        assert invalid_result is False, "Mismatched formulas should be inconsistent"
     
     def test_basic_evaluation(self):
         """Test basic evaluation pipeline components."""
-        # Test that we can import key evaluation modules
-        try:
-            from _utils._processing_utils import process_CIF_string
-            from _utils._metrics_utils import is_valid, get_density
-            evaluation_available = True
-        except ImportError:
-            # Some evaluation components might have complex dependencies
-            evaluation_available = False
-        
-        assert evaluation_available or True, "Basic evaluation import check"
+        from _utils import extract_volume
+        from _utils._metrics_utils import is_valid, get_density
+
+        assert callable(extract_volume), "extract_volume should be callable"
+        assert callable(is_valid), "is_valid should be callable"
+        assert callable(get_density), "get_density should be callable"

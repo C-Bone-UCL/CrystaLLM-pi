@@ -41,8 +41,7 @@ class LoadAndGenerateTests:
         raw_xy = os.path.join(fixtures_dir, "test_rutile_raw.xy")
         
         if not os.path.exists(raw_xy):
-            print("Skipping raw XRD test, fixture not found.")
-            return
+            raise FileNotFoundError(f"Required raw XRD fixture not found: {raw_xy}")
             
         # Parse using MoKa wavelength to test dynamic scaling
         vector = parse_xrd_file_to_condition_vector(raw_xy, wavelength=0.71073)
@@ -97,8 +96,9 @@ class LoadAndGenerateTests:
         )
 
         canonical = _direct_gen_utils.canonicalize_reduced_formulas(["TiO2"])
-        property_map = {"TiO2": {"xrd": xrd_file, "sg": "P4_2/mnm", "cond": None}}
-        specs = _direct_gen_utils.build_reduced_formula_specs(canonical, {"TiO2": [2]}, property_map, is_xrd=True, xrd_wavelength=1.54056)
+        specs = _direct_gen_utils.build_reduced_formula_specs(
+            canonical, [2], [{"xrd": xrd_file, "sg": "P4_2/mnm", "cond": None}], is_xrd=True, xrd_wavelength=1.54056
+        )
         
         df_prompts = _load_and_generate.generate_prompts_from_specs(specs, args)
         assert len(df_prompts) == 1, "Smoke test should create exactly one prompt"
@@ -122,11 +122,10 @@ class LoadAndGenerateTests:
         from _utils import _direct_gen_utils
 
         canonical = _direct_gen_utils.canonicalize_reduced_formulas(["TiO2"])
-        property_map = {"TiO2": {"xrd": None, "sg": None, "cond": None}}
         specs = _direct_gen_utils.build_reduced_formula_specs(
             canonical,
-            {"TiO2": [2]},
-            property_map,
+            [2],
+            [{"xrd": None, "sg": None, "cond": None}],
             is_xrd=True,
             xrd_wavelength=1.54056,
         )
@@ -239,10 +238,12 @@ class LoadAndGenerateTests:
         args = argparse.Namespace(level="level_2", verbose=False)
         formulas = ["SiO2", "TiO2"]
         canonical = _direct_gen_utils.canonicalize_reduced_formulas(formulas)
-        property_map = {f: {"xrd": None, "sg": None, "cond": None} for f in canonical}
-        z_mapping = {f: [1, 2, 3, 4] for f in canonical}
+        # Expand each formula × 4 Z values for the index-based API
+        expanded_formulas = [f for f in canonical for _ in [1, 2, 3, 4]]
+        expanded_z_values = [z for _ in canonical for z in [1, 2, 3, 4]]
+        expanded_properties = [{"xrd": None, "sg": None, "cond": None} for _ in expanded_formulas]
 
-        specs = _direct_gen_utils.build_reduced_formula_specs(canonical, z_mapping, property_map, is_xrd=False)
+        specs = _direct_gen_utils.build_reduced_formula_specs(expanded_formulas, expanded_z_values, expanded_properties, is_xrd=False)
         df_prompts = _load_and_generate.generate_prompts_from_specs(specs, args)
         
         assert len(df_prompts) == 8, "Expected 2 formulas x 4 Z values"
@@ -291,9 +292,9 @@ class LoadAndGenerateTests:
             {"Material ID": "TiO2_Z1_1", "Generated CIF": "raw_cif", "score": 0.1},
         ])
 
-        original_validity_worker = _direct_gen_utils._validity_worker
+        original_is_valid = _direct_gen_utils.is_valid
         try:
-            _direct_gen_utils._validity_worker = lambda cif, **kwargs: cif == "raw_cif"
+            _direct_gen_utils.is_valid = lambda cif, **kwargs: cif == "raw_cif"
 
             out = _direct_gen_utils.reduce_rows_for_reduced_formula_search(
                 df_generated=df_generated,
@@ -306,7 +307,7 @@ class LoadAndGenerateTests:
             row = out.iloc[0]
             assert row["Generated CIF"] == "raw_cif"
         finally:
-            _direct_gen_utils._validity_worker = original_validity_worker
+            _direct_gen_utils.is_valid = original_is_valid
 
     def test_level1_dummy_formula_canonicalization(self):
         """Level-1 dummy formula token X should bypass pymatgen canonicalization."""

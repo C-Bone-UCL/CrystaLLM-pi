@@ -19,6 +19,7 @@ from tests.local.groups import (
     EvaluationPipelineTests,
     IntegrationTests,
     LoadAndGenerateTests,
+    NotebookUtilsTests,
     VirtualiserTests,
 )
 
@@ -36,7 +37,30 @@ def main():
     parser = argparse.ArgumentParser(description="CrystaLLM-pi Test Suite")
     parser.add_argument("--cpu", action="store_true", help="Force CPU execution")
     parser.add_argument("--gpu", action="store_true", help="Force GPU execution")
+    tier_group = parser.add_mutually_exclusive_group()
+    tier_group.add_argument(
+        "--offline",
+        action="store_true",
+        help="Run only offline tests suitable for public CI/reviewer verification",
+    )
+    tier_group.add_argument(
+        "--secrets",
+        action="store_true",
+        help="Include secret/network-dependent local tests (HF/W&B-backed)",
+    )
+    tier_group.add_argument(
+        "--full",
+        action="store_true",
+        help="Run the full local suite (default behavior)",
+    )
     args = parser.parse_args()
+
+    if args.offline:
+        tier = "offline"
+    elif args.secrets:
+        tier = "secrets"
+    else:
+        tier = "full"
     
     # Set device
     if args.cpu:
@@ -53,6 +77,8 @@ def main():
         # Auto-detect
         DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"🔧 Running tests on {DEVICE.type} (auto-detected)")
+
+    print(f"🧪 Local test tier: {tier}")
     
     suite = TestSuite()
     suite.setup()
@@ -65,6 +91,7 @@ def main():
         data_tests = DataProcessingTests(suite.temp_dir, test_data)
         dataloader_tests = DataLoaderTests(suite.temp_dir, test_data)
         data_utils_tests = DataUtilsTests(suite.temp_dir, test_data)
+        notebook_utils_tests = NotebookUtilsTests(suite.temp_dir, test_data)
         model_tests = ModelTests(suite.temp_dir, test_data)
         gen_tests = GenerationTests(suite.temp_dir, test_data)
         eval_tests = EvaluationTests(suite.temp_dir, test_data)
@@ -87,6 +114,8 @@ def main():
         suite.run_test("tokenizer_basic", data_tests.test_tokenizer_basic)
         suite.run_test("cif_validation", data_tests.test_cif_validation)
         suite.run_test("prompt_creation", data_tests.test_prompt_creation)
+        suite.run_test("logit_analysis_reconstruction", data_tests.test_logit_analysis_reconstruction)
+        suite.run_test("logit_analysis_condition_dtype_matches_model", data_tests.test_logit_analysis_condition_dtype_matches_model)
         suite.run_test("model_loading", model_tests.test_model_loading)
         suite.run_test("model_forward", model_tests.test_model_forward)
         suite.run_test("pkv_model_forward", model_tests.test_pkv_model_forward)
@@ -120,6 +149,20 @@ def main():
         suite.run_test("tokenize_function_raw", data_utils_tests.test_tokenize_function_raw)
         suite.run_test("create_fixed_format_mask", data_utils_tests.test_create_fixed_format_mask)
         suite.run_test("parse_condition_value", data_utils_tests.test_parse_condition_value)
+
+        print("\nNotebook Utils Tests:")
+        suite.run_test("notebook_utils_metrics_xrd", notebook_utils_tests.test_get_metrics_xrd_keys_and_counts)
+        suite.run_test("notebook_utils_stratified_metrics_xrd", notebook_utils_tests.test_get_stratified_metrics_xrd_tiers)
+        suite.run_test("notebook_utils_xrd_condition_vector", notebook_utils_tests.test_process_xrd_to_condition_vector_output_length)
+        suite.run_test("notebook_utils_novelty_round_trip", notebook_utils_tests.test_build_and_parse_novelty_round_trip)
+        suite.run_test("notebook_utils_select_top_materials", notebook_utils_tests.test_select_top_materials_returns_summary)
+        suite.run_test("notebook_utils_material_selection_io", notebook_utils_tests.test_export_and_run_material_selection_write_files)
+        suite.run_test("notebook_utils_stratified_only_matched", notebook_utils_tests.test_get_stratified_metrics_xrd_only_matched_and_missing_score)
+        suite.run_test("notebook_utils_extract_formula_fallback", notebook_utils_tests.test_extract_formula_fallback)
+        suite.run_test("notebook_utils_summary_columns", notebook_utils_tests.test_run_material_selection_preserves_summary_columns)
+        suite.run_test("notebook_utils_ptnd_metrics", notebook_utils_tests.test_get_metrics_ptnd_vs_scratch_returns_core_keys)
+        suite.run_test("notebook_utils_dataset_size_metrics", notebook_utils_tests.test_get_metrics_dataset_size_study_returns_raw_dataframe)
+        suite.run_test("notebook_utils_plot_stats", notebook_utils_tests.test_plot_dataset_stats_writes_png)
         
         # Evaluation tests
         print("\n📊 Evaluation Tests:")
@@ -153,6 +196,7 @@ def main():
         suite.run_test("condition_vector_parsing_comprehensive", gen_pipeline_tests.test_condition_vector_parsing_comprehensive)
         suite.run_test("evaluation_script", gen_pipeline_tests.test_evaluation_script)
         suite.run_test("postprocessing_script", gen_pipeline_tests.test_postprocessing_script)
+        suite.run_test("generation_mode_resolution", gen_pipeline_tests.test_generation_mode_resolution)
         
         # Evaluation pipeline tests
         print("\n📈 Evaluation Pipeline Tests:")
@@ -165,15 +209,22 @@ def main():
         print("\n🤗 HF Load & Generate Tests:")
         suite.run_test("hf_model_loading", load_gen_tests.test_hf_model_loading)
         suite.run_test("prompt_generation_from_args", load_gen_tests.test_prompt_generation_from_args)
-        suite.run_test("mattergen_xrd_generation_smoke", load_gen_tests.test_mattergen_xrd_generation_smoke)
-        suite.run_test("direct_generation_logp_smoke", load_gen_tests.test_direct_generation_logp_smoke)
         suite.run_test("multi_gpu_single_prompt_worker_resolution", load_gen_tests.test_multi_gpu_single_prompt_worker_resolution)
         suite.run_test("scoring_mode_normalization_helper", load_gen_tests.test_scoring_mode_normalization_helper)
         suite.run_test("reduced_formula_prompt_expansion", load_gen_tests.test_reduced_formula_prompt_expansion)
         suite.run_test("reduced_formula_selection_modes", load_gen_tests.test_reduced_formula_selection_modes)
         suite.run_test("reduced_formula_selection_uses_provided_cif_text", load_gen_tests.test_reduced_formula_selection_uses_provided_cif_text)
+        suite.run_test("mattergen_xrd_allows_missing_xrd_inputs", load_gen_tests.test_mattergen_xrd_allows_missing_xrd_inputs)
+        suite.run_test("level1_dummy_formula_canonicalization", load_gen_tests.test_level1_dummy_formula_canonicalization)
+        suite.run_test("logp_zero_target_is_invalid_configuration", load_gen_tests.test_logp_zero_target_is_invalid_configuration)
         suite.run_test("search_zs_zero_target_keeps_all_generated_rows", load_gen_tests.test_search_zs_zero_target_keeps_all_generated_rows)
         suite.run_test("xrd_raw_file_parsing_and_conversion", load_gen_tests.test_xrd_raw_file_parsing_and_conversion)
+
+        if tier in ("secrets", "full"):
+            suite.run_test("mattergen_xrd_generation_smoke", load_gen_tests.test_mattergen_xrd_generation_smoke)
+            suite.run_test("direct_generation_logp_smoke", load_gen_tests.test_direct_generation_logp_smoke)
+        else:
+            print("Skipping secret/network-dependent local generation smoke tests in offline tier")
         
         # Integration tests
         print("\n🔗 Integration Tests:")

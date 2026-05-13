@@ -1,0 +1,298 @@
+Model config:
+adapter:
+  adapter:
+    _target_: mattergen.adapter.GemNetTAdapter
+    atom_type_diffusion: mask
+    denoise_atom_types: true
+    gemnet:
+      _target_: mattergen.common.gemnet.gemnet_ctrl.GemNetTCtrl
+      atom_embedding:
+        _target_: mattergen.common.gemnet.layers.embedding_block.AtomEmbedding
+        emb_size: 512
+        with_mask_type: true
+      condition_on_adapt:
+      - dft_band_gap
+      - energy_above_hull
+      cutoff: 7.0
+      emb_size_atom: 512
+      emb_size_edge: 512
+      latent_dim: 512
+      max_cell_images_per_dim: 5
+      max_neighbors: 50
+      num_blocks: 4
+      num_targets: 1
+      otf_graph: true
+      regress_stress: true
+      scale_file: /lustre/scratch/uccacbo/mattergen/mattergen/common/gemnet/gemnet-dT.json
+    hidden_dim: 512
+    property_embeddings: {}
+    property_embeddings_adapt:
+      dft_band_gap:
+        _target_: mattergen.property_embeddings.PropertyEmbedding
+        conditional_embedding_module:
+          _target_: mattergen.diffusion.model_utils.NoiseLevelEncoding
+          d_model: 512
+        name: dft_band_gap
+        scaler:
+          _target_: mattergen.common.utils.data_utils.StandardScalerTorch
+        unconditional_embedding_module:
+          _target_: mattergen.property_embeddings.EmbeddingVector
+          hidden_dim: 512
+      energy_above_hull:
+        _target_: mattergen.property_embeddings.PropertyEmbedding
+        conditional_embedding_module:
+          _target_: mattergen.diffusion.model_utils.NoiseLevelEncoding
+          d_model: 512
+        name: energy_above_hull
+        scaler:
+          _target_: mattergen.common.utils.data_utils.StandardScalerTorch
+        unconditional_embedding_module:
+          _target_: mattergen.property_embeddings.EmbeddingVector
+          hidden_dim: 512
+  full_finetuning: true
+  load_epoch: last
+  model_path: checkpoints/mp_bandgap/
+  pretrained_name: null
+data_module:
+  _recursive_: true
+  _target_: mattergen.common.data.datamodule.CrystDataModule
+  average_density: 0.05771451654022283
+  batch_size:
+    train: 21
+    val: 8
+  dataset_transforms:
+  - _partial_: true
+    _target_: mattergen.common.data.dataset_transform.filter_sparse_properties
+  max_epochs: 900
+  num_workers:
+    train: 0
+    val: 0
+  properties:
+  - dft_band_gap
+  - energy_above_hull
+  root_dir: /lustre/scratch/uccacbo/mattergen/mattergen/../datasets/cache/mp_bandgap
+  train_dataset:
+    _target_: mattergen.common.data.dataset.CrystalDataset.from_cache_path
+    cache_path: /lustre/scratch/uccacbo/mattergen/mattergen/../datasets/cache/mp_bandgap/df_train
+    dataset_transforms:
+    - _partial_: true
+      _target_: mattergen.common.data.dataset_transform.filter_sparse_properties
+    properties:
+    - dft_band_gap
+    - energy_above_hull
+    transforms:
+    - _partial_: true
+      _target_: mattergen.common.data.transform.symmetrize_lattice
+    - _partial_: true
+      _target_: mattergen.common.data.transform.set_chemical_system_string
+  transforms:
+  - _partial_: true
+    _target_: mattergen.common.data.transform.symmetrize_lattice
+  - _partial_: true
+    _target_: mattergen.common.data.transform.set_chemical_system_string
+  val_dataset:
+    _target_: mattergen.common.data.dataset.CrystalDataset.from_cache_path
+    cache_path: /lustre/scratch/uccacbo/mattergen/mattergen/../datasets/cache/mp_bandgap/df_val
+    dataset_transforms:
+    - _partial_: true
+      _target_: mattergen.common.data.dataset_transform.filter_sparse_properties
+    properties:
+    - dft_band_gap
+    - energy_above_hull
+    transforms:
+    - _partial_: true
+      _target_: mattergen.common.data.transform.symmetrize_lattice
+    - _partial_: true
+      _target_: mattergen.common.data.transform.set_chemical_system_string
+lightning_module:
+  _target_: mattergen.diffusion.lightning_module.DiffusionLightningModule
+  diffusion_module:
+    _target_: mattergen.diffusion.diffusion_module.DiffusionModule
+    corruption:
+      _target_: mattergen.diffusion.corruption.multi_corruption.MultiCorruption
+      discrete_corruptions:
+        atomic_numbers:
+          _target_: mattergen.diffusion.corruption.d3pm_corruption.D3PMCorruption
+          d3pm:
+            _target_: mattergen.diffusion.d3pm.d3pm.MaskDiffusion
+            dim: 101
+            schedule:
+              _target_: mattergen.diffusion.d3pm.d3pm.create_discrete_diffusion_schedule
+              kind: standard
+              num_steps: 1000
+          offset: 1
+      sdes:
+        cell:
+          _target_: mattergen.common.diffusion.corruption.LatticeVPSDE.from_vpsde_config
+          vpsde_config:
+            beta_max: 20
+            beta_min: 0.1
+            limit_density: 0.05771451654022283
+            limit_var_scaling_constant: 0.25
+        pos:
+          _target_: mattergen.common.diffusion.corruption.NumAtomsVarianceAdjustedWrappedVESDE
+          limit_info_key: num_atoms
+          sigma_max: 5.0
+          wrapping_boundary: 1.0
+    loss_fn:
+      _target_: mattergen.common.loss.MaterialsLoss
+      d3pm_hybrid_lambda: 0.01
+      include_atomic_numbers: true
+      include_cell: true
+      include_pos: true
+      reduce: sum
+      weights:
+        atomic_numbers: 1.0
+        cell: 1.0
+        pos: 0.1
+    model:
+      _target_: mattergen.adapter.GemNetTAdapter
+      atom_type_diffusion: mask
+      denoise_atom_types: true
+      gemnet:
+        _target_: mattergen.common.gemnet.gemnet_ctrl.GemNetTCtrl
+        atom_embedding:
+          _target_: mattergen.common.gemnet.layers.embedding_block.AtomEmbedding
+          emb_size: 512
+          with_mask_type: true
+        condition_on_adapt:
+        - dft_band_gap
+        - energy_above_hull
+        cutoff: 7.0
+        emb_size_atom: 512
+        emb_size_edge: 512
+        latent_dim: 512
+        max_cell_images_per_dim: 5
+        max_neighbors: 50
+        num_blocks: 4
+        num_targets: 1
+        otf_graph: true
+        regress_stress: true
+        scale_file: /lustre/scratch/uccacbo/mattergen/mattergen/common/gemnet/gemnet-dT.json
+      hidden_dim: 512
+      property_embeddings: {}
+      property_embeddings_adapt:
+        dft_band_gap:
+          _target_: mattergen.property_embeddings.PropertyEmbedding
+          conditional_embedding_module:
+            _target_: mattergen.diffusion.model_utils.NoiseLevelEncoding
+            d_model: 512
+          name: dft_band_gap
+          scaler:
+            _target_: mattergen.common.utils.data_utils.StandardScalerTorch
+          unconditional_embedding_module:
+            _target_: mattergen.property_embeddings.EmbeddingVector
+            hidden_dim: 512
+        energy_above_hull:
+          _target_: mattergen.property_embeddings.PropertyEmbedding
+          conditional_embedding_module:
+            _target_: mattergen.diffusion.model_utils.NoiseLevelEncoding
+            d_model: 512
+          name: energy_above_hull
+          scaler:
+            _target_: mattergen.common.utils.data_utils.StandardScalerTorch
+          unconditional_embedding_module:
+            _target_: mattergen.property_embeddings.EmbeddingVector
+            hidden_dim: 512
+      element_mask_func:
+        _target_: mattergen.denoiser.mask_disallowed_elements
+        _partial_: true
+    pre_corruption_fn:
+      _target_: mattergen.property_embeddings.SetEmbeddingType
+      dropout_fields_iid: false
+      p_unconditional: 0.2
+  optimizer_partial:
+    _partial_: true
+    _target_: torch.optim.Adam
+    lr: 5.0e-06
+  scheduler_partials:
+  - frequency: 1
+    interval: epoch
+    monitor: loss_train
+    scheduler:
+      _partial_: true
+      _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+      factor: 0.6
+      min_lr: 1.0e-06
+      patience: 100
+      verbose: true
+    strict: true
+trainer:
+  _target_: pytorch_lightning.Trainer
+  accelerator: gpu
+  accumulate_grad_batches: 8
+  callbacks:
+  - _target_: pytorch_lightning.callbacks.LearningRateMonitor
+    log_momentum: false
+    logging_interval: step
+  - _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    every_n_epochs: 1
+    filename: '{epoch}-{loss_val:.2f}'
+    mode: min
+    monitor: loss_val
+    save_last: true
+    save_top_k: 2
+    verbose: false
+  - _target_: pytorch_lightning.callbacks.TQDMProgressBar
+    refresh_rate: 50
+  - _target_: mattergen.common.data.callback.SetPropertyScalers
+  check_val_every_n_epoch: 5
+  devices: 3
+  gradient_clip_algorithm: value
+  gradient_clip_val: 0.5
+  logger:
+    _target_: pytorch_lightning.loggers.WandbLogger
+    job_type: train
+    project: crystal-generation
+    settings:
+      _save_requirements: false
+      _target_: wandb.Settings
+      start_method: fork
+  max_epochs: 200
+  num_nodes: 1
+  precision: 32
+  strategy:
+    _target_: pytorch_lightning.strategies.ddp.DDPStrategy
+    find_unused_parameters: true
+
+
+Sampling config:
+sampler_partial:
+  _target_: mattergen.diffusion.sampling.classifier_free_guidance.GuidedPredictorCorrector.from_pl_module
+  'N': 1000
+  eps_t: 0.001
+  _partial_: true
+  guidance_scale: 2.0
+  remove_conditioning_fn:
+    _target_: mattergen.property_embeddings.SetUnconditionalEmbeddingType
+  keep_conditioning_fn:
+    _target_: mattergen.property_embeddings.SetConditionalEmbeddingType
+  predictor_partials:
+    pos:
+      _target_: mattergen.diffusion.wrapped.wrapped_predictors_correctors.WrappedAncestralSamplingPredictor
+      _partial_: true
+    cell:
+      _target_: mattergen.common.diffusion.predictors_correctors.LatticeAncestralSamplingPredictor
+      _partial_: true
+    atomic_numbers:
+      _target_: mattergen.diffusion.d3pm.d3pm_predictors_correctors.D3PMAncestralSamplingPredictor
+      predict_x0: true
+      _partial_: true
+  corrector_partials:
+    pos:
+      _target_: mattergen.diffusion.wrapped.wrapped_predictors_correctors.WrappedLangevinCorrector
+      _partial_: true
+      max_step_size: 1000000.0
+      snr: 0.4
+    cell:
+      _target_: mattergen.common.diffusion.predictors_correctors.LatticeLangevinDiffCorrector
+      _partial_: true
+      max_step_size: 1000000.0
+      snr: 0.2
+  n_steps_corrector: 1
+condition_loader_partial:
+  _partial_: true
+  _target_: mattergen.common.data.condition_factory.get_number_of_atoms_condition_loader
+  num_atoms_distribution: MP_BANDGAP
+  batch_size: 25
+  num_samples: 1000

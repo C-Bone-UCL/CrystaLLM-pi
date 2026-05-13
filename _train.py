@@ -17,7 +17,7 @@ from _args import parse_args
 from _dataloader import load_data
 from _tokenizer import CustomCIFTokenizer
 from _utils import (
-    LossTrack_EarlyStop_Callback, 
+    LossTrack_EarlyStop_Callback,
     CIFFormattingTrainer, 
     DualLRLogger,
     tokenizer_ID_check, 
@@ -85,20 +85,6 @@ def main():
     if args.codecarbon:
         tracker = start_codecarbon_tracker(args)
         print("CodeCarbon tracker started")
-
-    # ## Handle multi-GPU and deepspeed settings
-    # # check if the file exists
-    # if args.deepspeed_config is None:
-    #     if torch.cuda.device_count() > 1:
-    #         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-    #         print(f"You have {torch.cuda.device_count()} GPUs")
-    #         print("No deepspeed config provided. Setting to use only 1 GPU")
-    # elif not os.path.isfile(args.deepspeed_config):
-    #     raise ValueError(f"Deepspeed config file {args.deepspeed_config} not found")
-    # else:
-    #     if torch.cuda.device_count() == 1:
-    #         args.deepspeed_config = None
-    #         print("Deepspeed config provided, but only 1 GPU detected. Disabling deepspeed.")
 
     if args.deepspeed_config is None:
         n_gpus = torch.cuda.device_count()
@@ -185,7 +171,7 @@ def main():
         tokenizer_ID_check(args, tokenized_dataset, tokenizer)
 
 
-    # 3. Build or Load a model
+    # Build or Load a model
     ## If conditional model chosen, we assume finetuning, and so we always want to eval on start
     eval_on_start = args.activate_conditionality in ["PKV", "Prepend", "Slider", "Raw"] and args.eval_strategy != "no"
     ## Build base model (works for all)
@@ -256,7 +242,7 @@ def main():
 
     # Setup callbacks based on evaluation strategy
     callbacks = [DualLRLogger()]
-    
+
     # Only add early stopping if evaluation is enabled
     if args.eval_strategy != "no" and hasattr(args, 'early_stopping_patience'):
         callbacks.append(
