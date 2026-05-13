@@ -12,7 +12,7 @@ API_keys.jsonc
 /__logs__/
 /HF-databases/
 /tests/
-!/tests/fixtures/
+!/tests/
 /images/
 /__pycache__/
 /*.pyc

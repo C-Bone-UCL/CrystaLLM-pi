@@ -41,6 +41,15 @@ To ensure stability and reproducibility, this project relies on a three-tier tes
 * **Trigger:** Triggered manually via GitHub Actions (`workflow_dispatch`).
 * **Description:** Builds the Docker container and runs API smoke tests to verify the deployment environment. An optional flag can be set during dispatch to run the slower, full integration suite. Note: This runs on standard GitHub-hosted runners (CPU), while production deployments would need GPU environments.
 
+## Adding the API keys as secrets
+To add the API keys as secrets, go to repo Settings -> Secrets and variables -> Actions -> New repository secret.
+
+Add one with name `HF_KEY`, where the content is you actual key. Do the same for `WANBD_KEY`
+
+To get the keys:
+- Hugging Face: Settings -> Access Tokens
+- Weights & Biases: User Settings -> API Keys
+
 ## Governance and Support
 CrystaLLM-pi is primarily developed and maintained by Cyprien Bone (PhD Student @ UCL). 
 

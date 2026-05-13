@@ -38,7 +38,7 @@ CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> is a Transformer-based sys
 </div>
 
 ## Reproducing the paper
-For the version of the repository that was used in the ["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299) paper, please refer to the v1.0.0 tag of this repository or the [reproduce-paper branch](https://github.com/C-Bone-UCL/CrystaLLM-pi/tree/reproduce_paper).
+For the version of the repository that was used in the ["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299) paper (v2), please refer to the v1.3.0 tag of this repository or the [paper_v2 branch](https://github.com/C-Bone-UCL/CrystaLLM-pi/tree/paper_v2).
 
 This is because the repository is an ongoing project and improvements are continuously being implemented!
 
