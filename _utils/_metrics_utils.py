@@ -669,41 +669,37 @@ def is_space_group_consistent(cif_str, allow_stated_p1_mismatch=False):
 
 
 def is_formula_consistent(cif_str):
-    parser = CifParser.from_str(cif_str)
-    cif_data = parser.as_dict()
+    try:
+        parser = CifParser.from_str(cif_str)
+        cif_data = parser.as_dict()
+        key = list(cif_data.keys())[0]
 
-    formula_data = Composition(extract_data_formula(cif_str))
-    formula_sum = Composition(cif_data[list(cif_data.keys())[0]]["_chemical_formula_sum"])
-    formula_structural = Composition(cif_data[list(cif_data.keys())[0]]["_chemical_formula_structural"])
+        formula_data = Composition(extract_data_formula(cif_str))
+        formula_sum = Composition(cif_data[key].get("_chemical_formula_sum", ""))
+        formula_structural = Composition(cif_data[key].get("_chemical_formula_structural", ""))
 
-    return formula_data.reduced_formula == formula_sum.reduced_formula == formula_structural.reduced_formula
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            try:
+                structure = parser.parse_structures(primitive=False)[0]
+            except Exception:
+                # Some valid disordered CIFs need occupancy rescaling to parse.
+                parser = CifParser.from_str(cif_str, occupancy_tolerance=2.0)
+                structure = parser.parse_structures(primitive=False)[0]
+        formula_geometry = structure.composition
 
+        return (
+            formula_data.reduced_formula == formula_sum.reduced_formula ==
+            formula_structural.reduced_formula and
+            formula_sum.fractional_composition.almost_equals(
+                formula_geometry.fractional_composition,
+                rtol=0.1,
+                atol=0.1,
+            )
+        )
 
-# Below is new more comprehensive one which includes structure object check, not present during paper publication
-
-# def is_formula_consistent(cif_str):
-#     try:
-#         parser = CifParser.from_str(cif_str)
-#         cif_data = parser.as_dict()
-#         key = list(cif_data.keys())[0]
-
-#         # metadata check
-#         formula_data = Composition(extract_data_formula(cif_str))
-#         formula_sum = Composition(cif_data[key].get("_chemical_formula_sum", ""))
-#         formula_structural = Composition(cif_data[key].get("_chemical_formula_structural", ""))
-       
-#         # New check: actual atoms in the unit cell
-#         structure = parser.parse_structures(primitive=False)[0]
-#         formula_geometry = structure.composition
-#         # Check if all 4 agree
-#         # .reduced_composition to handle supercells
-#         # almost_equals with some tolerance to handle minor discrepancies in atom counts because because of minor disorder
-#         return (formula_data.reduced_formula == formula_sum.reduced_formula ==
-#                 formula_structural.reduced_formula and
-#                 formula_sum.reduced_composition.almost_equals(formula_geometry.reduced_composition, rtol=0.1, atol=0.1))
-
-#     except Exception:
-#         return False
+    except Exception:
+        return False
 
 
 def is_atom_site_multiplicity_consistent(cif_str):

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v1.3.1] - 2026-05-13
+
+### Reproducibility and Branching
+
+- **Maintained Main Branch**: After tagging `v1.3.0` for paper reproduction, `main` restores the maintained generation and validation behavior. Relative to the paper snapshot, `main` re-enables bond-length validity checks during generation-time validation, scores each generated batch before truncating to `target_valid_cifs`, and uses the stricter structure-aware `is_formula_consistent` check in the metrics utilities.
+
 ## [v1.3.0] - 2026-05-13
 
 ### Features and Enhancements
@@ -33,7 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Reproducibility and Branching
 
-- **Repository Split**: `reproduce-paper-vs` preserves the paper-reproduction workflow and therefore excludes the post-paper generation and validation updates previously introduced on `main`: redundant transition-score removal during perplexity ranking, extra validity checks, full-batch perplexity scoring before slicing to `target_valid_cifs`, and stricter formula-consistency handling. `main` remains the maintained branch and includes those updates.
+- **Repository Split**: the `main` branch at `v1.3.0` and `paper-v2` branch preserve the paper-reproduction workflow for the second pre-print iteration. That snapshot intentionally excludes the maintained-branch generation and validation updates later restored on `main`.
 
 ---
 
@@ -44,7 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Virtual Crystal Generator**: For disordered material (partial occupancy) generation support. Added `_utils/_virtualiser/` subpackage implementing the `crystal_virtualiser` tool (developed by [Dr Ricardo Grau-Crespo](https://github.com/rgraucrespo)). Post-generation utility that converts ordered CIF structures from the model into disordered virtual crystals with promoted symmetry. Element pairs are replaced with fractional occupancies matching the global composition ratio, and the structure is refined to its higher-symmetry parent using spglib via pymatgen. Included passing tests, API endpoints, README update with examples.
 
 ### Efficiency improvements & Dependency Changes
-- **In Generation Script**: Fixed redundant transition scoring calls in generate with perplexity ranking, improves generation speed without affecting any outputs or score outputs (backwards compatible)
+- **In Generation Script**: Fixed redundant transition scoring calls in generate with perplexity ranking, improving generation speed without affecting ranked outputs when using the maintained branch behavior.
 - **W&B Update**: To v0.25.0
 
 ---
@@ -61,7 +67,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Bug Fixes
 
-- **CIF Structural Validation**: Formula hecks now also use composition derived directly from the 3D structure object and compared against CIF tags, correctly handling fractional occupancies and rejecting invalid 0.0 or not integer site occupancies.
+- **CIF Structural Validation**: Formula checks now also use composition derived directly from the 3D structure object and compared against CIF tags, correctly handling fractional occupancies and rejecting invalid 0.0 or non-integer site occupancies.
 
 ### Repo Structure and Testing
 

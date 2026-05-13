@@ -1,0 +1,84 @@
+name: CI Optional Docker API
+
+"on":
+  workflow_dispatch:
+    inputs:
+      run_integration:
+        description: "Run slower API integration tests"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  docker-api-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      IMAGE_NAME: crystallm-api:ci
+      API_CONTAINER_NAME: crystallm-api
+      CI_DOCKER_NETWORK: crystallm-ci
+      HF_KEY: ${{ secrets.HF_KEY }}
+      WANDB_KEY: ${{ secrets.WANDB_KEY }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -f docker/Dockerfile -t "$IMAGE_NAME" .
+
+      - name: Create Docker network
+        run: docker network create "$CI_DOCKER_NETWORK"
+
+      - name: Start API container
+        run: |
+          docker run -d \
+            --name "$API_CONTAINER_NAME" \
+            --network "$CI_DOCKER_NETWORK" \
+            -p 8000:8000 \
+            -e HF_KEY \
+            -e WANDB_KEY \
+            "$IMAGE_NAME"
+
+      - name: Wait for API health
+        run: |
+          for attempt in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/healthz >/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "API did not become healthy in time"
+          docker logs "$API_CONTAINER_NAME"
+          exit 1
+
+      - name: Run API smoke tests
+        run: |
+          docker run --rm \
+            --network "$CI_DOCKER_NETWORK" \
+            -e HF_KEY \
+            -e WANDB_KEY \
+            "$IMAGE_NAME" \
+            python -m tests.api.suite --docker_url "http://$API_CONTAINER_NAME:8000" --command-tests
+
+      - name: Run API integration tests
+        if: ${{ inputs.run_integration }}
+        run: |
+          docker run --rm \
+            --network "$CI_DOCKER_NETWORK" \
+            -e HF_KEY \
+            -e WANDB_KEY \
+            "$IMAGE_NAME" \
+            python -m tests.api.suite --docker_url "http://$API_CONTAINER_NAME:8000" --integration --command-tests
+
+      - name: Show API logs on failure
+        if: failure()
+        run: docker logs "$API_CONTAINER_NAME"
+
+      - name: Clean up API container
+        if: always()
+        run: docker rm -f "$API_CONTAINER_NAME" || true
+
+      - name: Clean up Docker network
+        if: always()
+        run: docker network rm "$CI_DOCKER_NETWORK" || true

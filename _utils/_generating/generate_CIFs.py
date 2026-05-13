@@ -1,14 +1,4 @@
-"""
-Generate CIF structures using trained conditional/unconditional models.
-Supports parallel generation across multiple GPUs with validation and scoring options.
-
-
-IMPORTANT: This is the script at time of paper publication. For the latest version, please check the GitHub repository main branch.
-
-- main changes in this version:
--- we dont check bond length reasonableness for validity because we say in paper we just look at basic consistency within the cif
--- also during perplexity ranking, when we hit target valid CIFs we stop processing within a generated batch to calculate perplexities (eg if you do target valid CIFs = 1 but generate 20 in a batch, we stop as soon as we get 1 valid CIF and calculate perplexity only for that one, instead of calculating perplexity for all 20 and then ranking)
-"""
+"""Generate CIF structures with validation, ranking, and multi-GPU support."""
 
 import os
 import multiprocessing as mp
@@ -45,13 +35,13 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from _tokenizer import CustomCIFTokenizer
 from _models import PKVGPT, PrependGPT, SliderGPT
 from _args import parse_args
-from _utils import find_checkpoint_from_dir, is_sensible, is_formula_consistent, is_space_group_consistent, extract_space_group_symbol, replace_symmetry_operators
+from _utils import find_checkpoint_from_dir, is_sensible, is_formula_consistent, is_space_group_consistent, extract_space_group_symbol, replace_symmetry_operators, bond_length_reasonableness_score
 
 model = None
 tokenizer = None
 
 def check_cif(cif_str):
-    """Check if CIF string is self-consistent.""" 
+    """Check if CIF string is structurally and chemically self-consistent."""
     try:
         space_group_symbol = extract_space_group_symbol(cif_str)
         if space_group_symbol is not None and space_group_symbol != "P 1":
@@ -63,6 +53,9 @@ def check_cif(cif_str):
             return False
         if not is_space_group_consistent(cif_str):
             return False
+        bond_length_score = bond_length_reasonableness_score(cif_str)
+        if bond_length_score < 1.0:
+            return False
         
         return True
     except Exception:
@@ -71,18 +64,17 @@ def check_cif(cif_str):
 
 def _score_transition_slice(generated_scores, original_sequence, input_length, eos_token_id=None):
     """Score one generated sequence from a precomputed transition-score row."""
-    scoring_length = len(original_sequence)
+    scoring_length = len(generated_scores)
 
     if eos_token_id is not None:
         eos_positions = (original_sequence == eos_token_id).nonzero(as_tuple=True)[0]
         if eos_positions.numel() > 0:
-            scoring_length = int(eos_positions[0])
+            scoring_length = max(int(eos_positions[0]) - input_length, 0)
 
-    max_score_idx = min(scoring_length - 1, len(generated_scores) - 1)
-    if max_score_idx < 0:
+    if scoring_length <= 0:
         return float('inf')
 
-    generated_only_scores = generated_scores[input_length:max_score_idx + 1]
+    generated_only_scores = generated_scores[:scoring_length]
 
     if len(generated_only_scores) == 0:
         return float('inf')
@@ -408,6 +400,16 @@ def generate_on_gpu(
                             output_scores=need_scores,
                             **generation_kwargs,
                         )
+
+                batch_scores = None
+                if need_scores:
+                    batch_scores = score_outputs_logp(
+                        model=model,
+                        scores=outputs.scores,
+                        full_sequences=outputs.sequences,
+                        input_length=input_ids.shape[1],
+                        eos_token_id=tokenizer.eos_token_id,
+                    )
                 
                 # Process each generated sequence
                 for seq_idx, output_seq in enumerate(outputs.sequences):
@@ -448,7 +450,7 @@ def generate_on_gpu(
                         
                         if is_consistent:
                             if need_scores:
-                                score = score_output_logp(model, outputs.scores, outputs.sequences, seq_idx, input_ids.shape[1], tokenizer.eos_token_id)
+                                score = batch_scores[seq_idx]
                             else:
                                 score = -100
                             
@@ -465,8 +467,8 @@ def generate_on_gpu(
                                 queue.put(1)
                                 progress_made += 1
                     
-                    # Break if we've reached our target
-                    if len(valid_cifs) >= target_generations:
+                    # Validation-only mode can stop mid-batch; LOGP mode must score the full batch before ranking.
+                    if len(valid_cifs) >= target_generations and not need_scores:
                         break
                         
             except Exception as e:
