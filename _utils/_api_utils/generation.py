@@ -17,6 +17,7 @@ class DirectGenerationRequest(BaseModel):
     """Request model for direct HuggingFace model generation."""
 
     hf_model_path: str = Field(..., description="HuggingFace model path (e.g., c-bone/CrystaLLM-pi_bandgap)")
+    model_registry: Optional[str] = Field(None, description="Custom model registry JSON file")
     output_parquet: Optional[str] = Field(None, description="Output parquet file path")
     output_cif_dir: Optional[str] = Field(None, description="Output directory for generated CIF files")
     input_parquet: Optional[str] = Field(None, description="Input prompts parquet (alternative to manual)")
@@ -143,6 +144,9 @@ def register_generation_routes(
             "python", "-m", "_load_and_generate",
             "--hf_model_path", request.hf_model_path,
         ]
+
+        if request.model_registry:
+            cmd.extend(["--model_registry", request.model_registry])
 
         if request.output_parquet:
             cmd.extend(["--output_parquet", request.output_parquet])

@@ -50,6 +50,7 @@ class CommandConstructionTests:
         """Verify all generation params are in command."""
         response = self.client.post("/generate/direct", json={
             "hf_model_path": "c-bone/CrystaLLM-pi_bandgap",
+            "model_registry": "/data/my_custom_models.json",
             "output_parquet": "/out.parquet",
             "reduced_formula_list": "TiO2",
             "z_list": "2",
@@ -68,6 +69,7 @@ class CommandConstructionTests:
         assert "--num_return_sequences 5" in cmd
         assert "--max_return_attempts 10" in cmd
         assert "--temperature 0.9" in cmd
+        assert "--model_registry /data/my_custom_models.json" in cmd
         assert "c-bone/CrystaLLM-pi_bandgap" in cmd
 
     def test_direct_generation_scoring_mode_case_passthrough(self):

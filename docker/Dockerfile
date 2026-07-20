@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy requirements first for better caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN pip install --no-cache-dir --ignore-installed --prefix=/install -r requirements.txt
 
 # Set PATH to include installed packages for subsequent pip commands
 ENV PATH="/install/bin:$PATH"
