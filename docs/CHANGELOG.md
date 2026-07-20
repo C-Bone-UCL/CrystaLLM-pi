@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v1.3.2] - 2026-07-20
+
+## New functionalities
+- **Save Training Args**: Now, in the model heckpoint folder, we keep a copy of the training args given to the training script.
+- New `_save_model_to_HF.py`: New script which allows users to easily upload their Crystallm-$\pi$ models to the Hugging Face Hub. In `_utils/_preprocessing/`
+- Edits to `_load_and_generate.py`: Users can now register a custom model using the `--model_registry` argument which points to a `json` registry. The script can then be used as normal. New test in suite added for this. 
+
 ## [v1.3.1] - 2026-05-13
 
 ### Reproducibility and Branching

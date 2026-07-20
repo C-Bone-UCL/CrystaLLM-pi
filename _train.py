@@ -18,6 +18,7 @@ from _dataloader import load_data
 from _tokenizer import CustomCIFTokenizer
 from _utils import (
     LossTrack_EarlyStop_Callback,
+    TrainingArgsCallback,
     CIFFormattingTrainer, 
     DualLRLogger,
     tokenizer_ID_check, 
@@ -240,8 +241,8 @@ def main():
     # If finetune with conditioning, setup the dual LR optimizer
     optimizer, lr_scheduler = setup_scheduler(args, model)
 
-    # Setup callbacks based on evaluation strategy
-    callbacks = [DualLRLogger()]
+    # Capture arguments here so runtime adjustments are recorded in each checkpoint.
+    callbacks = [DualLRLogger(), TrainingArgsCallback(vars(args).copy())]
 
     # Only add early stopping if evaluation is enabled
     if args.eval_strategy != "no" and hasattr(args, 'early_stopping_patience'):

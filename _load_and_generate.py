@@ -6,9 +6,10 @@ the necessary conditioning prompts, and manages generation across single or mult
 Features an early-stopping iteration loop for efficient Z-value discovery.
 """
 
+import argparse
 import os
 import sys
-import argparse
+
 import pandas as pd
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -24,6 +25,7 @@ from _utils._generating.postprocess import process_dataframe
 from _utils import extract_formula_nonreduced
 from _utils._direct_gen_utils import (
     MODEL_INFO,
+    _load_custom_model_registry,
     get_hf_model_max_length,
     resolve_multi_gpu_workers,
     parse_reduced_formula_list_arg,
@@ -41,9 +43,8 @@ TOKENIZER_DIR = "HF-cif-tokenizer"
 DO_SAMPLE = "True"
 TOP_K = 15
 TOP_P = 0.95
-GEN_MAX_LENGTH = 1024
-# GEN_MAX_LENGTH = 1536
 DEFAULT_Z_LIST = [1, 2, 3, 4, 6]
+
 
 def _postprocess_non_empty_cifs(df: pd.DataFrame, num_workers: int, column_name: str = "Generated CIF") -> pd.DataFrame:
     """Postprocess only non-empty CIF rows and preserve original row order."""
@@ -89,6 +90,7 @@ def generate_cifs_with_hf_model(df_prompts: pd.DataFrame, hf_model_path: str, ar
     """Generate CIFs using HF model, optionally across multiple GPUs."""
     tokenizer = init_tokenizer(TOKENIZER_DIR)
     max_length = get_hf_model_max_length(hf_model_path)
+    args.gen_max_length = max_length
     generation_kwargs = build_generation_kwargs(args, tokenizer, max_length)
     scoring_mode = _normalize_scoring_mode(args.scoring_mode)
     base_seed = getattr(args, "seed", 1)
@@ -113,10 +115,11 @@ def generate_cifs_with_hf_model(df_prompts: pd.DataFrame, hf_model_path: str, ar
     return pd.DataFrame(generated_rows)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
     
     parser.add_argument("--hf_model_path", required=True, help="HuggingFace model path")
+    parser.add_argument("--model_registry", help="Optional JSON registry containing metadata for custom Hugging Face models")
 
     output_group = parser.add_mutually_exclusive_group(required=True)
     output_group.add_argument("--output_parquet", default=None, help="Output parquet file")
@@ -156,15 +159,24 @@ def main():
     args.do_sample = DO_SAMPLE
     args.top_k = TOP_K
     args.top_p = TOP_P
-    args.gen_max_length = GEN_MAX_LENGTH
 
     normalized_scoring_mode = _normalize_scoring_mode(args.scoring_mode)
     if normalized_scoring_mode == "logp" and args.target_valid_cifs == 0:
         parser.error("scoring_mode=LOGP requires --target_valid_cifs > 0.")
-    
+
+    if args.model_registry:
+        try:
+            # The CLI is one-shot; sharing this overlay keeps existing metadata consumers unchanged.
+            MODEL_INFO.update(_load_custom_model_registry(args.model_registry))
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
+
     model_info = MODEL_INFO.get(args.hf_model_path)
     if not model_info:
-        raise ValueError(f"Model {args.hf_model_path} not found in MODEL_INFO dict.")
+        parser.error(
+            f"Model '{args.hf_model_path}' was not found in the built-in registry "
+            "or --model_registry"
+        )
         
     print(f"\nModel Configuration\nPath: {args.hf_model_path}\nType: {model_info['model_type']}\nTask: {model_info['description']}")
 

@@ -7,13 +7,22 @@ import logging
 import os
 import socket
 from importlib import reload
+from pathlib import Path
 from typing import Dict
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 from codecarbon import OfflineEmissionsTracker
-from transformers import TrainerCallback, Trainer, get_scheduler, AdamW
+from transformers import (
+    AdamW,
+    Trainer,
+    TrainerCallback,
+    TrainerControl,
+    TrainerState,
+    TrainingArguments,
+    get_scheduler,
+)
 from muon import MuonWithAuxAdam, SingleDeviceMuonWithAuxAdam
 import torch.distributed as dist
 
@@ -110,7 +119,35 @@ class CIFFormattingTrainer(Trainer):
             self.control = self.callback_handler.on_log(self.args, self.state, self.control, loss_breakdown)
 
         return (final_loss, outputs) if return_outputs else final_loss
-    
+
+
+class TrainingArgsCallback(TrainerCallback):
+    """Write the effective CrystaLLM arguments into every checkpoint."""
+
+    def __init__(self, training_spec: dict[str, object]) -> None:
+        self.training_spec = training_spec
+
+    def on_save(
+        self,
+        args: TrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        **kwargs: object,
+    ) -> TrainerControl:
+        # Trainer invokes callbacks on every rank; only one process should write.
+        if not state.is_world_process_zero:
+            return control
+
+        checkpoint_dir = Path(args.output_dir) / f"checkpoint-{state.global_step}"
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        args_path = checkpoint_dir / "training_args.json"
+        args_path.write_text(
+            json.dumps(self.training_spec, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(f"Saved training arguments to {args_path}")
+        return control
+
 
 class LossTrack_EarlyStop_Callback(TrainerCallback):
     """Callback to track training and validation losses, and implement early stopping."""

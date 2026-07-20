@@ -1,9 +1,11 @@
 """Local test section: load and generate."""
 
-import os
 import argparse
+import json
+import os
 import subprocess
 import sys
+
 import pandas as pd
 
 script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -16,10 +18,89 @@ class LoadAndGenerateTests:
         self.temp_dir = temp_dir
         self.test_data = test_data
     
-    def test_hf_model_loading(self):
-        """Test HF model loading functionality."""
+    def test_hf_model_loading(self) -> None:
+        """Built-in models remain available without an external registry."""
         import _load_and_generate
-    
+
+        model_info = _load_and_generate.MODEL_INFO["c-bone/CrystaLLM-pi_base"]
+        assert model_info["model_type"] == "Base"
+
+    def test_custom_model_registry(self) -> None:
+        """A custom registry resolves a Hub path and normalizes raw conditions."""
+        import _load_and_generate
+
+        model_path = "student/MP-20-Density"
+        registry_path = os.path.join(self.temp_dir, "custom_models.json")
+        output_path = os.path.join(self.temp_dir, "custom-model-output.parquet")
+        registry = {
+            model_path: {
+                "description": "Tutorial density model",
+                "conditions": 1,
+                "example_conditions": ["5.0"],
+                "max": 10.0,
+                "min": 0.0,
+                "normalization": "linear",
+                "model_type": "PKV",
+            }
+        }
+        with open(registry_path, "w", encoding="utf-8") as file:
+            json.dump(registry, file)
+
+        original_argv = sys.argv[:]
+        original_generate = _load_and_generate.generate_cifs_with_hf_model
+        original_registry = dict(_load_and_generate.MODEL_INFO)
+        observed = {}
+
+        def _fake_generate(
+            df_prompts: pd.DataFrame,
+            hf_model_path: str,
+            args: argparse.Namespace,
+            worker_count: int = 1,
+        ) -> pd.DataFrame:
+            observed["model_path"] = hf_model_path
+            observed["condition_vector"] = df_prompts.iloc[0]["condition_vector"]
+            return pd.DataFrame([
+                {"Material ID": "SiO2_Z1_1", "Generated CIF": "data_test"}
+            ])
+
+        try:
+            _load_and_generate.generate_cifs_with_hf_model = _fake_generate
+            sys.argv = [
+                "_load_and_generate.py",
+                "--hf_model_path", model_path,
+                "--model_registry", registry_path,
+                "--condition_lists", "5.0",
+                "--reduced_formula_list", "SiO2",
+                "--z_list", "1",
+                "--output_parquet", output_path,
+                "--skip_postprocess",
+            ]
+            _load_and_generate.main()
+
+            assert observed["model_path"] == model_path
+            assert float(observed["condition_vector"]) == 0.5
+            assert os.path.exists(output_path)
+        finally:
+            sys.argv = original_argv
+            _load_and_generate.generate_cifs_with_hf_model = original_generate
+            _load_and_generate.MODEL_INFO.clear()
+            _load_and_generate.MODEL_INFO.update(original_registry)
+
+    def test_invalid_custom_model_registry(self) -> None:
+        """The registry root must map model paths to metadata."""
+        from _utils._direct_gen_utils import _load_custom_model_registry
+
+        registry_path = os.path.join(self.temp_dir, "invalid-models.json")
+        with open(registry_path, "w", encoding="utf-8") as file:
+            json.dump(["student/broken"], file)
+
+        try:
+            _load_custom_model_registry(registry_path)
+        except ValueError as exc:
+            assert "JSON object" in str(exc)
+        else:
+            raise AssertionError("A list registry should raise ValueError")
+
     def test_prompt_generation_from_args(self):
         """Test underlying manual prompt generation tool."""
         from _utils._generating.make_prompts import create_manual_prompts

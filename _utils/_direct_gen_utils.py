@@ -6,6 +6,7 @@ reduced-formula search utilities and final row selection logic.
 
 from __future__ import annotations
 
+import json
 import re
 from collections import OrderedDict
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -99,6 +100,15 @@ MODEL_INFO = {
         "model_type": "Slider",
     },
 }
+
+
+def _load_custom_model_registry(path: str) -> dict[str, object]:
+    """Load model metadata supplied outside the package."""
+    with open(path, encoding="utf-8") as file:
+        registry = json.load(file)
+    if not isinstance(registry, dict):
+        raise ValueError("Model registry must be a JSON object keyed by Hugging Face path")
+    return registry
 
 
 def _as_list(value, fallback):

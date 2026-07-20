@@ -208,6 +208,8 @@ def main():
         # Load and generate tests
         print("\n🤗 HF Load & Generate Tests:")
         suite.run_test("hf_model_loading", load_gen_tests.test_hf_model_loading)
+        suite.run_test("custom_model_registry", load_gen_tests.test_custom_model_registry)
+        suite.run_test("invalid_custom_model_registry", load_gen_tests.test_invalid_custom_model_registry)
         suite.run_test("prompt_generation_from_args", load_gen_tests.test_prompt_generation_from_args)
         suite.run_test("multi_gpu_single_prompt_worker_resolution", load_gen_tests.test_multi_gpu_single_prompt_worker_resolution)
         suite.run_test("scoring_mode_normalization_helper", load_gen_tests.test_scoring_mode_normalization_helper)

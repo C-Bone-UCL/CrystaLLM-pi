@@ -113,6 +113,7 @@ def load_pretrained_model(args, tokenizer):
             n_prefix_tokens=args.n_prefix_tokens,
             n_hidden_cond=args.n_hidden_cond,
             share_layers=getattr(args, 'share_layers', False),
+            dropout=args.cond_dropout,
         )
     elif conditionality == "Prepend":
         config = config_class.from_pretrained(
@@ -121,6 +122,7 @@ def load_pretrained_model(args, tokenizer):
             n_prefix_tokens=args.n_prefix_tokens,
             n_hidden_cond=args.n_hidden_cond,
             share_layers=getattr(args, 'share_layers', False),
+            dropout=args.cond_dropout,
         )
     elif conditionality == "Slider":
         # Do NOT pass n_positions here, load at checkpoint's native size
