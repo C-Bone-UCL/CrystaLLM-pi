@@ -24,6 +24,25 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Restore MP data cache
+        if: ${{ inputs.run_integration }}
+        id: mp_data_cache
+        uses: actions/cache@v4
+        with:
+          path: .ci-cache/mp_computed_structure_entries.json.gz
+          key: mp-computed-structure-entries-40344436-v1
+
+      - name: Download MP data
+        if: ${{ inputs.run_integration && steps.mp_data_cache.outputs.cache-hit != 'true' }}
+        run: |
+          mkdir -p .ci-cache
+          curl --fail --location --retry 5 --retry-all-errors \
+            --output .ci-cache/mp_computed_structure_entries.json.gz.part \
+            https://ndownloader.figshare.com/files/40344436
+          gzip -t .ci-cache/mp_computed_structure_entries.json.gz.part
+          mv .ci-cache/mp_computed_structure_entries.json.gz.part \
+            .ci-cache/mp_computed_structure_entries.json.gz
+
       - name: Build API image
         run: docker build -f docker/Dockerfile -t "$IMAGE_NAME" .
 
@@ -51,6 +70,13 @@ jobs:
           echo "API did not become healthy in time"
           docker logs "$API_CONTAINER_NAME"
           exit 1
+
+      - name: Seed MP data in API container
+        if: ${{ inputs.run_integration }}
+        run: |
+          docker cp \
+            .ci-cache/mp_computed_structure_entries.json.gz \
+            "$API_CONTAINER_NAME":/app/data/mp_computed_structure_entries.json.gz
 
       - name: Run API smoke tests
         if: ${{ !inputs.run_integration }}
