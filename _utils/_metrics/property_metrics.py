@@ -1,7 +1,7 @@
-"""Calculates bandgap and density property metrics for generated CIF structures.
+"""Calculates density property metrics for generated CIF structures.
 
 Loads generated structures, applies normalizations to property targets,
-predicts properties using ALIGNN, and outputs metrics grouping by condition vector.
+predicts properties, and outputs metrics grouping by condition vector.
 """
 
 import argparse
@@ -42,18 +42,14 @@ def inverse_signed_log_normalization(normed, x_min, x_max, beta=0.8):
 
 def _get_property_type(prop):
     """Get the property type for column mapping."""
-    if 'bandgap' in prop.lower() or 'bg' in prop.lower():
-        return 'bandgap'
-    elif 'density' in prop.lower():
+    if 'density' in prop.lower():
         return 'density'
     return None
 
 def _get_property_mae(df, prop, target_col):
     """Calculate MAE for a specific property."""
     prop_type = _get_property_type(prop)
-    if prop_type == 'bandgap':
-        pred_col = 'ALIGNN_bg (eV)'
-    elif prop_type == 'density':
+    if prop_type == 'density':
         pred_col = 'gen_density (g/cm3)'
     else:
         return None
@@ -168,9 +164,7 @@ def _print_mae_results(mae_results, property_targets):
         mae_key = f'MAE_{prop}'
         if mae_key in mae_results and mae_results[mae_key] is not None:
             prop_type = _get_property_type(prop)
-            if prop_type == 'bandgap':
-                print(f"Mean Absolute Error in Band Gap Prediction: {mae_results[mae_key]}")
-            elif prop_type == 'density':
+            if prop_type == 'density':
                 print(f"Mean Absolute Error in Density Prediction: {mae_results[mae_key]}")
 
 def print_property_metrics(df, property_targets, condition_column_name, sort_metrics_by):

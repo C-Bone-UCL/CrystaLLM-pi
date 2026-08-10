@@ -105,11 +105,5 @@ class EvaluationPipelineTests:
     
     def test_property_metrics(self):
         """Test property prediction metrics."""
-        try:
-            # Test that we can import ALIGNN-related scripts
-            import _utils._metrics.property_metrics
-            print("Property metrics script imported successfully")
-            
-        except Exception as e:
-            # ALIGNN requires separate environment
-            print(f"Property prediction failed (expected in main env): {e}")
+        import _utils._metrics.property_metrics
+        print("Property metrics script imported successfully")

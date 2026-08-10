@@ -26,7 +26,7 @@ class APIGapTests:
     def test_missing_property_metrics_endpoint(self):
         """Property metrics exist in CLI but not API.
         
-        Script: _utils/_metrics/property_metrics.py (ALIGNN predictions)
+        Script: _utils/_metrics/property_metrics.py (density predictions)
         This should be exposed as /metrics/property
         """
         response = self.client.get("/")

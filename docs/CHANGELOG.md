@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v1.4.0] - 2026-08-10
+
+### Repository Split (Phase 2)
+
+- **Paper content moved out**: The paper notebooks and the Prepend/Raw baseline families now live in the standalone reproduction repo [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper). This repo keeps the PKV, Slider, and unconditional models plus the new T-series tutorial notebooks (finetuning pipeline, load-and-generate, API, CHILI-100K XRD, SLME).
+- **Model registry in JSON**: The load-and-generate default registry moved from a dict in `_utils/_direct_gen_utils.py` to `_utils/model_registry.json`, using the same schema as the `--model_registry` overlay. New models are added by editing the JSON.
+- **Branch cleanup**: Branches `paper_v2` and `reproduce_paper` were deleted; their tips are preserved as tags `archive/paper_v2` and `archive/paper_v1`. Tag `v1.3.0` remains the exact state cited by the paper.
+- **Breaking**: The API `make-prompts` request field `raw` was removed with the Raw baseline. The `Z_Generate` notebook was removed in favor of `T2_load_and_generate`.
+- **ALIGNN removed**: The separate `alignn_env` environment is gone; the repo now needs a single environment. ALIGNN-based bandgap evaluation moved with the paper studies to CrystaLLM-pi-paper. Property metrics keep the density path; generating with the bandgap model is unaffected.
+- **Config cleanup**: `_config_files/` now holds only the configs the tutorials and documented workflows use (SLME, CHILI-100K and MatterGen XRD, unconditional bases and benchmarks). Paper-study configs (dataset-size, pretraining-benefits, XRD ablations) live in CrystaLLM-pi-paper.
+
 ## [v1.3.2] - 2026-07-20
 
 ## New functionalities

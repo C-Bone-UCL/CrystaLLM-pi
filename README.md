@@ -31,23 +31,23 @@
 
 # Overview
 
-CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> is a Transformer-based system for generating crystalline structures as CIF files. It supports both unconditional generation and four conditional architectures that can generate structures based on target properties like bandgap, density, photovoltaic efficiency and XRD patterns.
+CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> is a Transformer-based system for generating crystalline structures as CIF files. It supports both unconditional generation and two conditional architectures that can generate structures based on target properties like bandgap, density, photovoltaic efficiency and XRD patterns.
 
 <div align="center">
 <img src="images/Framework_github.png" width="75%" style="background-color:white;"/>
 </div>
 
 ## Reproducing the paper
-For the version of the repository that was used in the ["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299) paper (v2), please refer to the v1.3.0 tag of this repository or the [paper_v2 branch](https://github.com/C-Bone-UCL/CrystaLLM-pi/tree/paper_v2).
+The studies from the ["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299) paper live in the standalone repo [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper), where `main` reproduces the published (v2) results and `paper_v1` preserves the pre-revision workflow. The [v1.3.0 tag](https://github.com/C-Bone-UCL/CrystaLLM-pi/releases/tag/v1.3.0) of this repository is the exact state cited by the paper. The graph-conditioned follow-up paper is reproduced in [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph).
 
-This is because the repository is an ongoing project and improvements are continuously being implemented!
+This repository stays the maintained package: it is an ongoing project and improvements are continuously being implemented!
 
 
 ## Key Features
 
 - **Unconditional Generation**: Generate crystal structures from structural/composition priors
 - **Property-Guided Generation**: Generate crystal structures conditioned on target properties + structural priors
-- **Multiple Architectures**: Choose from 4 different conditional methods plus unconditional base model
+- **Multiple Architectures**: Choose between two conditional methods (PKV and Slider) plus the unconditional base model
 - **Flexible Conditioning**: You can use any set of numerical properties to condition, and one of the models handles heterogeneous datasets (some properties are missing in the dataset but not others...)
 - **Evaluation of output structures**: Scripts for validity, uniqueness, novelty and stability metrics
 - **HuggingFace Integration**: Pre-trained models available on HF Hub
@@ -60,7 +60,7 @@ This is because the repository is an ongoing project and improvements are contin
 - [Training, Generating & Evaluating from Scratch](#training-generating--evaluating-from-scratch)
 - [API](#api)
 - [Apptainer (Production Build)](#apptainer-production-build)
-- [Studies](#studies)
+- [Paper Studies](#paper-studies)
 - [License](#license)
 - [Contact](#contact)
 
@@ -96,18 +96,6 @@ pip install git+https://github.com/lematerial/material-hasher.git
 pip install git+https://github.com/KellerJordan/Muon
 # Install CrystaLLM-pi in editable mode
 pip install -e .
-```
-
-### Optional: ALIGNN Environment Setup
-
-For property prediction (bandgap), set up a separate environment to avoid dependency conflicts:
-
-```bash
-conda create -n alignn_env python=3.10
-conda activate alignn_env
-pip install dgl -f https://data.dgl.ai/wheels/torch-2.1/cu121/repo.html
-pip install git+https://github.com/KellerJordan/Muon
-pip install -r requirements-alignn.txt
 ```
 
 ### API Keys Configuration
@@ -191,18 +179,24 @@ The script automatically:
 4. **Generates structures** using the appropriate conditional model architecture (automatically inferred).
 5. **Validates & Ranks** outputs based on structural integrity and optional LogP perplexity scoring.
 
-Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). The Hub-hosted Slider model (`Mattergen-XRD`) supports direct peak conditioning via `--xrd_files`, and can also run without `--xrd_files` by using missing conditioning values. The maintained second-pass experimental XRD workflow now lives in [`notebooks/X_XRD_chili100k.ipynb`](notebooks/X_XRD_chili100k.ipynb) using the Chili configs under [`_config_files/training/conditional/xrd_studies/`](_config_files/training/conditional/xrd_studies) and [`_config_files/generation/conditional/xrd_studies/`](_config_files/generation/conditional/xrd_studies).
+Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). The Hub-hosted Slider model (`Mattergen-XRD`) supports direct peak conditioning via `--xrd_files`, and can also run without `--xrd_files` by using missing conditioning values. The maintained second-pass experimental XRD workflow now lives in [`notebooks/T5_XRD_chili100k.ipynb`](notebooks/T5_XRD_chili100k.ipynb) using the Chili configs under [`_config_files/training/conditional/xrd_studies/`](_config_files/training/conditional/xrd_studies) and [`_config_files/generation/conditional/xrd_studies/`](_config_files/generation/conditional/xrd_studies).
 
 ## Available Pre-trained Models
 
-* `c-bone/CrystaLLM-pi_base`: Unconditional generation (Base model)
-* `c-bone/CrystaLLM-pi_alex_mp_20_base`: Unconditional generation (trained on alex-mp-20)
-* `c-bone/CrystaLLM-pi_mp_20_base`: Unconditional generation (trained on mp-20)
-* `c-bone/CrystaLLM-pi_SLME`: Solar efficiency conditioning (0-33% range) (PKV model)
-* `c-bone/CrystaLLM-pi_bandgap`: Bandgap + stability conditioning (0-18 eV, 0-5 eV/atom) (PKV model)
-* `c-bone/CrystaLLM-pi_density`: Density + stability conditioning (0-25 g/cm³, 0-0.1 eV/atom) (PKV model)
-* `c-bone/CrystaLLM-pi_Mattergen-XRD`: XRD pattern conditioning (Theoretical patterns, fully ordered bias) (Slider model)
-* `c-bone/CrystaLLM-pi_Chili100K-XRD`: XRD pattern conditioning (Theoretical patterns, fully ordered bias) (Slider model)
+Each released model exists because a paper study or tutorial produced it. The table says which, so you know where to look for its training setup and evaluation.
+
+| Model | Class | Conditioning | Origin |
+|---|---|---|---|
+| `c-bone/CrystaLLM-pi_base` | GPT-2 | unconditional | Default base model (LeMaterial), the starting point for finetunes |
+| `c-bone/CrystaLLM-pi_mp_20_base` | GPT-2 | unconditional | mp-20 pretraining base from the paper's pretraining studies |
+| `c-bone/CrystaLLM-pi_alex_mp_20_base` | GPT-2 | unconditional | alex-mp-20 pretraining base from the paper's dataset-size study |
+| `c-bone/CrystaLLM-pi_SLME` | PKV | solar efficiency (SLME), 0-33% | SLME discovery study, maintained here in [`T6_SLME`](notebooks/T6_SLME.ipynb) |
+| `c-bone/CrystaLLM-pi_bandgap` | PKV | bandgap + stability, 0-18 eV / 0-5 eV/atom | Pretraining-benefits study ([B1a notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/B1a_Pretrain_benefits.ipynb) in the paper repo) |
+| `c-bone/CrystaLLM-pi_density` | PKV | density + stability, 0-25 g/cm³ / 0-0.1 eV/atom | Dataset-size study ([B2 notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/B2_Dataset_size_study.ipynb) in the paper repo) |
+| `c-bone/CrystaLLM-pi_Mattergen-XRD` | Slider | XRD peaks (theoretical patterns, fully ordered bias) | XRD recovery studies ([X_XRD notebooks](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/tree/main/notebooks) in the paper repo) |
+| `c-bone/CrystaLLM-pi_Chili100K-XRD` | Slider | XRD peaks (experimental patterns) | CHILI-100K recovery study, maintained here in [`T5_XRD_chili100k`](notebooks/T5_XRD_chili100k.ipynb) |
+
+Model metadata (class, conditions, normalization) lives in [`_utils/model_registry.json`](_utils/model_registry.json). To generate with a model that is not in the table, pass a JSON file with the same schema via `--model_registry`. [`notebooks/T1_finetune_density_example.ipynb`](notebooks/T1_finetune_density_example.ipynb) walks through that full loop (finetune a density model, upload it, register it, generate with it), which is why the list has no separate demo density model.
 
 <br>
 
@@ -418,7 +412,7 @@ python _utils/_virtualiser/crystal_virtualiser.py \
 
 Complete pipeline for training your own models from data preprocessing to evaluation. All training and generation parameters and options are defined in [`_args.py`](_args.py). Training & generating should be done via configuration files (`.jsonc` format) which specify all necessary parameters.
 
-> Maintained notebook workflow: [`notebooks/X_XRD_chili100k.ipynb`](notebooks/X_XRD_chili100k.ipynb) covers CHILI-100K preprocessing, second-pass Slider finetuning, conditioned generation, unconditional control runs, and aggregate metrics.
+> Maintained notebook workflow: [`notebooks/T5_XRD_chili100k.ipynb`](notebooks/T5_XRD_chili100k.ipynb) covers CHILI-100K preprocessing, second-pass Slider finetuning, conditioned generation, unconditional control runs, and aggregate metrics.
 
 ## Data Processing Pipeline
 
@@ -643,7 +637,7 @@ Each quoted string is a **complete condition vector** (comma-separated property 
 
 ```bash
 python _utils/_generating/generate_CIFs.py \
-  --config _config_files/generation/pkv_generation.jsonc
+  --config _config_files/generation/conditional/slme/slme-PKV-opt_eval.jsonc
 ```
 
 > You can generate with arguments from the CLI, but it's easier to use the config file. You can find a lot of examples in [`_config_files/generation`](_config_files/generation)
@@ -731,9 +725,7 @@ Lower E_hull values indicate higher thermodynamic stability. Structures with E_h
 
 ### Additional Metrics
 
-XRD, bandgap or density property metrics, VUN, and stability metrics are available in `_utils/_metrics/`.
-
-> **Note**: ALIGNN-based scripts require the separate `alignn_env` environment.
+XRD or density property metrics, VUN, and stability metrics are available in `_utils/_metrics/`.
 
 # API
 
@@ -1047,12 +1039,14 @@ make api-apptainer-build APPTAINER_SIF=my-api.sif APPTAINER_DOCKER_IMAGE=crystal
 
 # Paper Studies
 
-Experimental notebooks as seen in the paper for end-to-end pipelines are available in [`notebooks/`](https://github.com/C-Bone-UCL/CrystaLLM-pi/tree/reproduce_paper/notebooks) with files starting with `X_`.
+The studies from the ["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/abs/2511.21299) paper live in the standalone reproduction repo [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper): `main` reproduces the published (v2) results, and the `paper_v1` branch preserves the pre-revision workflow. The follow-up graph-conditioned paper has its own reproduction repo, [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph).
 
-Key examples:
+Two studies stay here as maintained tutorials:
 
-* **mp-20 notebook**: Pipeline for structure recovery given desired theoretical XRD
-* **SLME notebook**: Pipeline for discovery of a material with a desired photovoltaic
+* [`notebooks/T6_SLME.ipynb`](notebooks/T6_SLME.ipynb): Discovery of a material with a target photovoltaic efficiency
+* [`notebooks/T5_XRD_chili100k.ipynb`](notebooks/T5_XRD_chili100k.ipynb): Structure recovery from experimental XRD patterns
+
+Tag [`v1.3.0`](https://github.com/C-Bone-UCL/CrystaLLM-pi/releases/tag/v1.3.0) is the exact state of this repository cited by the paper.
 
 # Tokenizer
 

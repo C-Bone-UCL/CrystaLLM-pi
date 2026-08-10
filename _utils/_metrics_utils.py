@@ -532,54 +532,16 @@ def get_density(cif):
     except Exception:
         return np.nan
     
-### Bandgap with ALIGNN
-def _predict_bandgap(df_valid, num_workers):
-    """Get ALIGNN bandgap predictions."""
-    print("Getting predictions for band gaps...")
-
-    # Add project root to path for imports
-    try:
-        sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-        from _utils._metrics.ALIGNN_props import _parse_single_cif, get_multiple_predictions
-    except Exception as e:
-        print(f"Error: {e}")
-        print("ALIGNN not installed correctly in this environment.")
-        sys.exit(1)
-    
-    # Parse CIFs for ALIGNN prediction
-    data_to_parse = [(idx, row["Generated CIF"]) for idx, row in df_valid.iterrows()]
-    with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-        futures = [executor.submit(_parse_single_cif, data) for data in data_to_parse]
-        parsed_results = []
-        
-        for future in tqdm(concurrent.futures.as_completed(futures), 
-                          total=len(futures), desc="Parsing CIFs for ALIGNN"):
-            parsed_results.append(future.result())
-    
-    # Extract valid atoms and their indices
-    atoms_list = [atoms for _, atoms in parsed_results if atoms is not None]
-    jids_list = [idx for idx, atoms in parsed_results if atoms is not None]
-    
-    # Get ALIGNN predictions
-    bg_results = get_multiple_predictions(
-        atoms_array=atoms_list, jids=jids_list, cutoff=8, max_neighbors=12,
-        model_name="mp_gappbe_alignn", batch_size=1, workers=num_workers,
-    )
-    return pd.Series(bg_results)
-
-### Density and Bandgap main functions
+### Property prediction main function
 def predict_properties(gen_df_proc, property_targets, num_workers):
-    """Run property predictions (ALIGNN + density)."""
+    """Run property predictions (density via pymatgen)."""
     df_valid = gen_df_proc[gen_df_proc["is_valid"]].copy()
-    
+
     for prop in property_targets:
-        if 'bandgap' in prop.lower() or 'bg' in prop.lower():
-            bg_series = _predict_bandgap(df_valid, num_workers)
-            gen_df_proc['ALIGNN_bg (eV)'] = bg_series
-        elif 'density' in prop.lower() or 'den' in prop.lower():
+        if 'density' in prop.lower() or 'den' in prop.lower():
             print("Getting density predictions...")
             gen_df_proc['gen_density (g/cm3)'] = df_valid["Generated CIF"].apply(get_density)
-    
+
     return gen_df_proc
 
 
