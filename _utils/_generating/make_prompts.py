@@ -205,7 +205,7 @@ def _format_condition_vectors(condition_lists):
         return ["None"]
     return [", ".join(str(v) for v in cond) for cond in condition_lists]
 
-def create_manual_prompts(compositions, condition_lists, raw_mode=False, level="level_2", spacegroups=None, mode="cartesian"):
+def create_manual_prompts(compositions, condition_lists, level="level_2", spacegroups=None, mode="cartesian"):
     """Generate prompts manually from compositions and condition lists with different detail levels."""
     # Handle compositions
     if not compositions or compositions == [None]:
@@ -299,17 +299,7 @@ def create_manual_prompts(compositions, condition_lists, raw_mode=False, level="
             else:
                 raise ValueError(f"Invalid level: {level}. Must be one of level_1, level_2, level_3, level_4")
             
-            # Apply raw mode
-            if raw_mode:
-                cond_str = str(cond).replace("'", "").replace(",", " ")
-                if cond_str == "None":
-                    prompt = base_prompt
-                else:
-                    prompt = f"<bos>\n[{cond_str}]\n" + base_prompt[6:]
-            else:
-                prompt = base_prompt
-                
-            prompts.append(prompt)
+            prompts.append(base_prompt)
             conds.append(cond)
     else:
         # Cartesian and broadcast modes
@@ -344,17 +334,7 @@ def create_manual_prompts(compositions, condition_lists, raw_mode=False, level="
                 else:
                     raise ValueError(f"Invalid level: {level}. Must be one of level_1, level_2, level_3, level_4")
                 
-                # Apply raw mode
-                if raw_mode:
-                    cond_str = str(cond).replace("'", "").replace(",", " ")
-                    if cond_str == "None":
-                        prompt = base_prompt
-                    else:
-                        prompt = f"<bos>\n[{cond_str}]\n" + base_prompt[6:]
-                else:
-                    prompt = base_prompt
-                    
-                prompts.append(prompt)
+                prompts.append(base_prompt)
                 conds.append(cond)
     
     return pd.DataFrame({'Prompt': prompts, 'condition_vector': conds})
@@ -376,7 +356,6 @@ if __name__ == "__main__":
     
     # For both modes
     parser.add_argument("--output_parquet", required=True, help="Path to output parquet file")
-    parser.add_argument("--raw", action="store_true", help="Use raw conditioning format")
     parser.add_argument("--level", type=str, choices=["level_1", "level_2", "level_3", "level_4"], 
                         help="Prompt level (required for automatic mode, optional for manual mode, default: level_2)")
     
@@ -467,7 +446,7 @@ if __name__ == "__main__":
                 if conditions:
                     condition_lists.append(conditions)
         
-        result_df = create_manual_prompts(compositions, condition_lists, args.raw, level, spacegroups, args.mode)
+        result_df = create_manual_prompts(compositions, condition_lists, level, spacegroups, args.mode)
         print(f"\nGenerated manual prompts for {len(compositions)} compositions and {len(condition_lists)} condition lists at {level} ({args.mode} mode)")
         if spacegroups:
             print(f"Using spacegroups: {spacegroups}")

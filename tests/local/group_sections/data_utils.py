@@ -99,29 +99,6 @@ class DataUtilsTests:
         assert len(result["condition_values"]) == 2, "Should have 2 condition value sets"
         assert len(result["condition_values"][0]) == 2, "Each should have 2 conditions"
     
-    def test_tokenize_function_raw(self):
-        """Test tokenize_function in raw mode (text conditioning)."""
-        from _utils._data_utils import tokenize_function
-        from _tokenizer import CustomCIFTokenizer
-        
-        tokenizer = CustomCIFTokenizer.from_pretrained("HF-cif-tokenizer")
-        
-        examples = {
-            "CIF": [self.test_data['augmented_cif']],
-            "bandgap": [0.5]
-        }
-        
-        result = tokenize_function(
-            examples, 
-            tokenizer, 
-            condition_columns="['bandgap']",
-            mode="raw"
-        )
-        
-        assert "input_ids" in result, "Should have input_ids"
-        # Raw mode embeds conditions as text, so no separate condition_values
-        assert "condition_values" not in result, "Raw mode should not have condition_values"
-    
     def test_create_fixed_format_mask(self):
         """Test fixed format mask creation for variable tokens."""
         from _utils._data_utils import create_fixed_format_mask

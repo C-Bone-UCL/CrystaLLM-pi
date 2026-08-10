@@ -127,7 +127,7 @@ Create `API_keys.jsonc` in the root directory for HuggingFace and Weights & Bias
 
 # Model Types
 
-CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> supports one unconditional and four conditional model architectures, allowing for both standard and property-driven generation. The desired model can be selected during training using the `--activate_conditionality` flag.
+CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> supports one unconditional and two conditional model architectures, allowing for both standard and property-driven generation. The desired model can be selected during training using the `--activate_conditionality` flag.
 
 > **Important:** In the paper, the `PKV` method is addressed as the `Prefix attention`, and `Slider` is called the `Residual attention`. For all intents and purposes, these are the exact same. However the codebase was developed with `PKV` and `Slider`, but their respective names were changed in the paper for technical clarity.
 
@@ -159,22 +159,7 @@ Novel architecture where conditioning information is dynamically injected into e
 <img src="images/Residual_github.png" width="75%" style="background-color:white;"/>
 </div>
 
-<details>
-<summary>Prepend and Raw model details (comparative baselines used in paper)</summary>
-
-#### c. Prepend-GPT
-
-`--activate_conditionality="Prepend"`
-
-Prepends learned embeddings (soft prompts) to the input sequence. These prefix tokens represent desired conditional properties to guide model output. Provides strong conditioning with straightforward implementation but less flexibility than attention-based methods.
-
-#### d. Raw-GPT
-
-`--activate_conditionality="Raw"`
-
-Baseline approach where numerical condition values are converted to text and appended to input prompts. Requires no architectural changes but increases sequence length. Implemented for comparison but generally less performant.
-
-</details>
+> The paper additionally benchmarks two comparative baselines (Prepend-GPT and Raw-GPT). These live in the reproduction repo [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper).
 
 <br>
 <br>

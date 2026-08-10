@@ -33,7 +33,7 @@ if torch.cuda.is_available():
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _tokenizer import CustomCIFTokenizer
-from _models import PKVGPT, PrependGPT, SliderGPT
+from _models import PKVGPT, SliderGPT
 from _args import parse_args
 from _utils import find_checkpoint_from_dir, is_sensible, is_formula_consistent, is_space_group_consistent, extract_space_group_symbol, replace_symmetry_operators, bond_length_reasonableness_score
 
@@ -142,12 +142,10 @@ def get_model_class(conditionality_type):
     """Return the appropriate model class based on the conditionality type."""
     if conditionality_type == "PKV":
         return PKVGPT
-    elif conditionality_type == "Prepend":
-        return PrependGPT
     elif conditionality_type == "Slider":
         return SliderGPT
     else:
-        # Default to GPT2LMHeadModel for unconditional or raw generation
+        # Default to GPT2LMHeadModel for unconditional generation ("Base")
         return GPT2LMHeadModel
 
 def get_model_max_length(model_ckpt_dir, activate_conditionality):
@@ -200,11 +198,6 @@ def build_generation_kwargs(args, tokenizer, max_length):
         })
     
     return base_kwargs
-
-def remove_conditionality(cif_str: str) -> str:
-    """Remove comments preceding the 'data_' block in CIF string for Raw conditioning."""
-    match = re.search(r'(data_.*)', cif_str, re.DOTALL)
-    return match.group(1) if match else cif_str
 
 def setup_device(gpu_id):
     """Setup device and return appropriate torch device."""
@@ -375,7 +368,7 @@ def generate_on_gpu(
             
             try:
                 # Handle different conditionality types
-                if activate_conditionality in ["PKV", "Prepend", "Slider"]:
+                if activate_conditionality in ["PKV", "Slider"]:
                     # Parse condition vector for conditional models
                     condition_tensor = None
                     if row["condition_vector"] not in (None, "None"):
@@ -392,7 +385,7 @@ def generate_on_gpu(
                             **generation_kwargs,
                         )
                 else:
-                    # Handle Raw or unconditional generation
+                    # Handle unconditional generation
                     with torch.inference_mode():
                         outputs = model.generate(
                             input_ids=input_ids,
@@ -427,11 +420,7 @@ def generate_on_gpu(
                     
                     # Decode full sequence (input + generated) and clean up CIF
                     cif_txt = tokenizer.decode(full_sequence, skip_special_tokens=True).replace("\n\n", "\n")
-                    
-                    # Apply remove_conditionality for Raw conditioning
-                    if activate_conditionality == "Raw":
-                        cif_txt = remove_conditionality(cif_txt)
-                    
+
                     if not check_validity:
                         # No validation or scoring - just collect all CIFs
                         mid = get_material_id(row, len(valid_cifs), global_offset)

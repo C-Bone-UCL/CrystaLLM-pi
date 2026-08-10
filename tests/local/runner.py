@@ -119,7 +119,6 @@ def main():
         suite.run_test("model_loading", model_tests.test_model_loading)
         suite.run_test("model_forward", model_tests.test_model_forward)
         suite.run_test("pkv_model_forward", model_tests.test_pkv_model_forward)
-        suite.run_test("prepend_model_forward", model_tests.test_prepend_model_forward)
         suite.run_test("slider_model_forward", model_tests.test_slider_model_forward)
         suite.run_test("conditional_model_with_labels", model_tests.test_conditional_model_with_labels)
         suite.run_test("generation_basic", gen_tests.test_generation_basic)
@@ -127,7 +126,6 @@ def main():
         suite.run_test("check_cif", gen_tests.test_check_cif)
         suite.run_test("get_model_class", gen_tests.test_get_model_class)
         suite.run_test("build_generation_kwargs_modes", gen_tests.test_build_generation_kwargs_modes)
-        suite.run_test("remove_conditionality", gen_tests.test_remove_conditionality)
         suite.run_test("get_material_id", gen_tests.test_get_material_id)
         suite.run_test("build_output_df", gen_tests.test_build_output_df)
         
@@ -146,7 +144,6 @@ def main():
         suite.run_test("filter_cifs_with_unk", data_utils_tests.test_filter_cifs_with_unk)
         suite.run_test("tokenize_function_unconditional", data_utils_tests.test_tokenize_function_unconditional)
         suite.run_test("tokenize_function_conditional", data_utils_tests.test_tokenize_function_conditional)
-        suite.run_test("tokenize_function_raw", data_utils_tests.test_tokenize_function_raw)
         suite.run_test("create_fixed_format_mask", data_utils_tests.test_create_fixed_format_mask)
         suite.run_test("parse_condition_value", data_utils_tests.test_parse_condition_value)
 

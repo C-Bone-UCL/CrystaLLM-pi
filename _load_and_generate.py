@@ -78,7 +78,6 @@ def generate_prompts_from_specs(specs: list, args) -> pd.DataFrame:
     df = create_manual_prompts(
         compositions=compositions,
         condition_lists=condition_lists,
-        raw_mode=False,
         level=args.level,
         spacegroups=sgs,
         mode="paired",

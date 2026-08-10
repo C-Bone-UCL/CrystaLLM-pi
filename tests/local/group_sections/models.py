@@ -12,7 +12,6 @@ class ModelTests:
     def test_model_loading(self):
         """Test model class imports and initialization."""
         from _models.PKV_model import PKVGPT
-        from _models.Prepend_model import PrependGPT
         from _models.Slider_model import SliderGPT
         from transformers import GPT2LMHeadModel
         
@@ -32,7 +31,6 @@ class ModelTests:
         
         # Test conditional models can be imported
         assert PKVGPT is not None, "PKV model import failed"
-        assert PrependGPT is not None, "Prepend model import failed" 
         assert SliderGPT is not None, "Slider model import failed"
     
     def test_model_forward(self):
@@ -92,41 +90,6 @@ class ModelTests:
         
         # Output shape should match input sequence length
         assert outputs.logits.shape == (batch_size, seq_len, 1000), f"PKV output shape mismatch: {outputs.logits.shape}"
-    
-    def test_prepend_model_forward(self):
-        """Test PrependGPT forward pass with condition values."""
-        from _models.Prepend_model import PrependGPT, PrependGPT2Config
-        
-        config = PrependGPT2Config(
-            vocab_size=1000,
-            n_positions=256,
-            n_embd=128,
-            n_layer=2,
-            n_head=2,
-            n_input_vector=2,
-            n_prefix_tokens=4,
-            n_hidden_cond=64,
-            dropout=0.1
-        )
-        
-        model = PrependGPT(config)
-        model.eval()
-        
-        batch_size = 2
-        seq_len = 10
-        input_ids = torch.randint(0, 1000, (batch_size, seq_len))
-        attention_mask = torch.ones(batch_size, seq_len)
-        condition_values = torch.rand(batch_size, 2)
-        
-        with torch.no_grad():
-            outputs = model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                condition_values=condition_values
-            )
-        
-        # PrependGPT slices off prefix tokens from output, so logits should be seq_len
-        assert outputs.logits.shape == (batch_size, seq_len, 1000), f"Prepend output shape mismatch: {outputs.logits.shape}"
     
     def test_slider_model_forward(self):
         """Test SliderGPT forward pass with condition values."""

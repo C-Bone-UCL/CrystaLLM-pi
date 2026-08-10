@@ -101,13 +101,6 @@ def main():
             args.deepspeed_config = None
             print("Deepspeed config provided, but only 1 GPU detected. Disabling deepspeed.")
 
-    ## If raw conditionality is activated, we need to adjust the context length
-    if args.activate_conditionality == "Raw":
-        # For fair comparison with PKV/Prepend/Slider conditioning
-        additional_tokens = int(5 * args.n_prefix_tokens + args.n_prefix_tokens + 2)
-        args.context_length = args.context_length + additional_tokens
-
-
     # Dataloading and tokenization
     ## Load dataset with the specified cache directory
     cache_dir = os.path.join(args.output_dir, "..", ".cache")
@@ -122,7 +115,7 @@ def main():
     )
 
     ## Fetch data_collator and tokenized dataset
-    if args.activate_conditionality in ["PKV", "Prepend", "Slider"]:
+    if args.activate_conditionality in ["PKV", "Slider"]:
         print("\n**CONDITIONALITY ACTIVATED**")
         print(f"Condition type: {args.activate_conditionality}")
         # Load data and data collator
@@ -137,22 +130,6 @@ def main():
             show_token_stats=VERBOSE,
             validate_conditions=VERBOSE
         )
-    elif args.activate_conditionality == "Raw":
-        print("\n**RAW CONDITIONALITY ACTIVATED**")
-        print(f"Condition type: {args.activate_conditionality}")
-        # Load data and data collator
-        tokenized_dataset, data_collator = load_data(
-            tokenizer=tokenizer,
-            dataset=dataset,
-            context_length=args.context_length,
-            mode="raw",
-            condition_columns=args.condition_columns,
-            remove_CIFs_above_context=args.remove_CIFs_above_context,
-            remove_CIFs_with_unk=args.remove_CIFs_with_unk,
-            show_token_stats=VERBOSE,
-            validate_conditions=VERBOSE
-        )
-        print(f"Context length for raw conditionality (to account for new condition tokens): {args.context_length}")
     elif args.activate_conditionality == "None" or args.activate_conditionality is None:
         print("\n**CONDITIONALITY DEACTIVATED**")
         # Load data and data collator
@@ -174,7 +151,7 @@ def main():
 
     # Build or Load a model
     ## If conditional model chosen, we assume finetuning, and so we always want to eval on start
-    eval_on_start = args.activate_conditionality in ["PKV", "Prepend", "Slider", "Raw"] and args.eval_strategy != "no"
+    eval_on_start = args.activate_conditionality in ["PKV", "Slider"] and args.eval_strategy != "no"
     ## Build base model (works for all)
     model = build_model(args, tokenizer)
     

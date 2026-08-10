@@ -178,8 +178,8 @@ def load_data(
     Prepare dataset for training by tokenizing CIF texts and creating a data collator.
     
     Args:
-        mode: "unconditional", "conditional", or "raw"
-        condition_columns: Required for conditional/raw modes
+        mode: "unconditional" or "conditional"
+        condition_columns: Required for conditional mode
         remove_CIFs_above_context: Whether to filter out CIFs longer than context_length
         remove_CIFs_with_unk: Whether to filter out CIFs containing unknown tokens
         show_token_stats: Whether to display token length statistics
@@ -187,12 +187,12 @@ def load_data(
     """
     
     # Validate inputs
-    if mode in ["conditional", "raw"] and condition_columns is None:
+    if mode == "conditional" and condition_columns is None:
         raise ValueError(f"condition_columns must be provided for mode='{mode}'")
-    
-    # Parse condition columns for conditional/raw modes
+
+    # Parse condition columns for conditional mode
     parsed_condition_columns = None
-    if mode in ["conditional", "raw"]:
+    if mode == "conditional":
         try:
             parsed_condition_columns = ast.literal_eval(str(condition_columns))
         except Exception as e:
@@ -205,9 +205,6 @@ def load_data(
     elif mode == "conditional":
         def tokenize_fn(examples):
             return tokenize_function(examples, tokenizer, condition_columns, mode="conditional")
-    elif mode == "raw":
-        def tokenize_fn(examples):
-            return tokenize_function(examples, tokenizer, condition_columns, mode="raw")
     else:
         raise ValueError(f"Unknown mode: {mode}")
 
@@ -232,7 +229,7 @@ def load_data(
         ]
         if validate_conditions:
             columns_to_keep.append("__raw_idx")
-    else:  # unconditional or raw
+    else:  # unconditional
         columns_to_keep = [
             "input_ids",
             "token_type_ids",

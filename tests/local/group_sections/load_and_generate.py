@@ -110,7 +110,6 @@ class LoadAndGenerateTests:
             condition_lists=[["0.5"]],
             level="level_2",
             spacegroups=None,
-            raw_mode=False
         )
         
         assert len(df_prompts) > 0, "Should generate prompts"

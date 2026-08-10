@@ -47,7 +47,6 @@ class MakePromptsRequest(BaseModel):
     compositions: Optional[str] = Field(None, description="Comma-separated compositions")
     condition_lists: Optional[List[str]] = Field(None, description="Condition value lists")
     level: Literal["level_1", "level_2", "level_3", "level_4"] = Field("level_2", description="Prompt level")
-    raw: bool = Field(False, description="Use raw conditioning format")
     spacegroups: Optional[str] = Field(None, description="Space groups (for level_4)")
     automatic: bool = Field(False, description="Automatic mode (extract from dataset)")
     HF_dataset: Optional[str] = Field(None, description="HuggingFace dataset name")
@@ -222,9 +221,6 @@ def register_generation_routes(
             "--output_parquet", request.output_parquet,
             "--level", request.level,
         ]
-
-        if request.raw:
-            cmd.append("--raw")
 
         if is_manual:
             cmd.append("--manual")

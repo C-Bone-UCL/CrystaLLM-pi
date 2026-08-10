@@ -39,11 +39,9 @@ class TrainingTests:
         # Test different model imports
         try:
             from _models.PKV_model import PKVGPT
-            from _models.Prepend_model import PrependGPT
             from _models.Slider_model import SliderGPT
-            
+
             assert PKVGPT is not None, "PKV model class exists"
-            assert PrependGPT is not None, "Prepend model class exists" 
             assert SliderGPT is not None, "Slider model class exists"
             
         except Exception as e:

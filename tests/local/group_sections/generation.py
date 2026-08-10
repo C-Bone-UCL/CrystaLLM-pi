@@ -85,17 +85,15 @@ class GenerationTests:
     def test_get_model_class(self):
         """Test model class selection."""
         from _utils._generating.generate_CIFs import get_model_class
-        from _models import PKVGPT, PrependGPT, SliderGPT
+        from _models import PKVGPT, SliderGPT
         from transformers import GPT2LMHeadModel
-        
+
         # Test each conditionality type
         assert get_model_class("PKV") == PKVGPT, "PKV should return PKVGPT"
-        assert get_model_class("Prepend") == PrependGPT, "Prepend should return PrependGPT"
         assert get_model_class("Slider") == SliderGPT, "Slider should return SliderGPT"
-        
+
         # Test default/unconditional cases
         assert get_model_class(None) == GPT2LMHeadModel, "None should return GPT2LMHeadModel"
-        assert get_model_class("Raw") == GPT2LMHeadModel, "Raw should return GPT2LMHeadModel"
         assert get_model_class("unconditional") == GPT2LMHeadModel, "Unknown type should return GPT2LMHeadModel"
     
     def test_build_generation_kwargs_modes(self):
@@ -139,32 +137,6 @@ class GenerationTests:
         args_long.gen_max_length = 2048
         kwargs_capped = build_generation_kwargs(args_long, tokenizer, 1024)
         assert kwargs_capped['max_length'] == 1024, "max_length should be capped to model max"
-    
-    def test_remove_conditionality(self):
-        """Test removal of conditioning comments from CIF."""
-        from _utils._generating.generate_CIFs import remove_conditionality
-        
-        # Test with comments before data_ block
-        cif_with_comments = """# Bandgap: 2.5 eV
-# Density: 3.2 g/cm3
-data_Si1O2
-_cell_length_a 5.0
-loop_
- _atom_site_label
-  Si0"""
-        result = remove_conditionality(cif_with_comments)
-        assert result.startswith("data_"), "Should start with data_"
-        assert "Bandgap" not in result, "Comments should be removed"
-        
-        # Test with no comments
-        cif_clean = "data_Ti1O2\n_cell_length_a 4.5"
-        result_clean = remove_conditionality(cif_clean)
-        assert result_clean == cif_clean, "Clean CIF should be unchanged"
-        
-        # Test with no data_ block (edge case)
-        no_data = "# Just comments\n_cell_length_a 5.0"
-        result_no_data = remove_conditionality(no_data)
-        assert result_no_data == no_data, "No data_ block should return original"
     
     def test_get_material_id(self):
         """Test material ID extraction/generation."""

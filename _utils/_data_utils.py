@@ -128,10 +128,10 @@ def create_fixed_format_mask(text, tokenizer, full_length):
 
 def _validate_inputs(condition_columns, mode):
     """Quick validation of critical inputs."""
-    if mode in ["conditional", "raw"] and condition_columns is None:
+    if mode == "conditional" and condition_columns is None:
         raise ValueError(f"condition_columns required for mode '{mode}'")
-    
-    if mode in ["conditional", "raw"] and condition_columns is not None:
+
+    if mode == "conditional" and condition_columns is not None:
         parsed = ast.literal_eval(str(condition_columns)) if isinstance(condition_columns, str) else condition_columns
         if not isinstance(parsed, list):
             raise ValueError("condition_columns must be a list")
@@ -173,38 +173,16 @@ def _process_conditions_for_numeric(examples, condition_columns, num_examples):
     
     return batch_condition_values
 
-def _process_conditions_for_text(examples, condition_columns, num_examples):
-    """Process conditions and return as formatted text strings."""
-    condition_strings = []
-    
-    for i in range(num_examples):
-        condition_strs = []
-        for column_name in condition_columns:
-            raw_value = examples[column_name][i]
-            float_values = _parse_condition_value(raw_value)
-            float_strings = [f"{v:.4f}" for v in float_values]
-            condition_strs.extend(float_strings)
-        
-        condition_strings.append(f"[{' '.join(condition_strs)}]")
-    
-    return condition_strings
-
 def tokenize_function(examples, tokenizer, condition_columns=None, mode="unconditional"):
     """Tokenize CIF examples with optional conditioning support."""
-    if mode not in ["unconditional", "conditional", "raw"]:
-        raise ValueError(f"Invalid mode: {mode}. Must be 'unconditional', 'conditional', or 'raw'")
-    
+    if mode not in ["unconditional", "conditional"]:
+        raise ValueError(f"Invalid mode: {mode}. Must be 'unconditional' or 'conditional'")
+
     num_examples = len(examples["CIF"])
     parsed_condition_columns = _validate_inputs(condition_columns, mode)
-    
-    # Prepare texts based on mode
-    if mode in ["unconditional", "conditional"]:
-        texts = [f"{tokenizer.bos_token}\n{example}\n{tokenizer.eos_token}" for example in examples["CIF"]]
-    else:  # mode == "raw"
-        condition_strings = _process_conditions_for_text(examples, parsed_condition_columns, num_examples)
-        texts = [f"{tokenizer.bos_token}\n{condition_strings[i]}\n{examples['CIF'][i]}\n{tokenizer.eos_token}" 
-                for i in range(num_examples)]
-    
+
+    texts = [f"{tokenizer.bos_token}\n{example}\n{tokenizer.eos_token}" for example in examples["CIF"]]
+
     tokenized_output = tokenizer(
         texts,
         truncation=False,

@@ -346,7 +346,7 @@ def setup_scheduler(args, model):
 
         # Keywords that identify conditioning module parameters
         cond_keywords = ["slider", "conditioning", "prefix_embedding"]
-        use_cond_separation = args.activate_conditionality in ["PKV", "Prepend", "Slider"]
+        use_cond_separation = args.activate_conditionality in ["PKV", "Slider"]
 
         for name, param in model.named_parameters():
             if not param.requires_grad:
@@ -410,7 +410,7 @@ def setup_scheduler(args, model):
         )
         return optimizer, lr_scheduler
 
-    if args.activate_conditionality in ["PKV", "Prepend", "Slider"]:
+    if args.activate_conditionality in ["PKV", "Slider"]:
         base_params, cond_params = [], []
         for n, p in model.named_parameters():
             if not p.requires_grad:

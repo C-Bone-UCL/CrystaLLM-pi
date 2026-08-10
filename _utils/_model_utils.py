@@ -8,20 +8,16 @@ import torch
 from transformers import GPT2Config, GPT2LMHeadModel
 
 from _models import (
-    PKVGPT, 
-    PrependGPT,
+    PKVGPT,
     SliderGPT,
     PKVGPT2Config,
-    PrependGPT2Config,
     SliderGPT2Config,
 )
 
 # Registry mapping conditionality types to (config_class, model_class)
 MODEL_REGISTRY = {
     "PKV": (PKVGPT2Config, PKVGPT),
-    "Prepend": (PrependGPT2Config, PrependGPT),
     "Slider": (SliderGPT2Config, SliderGPT),
-    "Raw": (GPT2Config, GPT2LMHeadModel),
     None: (GPT2Config, GPT2LMHeadModel),
 }
 
@@ -47,7 +43,7 @@ def _load_with_sdpa_fallback(model_class, pretrained_path, config, **kwargs):
 
 def _get_n_positions(args, conditionality):
     """Calculate target n_positions based on conditionality type."""
-    if conditionality in ("PKV", "Prepend"):
+    if conditionality == "PKV":
         return args.context_length + args.n_prefix_tokens
     return args.context_length
 
@@ -115,15 +111,6 @@ def load_pretrained_model(args, tokenizer):
             share_layers=getattr(args, 'share_layers', False),
             dropout=args.cond_dropout,
         )
-    elif conditionality == "Prepend":
-        config = config_class.from_pretrained(
-            args.pretrained_model_dir,
-            n_input_vector=_parse_condition_columns(args),
-            n_prefix_tokens=args.n_prefix_tokens,
-            n_hidden_cond=args.n_hidden_cond,
-            share_layers=getattr(args, 'share_layers', False),
-            dropout=args.cond_dropout,
-        )
     elif conditionality == "Slider":
         # Do NOT pass n_positions here, load at checkpoint's native size
         config = config_class.from_pretrained(
@@ -134,12 +121,6 @@ def load_pretrained_model(args, tokenizer):
             slider_n_hidden=args.n_hidden_cond,
             slider_n_heads_sharing_slider=args.n_heads_sharing_slider,
             slider_dropout=args.cond_dropout,
-        )
-    elif conditionality == "Raw":
-        # Same, load at checkpoint's native n_positions
-        config = config_class.from_pretrained(
-            args.pretrained_model_dir,
-            vocab_size=vocab_size,
         )
     else:
         config = config_class.from_pretrained(args.pretrained_model_dir)
@@ -174,15 +155,6 @@ def build_model(args, tokenizer):
             n_positions=target_n_positions,
             **base_config
         )
-    elif conditionality == "Prepend":
-        config = config_class(
-            n_input_vector=_parse_condition_columns(args),
-            n_prefix_tokens=args.n_prefix_tokens,
-            n_hidden_cond=args.n_hidden_cond,
-            dropout=args.cond_dropout,
-            n_positions=target_n_positions,
-            **base_config
-        )
     elif conditionality == "Slider":
         config = config_class(
             slider_on=True,
@@ -194,7 +166,7 @@ def build_model(args, tokenizer):
             **base_config
         )
     else:
-        # Raw or unconditional
+        # unconditional
         config = config_class(n_positions=target_n_positions, **base_config)
 
     model = model_class(config)

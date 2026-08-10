@@ -11,7 +11,7 @@ class GenerationPipelineTests:
         """Test generation script components - comprehensive import check."""
         from _utils._generating.generate_CIFs import (
             init_tokenizer, setup_device, check_cif, get_model_class,
-            build_generation_kwargs, remove_conditionality, parse_condition_vector,
+            build_generation_kwargs, parse_condition_vector,
             get_material_id, build_output_df, score_output_logp, score_outputs_logp,
             DEFAULT_MAX_LENGTH, TOKENIZER_PAD_TOKEN, DEFAULT_TOKENIZER_DIR
         )
