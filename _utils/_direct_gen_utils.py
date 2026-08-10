@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 from collections import OrderedDict
+from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -26,82 +27,6 @@ XRD_TOP_K_PEAKS = 20
 XRD_THETA_MIN, XRD_THETA_MAX = 0.0, 90.0
 XRD_PADDING_VALUE = -100
 
-MODEL_INFO = {
-    "c-bone/CrystaLLM-pi_base": {
-        "description": "Unconditional generation",
-        "conditions": 0,
-        "example_conditions": None,
-        "max": None,
-        "min": None,
-        "normalization": None,
-        "model_type": "Base",
-    },
-    "c-bone/CrystaLLM-pi_alex_mp_20_base": {
-        "description": "Unconditional generation",
-        "conditions": 0,
-        "example_conditions": None,
-        "max": None,
-        "min": None,
-        "normalization": None,
-        "model_type": "Base",
-    },
-    "c-bone/CrystaLLM-pi_mp_20_base": {
-        "description": "Unconditional generation",
-        "conditions": 0,
-        "example_conditions": None,
-        "max": None,
-        "min": None,
-        "normalization": None,
-        "model_type": "Base",
-    },
-    "c-bone/CrystaLLM-pi_SLME": {
-        "description": "Solar cell efficiency (SLME) conditioning",
-        "conditions": 1,
-        "example_conditions": ["25.0"],
-        "max": 33.192,
-        "min": 0.0,
-        "normalization": "linear",
-        "model_type": "PKV",
-    },
-    "c-bone/CrystaLLM-pi_bandgap": {
-        "description": "Bandgap + stability conditioning",
-        "conditions": 2,
-        "example_conditions": ["1.1", "0.0"],
-        "max": [17.891, 5.418],
-        "min": [0.0, 0.0],
-        "normalization": ["power_log", "linear"],
-        "model_type": "PKV",
-    },
-    "c-bone/CrystaLLM-pi_density": {
-        "description": "Density + stability conditioning",
-        "conditions": 2,
-        "example_conditions": ["3.0", "0.0"],
-        "max": [25.494, 0.1],
-        "min": [0.0, 0.0],
-        "normalization": ["linear", "linear"],
-        "model_type": "PKV",
-    },
-    "c-bone/CrystaLLM-pi_Mattergen-XRD": {
-        "description": "Theoretical XRD conditioning",
-        "conditions": 40,
-        "example_conditions": "See tests/fixtures/test_rutile_processed.csv",
-        "max": [90.0, 100.0],
-        "min": [0.0, 0.0],
-        "normalization": ["linear", "linear"],
-        "model_type": "Slider",
-    },
-    "c-bone/CrystaLLM-pi_Chili100K-XRD": {
-        "description": "Experimental Struct. XRD conditioning",
-        "conditions": 40,
-        "example_conditions": "See tests/fixtures/test_rutile_processed.csv",
-        "max": [90.0, 100.0],
-        "min": [0.0, 0.0],
-        "normalization": ["linear", "linear"],
-        "model_type": "Slider",
-    },
-}
-
-
 def _load_custom_model_registry(path: str) -> dict[str, object]:
     """Load model metadata supplied outside the package."""
     with open(path, encoding="utf-8") as file:
@@ -109,6 +34,11 @@ def _load_custom_model_registry(path: str) -> dict[str, object]:
     if not isinstance(registry, dict):
         raise ValueError("Model registry must be a JSON object keyed by Hugging Face path")
     return registry
+
+
+# Default registry of published hub models; --model_registry overlays extra entries on top.
+_DEFAULT_REGISTRY_PATH = Path(__file__).with_name("model_registry.json")
+MODEL_INFO: Dict[str, dict] = _load_custom_model_registry(str(_DEFAULT_REGISTRY_PATH))
 
 
 def _as_list(value, fallback):

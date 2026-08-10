@@ -202,6 +202,7 @@ def main():
         # Load and generate tests
         print("\n🤗 HF Load & Generate Tests:")
         suite.run_test("hf_model_loading", load_gen_tests.test_hf_model_loading)
+        suite.run_test("model_registry_json_schema", load_gen_tests.test_model_registry_json_schema)
         suite.run_test("custom_model_registry", load_gen_tests.test_custom_model_registry)
         suite.run_test("invalid_custom_model_registry", load_gen_tests.test_invalid_custom_model_registry)
         suite.run_test("prompt_generation_from_args", load_gen_tests.test_prompt_generation_from_args)

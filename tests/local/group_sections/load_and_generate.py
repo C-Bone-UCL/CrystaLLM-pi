@@ -25,6 +25,19 @@ class LoadAndGenerateTests:
         model_info = _load_and_generate.MODEL_INFO["c-bone/CrystaLLM-pi_base"]
         assert model_info["model_type"] == "Base"
 
+    def test_model_registry_json_schema(self) -> None:
+        """Packaged default registry parses and every entry is complete."""
+        from _utils._direct_gen_utils import MODEL_INFO
+
+        required = {"description", "conditions", "example_conditions",
+                    "max", "min", "normalization", "model_type"}
+        assert MODEL_INFO, "default registry is empty"
+        for path, info in MODEL_INFO.items():
+            missing = required - set(info)
+            assert not missing, f"{path} missing keys: {missing}"
+            assert info["model_type"] in {"Base", "PKV", "Slider"}, \
+                f"{path}: unknown model_type {info['model_type']!r}"
+
     def test_custom_model_registry(self) -> None:
         """A custom registry resolves a Hub path and normalizes raw conditions."""
         import _load_and_generate

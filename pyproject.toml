@@ -29,3 +29,6 @@ py-modules = [
 where = ["."]
 include = ["_models*", "_utils*", "tests*"]
 
+[tool.setuptools.package-data]
+"_utils" = ["model_registry.json"]
+

@@ -1,0 +1,74 @@
+{
+  "c-bone/CrystaLLM-pi_base": {
+    "description": "Unconditional generation",
+    "conditions": 0,
+    "example_conditions": null,
+    "max": null,
+    "min": null,
+    "normalization": null,
+    "model_type": "Base"
+  },
+  "c-bone/CrystaLLM-pi_alex_mp_20_base": {
+    "description": "Unconditional generation",
+    "conditions": 0,
+    "example_conditions": null,
+    "max": null,
+    "min": null,
+    "normalization": null,
+    "model_type": "Base"
+  },
+  "c-bone/CrystaLLM-pi_mp_20_base": {
+    "description": "Unconditional generation",
+    "conditions": 0,
+    "example_conditions": null,
+    "max": null,
+    "min": null,
+    "normalization": null,
+    "model_type": "Base"
+  },
+  "c-bone/CrystaLLM-pi_SLME": {
+    "description": "Solar cell efficiency (SLME) conditioning",
+    "conditions": 1,
+    "example_conditions": ["25.0"],
+    "max": 33.192,
+    "min": 0.0,
+    "normalization": "linear",
+    "model_type": "PKV"
+  },
+  "c-bone/CrystaLLM-pi_bandgap": {
+    "description": "Bandgap + stability conditioning",
+    "conditions": 2,
+    "example_conditions": ["1.1", "0.0"],
+    "max": [17.891, 5.418],
+    "min": [0.0, 0.0],
+    "normalization": ["power_log", "linear"],
+    "model_type": "PKV"
+  },
+  "c-bone/CrystaLLM-pi_density": {
+    "description": "Density + stability conditioning",
+    "conditions": 2,
+    "example_conditions": ["3.0", "0.0"],
+    "max": [25.494, 0.1],
+    "min": [0.0, 0.0],
+    "normalization": ["linear", "linear"],
+    "model_type": "PKV"
+  },
+  "c-bone/CrystaLLM-pi_Mattergen-XRD": {
+    "description": "Theoretical XRD conditioning",
+    "conditions": 40,
+    "example_conditions": "See tests/fixtures/test_rutile_processed.csv",
+    "max": [90.0, 100.0],
+    "min": [0.0, 0.0],
+    "normalization": ["linear", "linear"],
+    "model_type": "Slider"
+  },
+  "c-bone/CrystaLLM-pi_Chili100K-XRD": {
+    "description": "Experimental Struct. XRD conditioning",
+    "conditions": 40,
+    "example_conditions": "See tests/fixtures/test_rutile_processed.csv",
+    "max": [90.0, 100.0],
+    "min": [0.0, 0.0],
+    "normalization": ["linear", "linear"],
+    "model_type": "Slider"
+  }
+}
