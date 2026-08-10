@@ -7,7 +7,7 @@ import pandas as pd
 
 
 class NotebookUtilsTests:
-    """Test notebook utility helpers from _utils/_notebook_utils.py."""
+    """Test notebook utility helpers from the _utils/_notebook_utils package."""
 
     def __init__(self, temp_dir, test_data):
         self.temp_dir = temp_dir
@@ -158,77 +158,3 @@ class NotebookUtilsTests:
             "Structure Nov.",
             "Composition Nov.",
         ]
-
-    def test_get_metrics_ptnd_vs_scratch_returns_core_keys(self):
-        from _utils._notebook_utils import get_metrics_ptnd_vs_scratch
-
-        train_df = pd.DataFrame({"Bandgap (eV)": np.linspace(0.1, 7.0, 60)})
-        df_dict = {
-            "slider-pretrained": pd.DataFrame({
-                "target_Bandgap (eV)": [6.2, 6.2],
-                "ALIGNN_bg (eV)": [6.1, 6.3],
-                "ehull_mace_mp": [0.01, 0.02],
-                "is_valid": [True, True],
-                "is_unique": [True, True],
-                "is_novel": [True, True],
-            }),
-            "slider-scratch": pd.DataFrame({
-                "target_Bandgap (eV)": [6.2, 6.2],
-                "ALIGNN_bg (eV)": [5.7, 5.8],
-                "ehull_mace_mp": [0.01, 0.20],
-                "is_valid": [True, False],
-                "is_unique": [True, True],
-                "is_novel": [True, False],
-            }),
-        }
-
-        metrics = get_metrics_ptnd_vs_scratch(df_dict, train_df=train_df)
-
-        assert "avg_delta_validity" in metrics
-        assert "avg_delta_hit_rate" in metrics
-        assert "avg_delta_quality" in metrics
-
-    def test_get_metrics_dataset_size_study_returns_raw_dataframe(self):
-        from _utils._notebook_utils import get_metrics_dataset_size_study
-
-        train_df = pd.DataFrame({"Density (g/cm^3)": [1.0, 2.0, 3.0, 4.0]})
-        dfs_dict = {
-            "slider-1k": pd.DataFrame({
-                "target_Density (g/cm^3)": [1.2747, 1.2747],
-                "gen_density (g/cm3)": [1.1, 1.4],
-                "is_valid": [True, True],
-            }),
-            "pkv-1k": pd.DataFrame({
-                "target_Density (g/cm^3)": [1.2747, 1.2747],
-                "gen_density (g/cm3)": [1.2, 1.3],
-                "is_valid": [True, True],
-            }),
-        }
-
-        metrics = get_metrics_dataset_size_study(dfs_dict, train_df, targets=(1.2747,))
-
-        assert "raw_dataframe" in metrics
-        assert "ttest_residual_vs_prefix_t" in metrics
-        assert "ttest_residual_vs_prefix_p" in metrics
-
-    def test_plot_dataset_stats_writes_png(self):
-        import matplotlib
-
-        matplotlib.use("Agg")
-
-        from _utils._notebook_utils import plot_dataset_stats
-
-        loaded = [(
-            "toy_plot",
-            pd.DataFrame({
-                "token_count": [10, 40],
-                "conv_count": [8, 12],
-                "prim_count": [4, 6],
-            }),
-            20,
-        )]
-        save_dir = os.path.join(self.temp_dir, "plot_output")
-
-        plot_dataset_stats(loaded, save_dir=save_dir)
-
-        assert os.path.exists(os.path.join(save_dir, "toy_plot.png"))

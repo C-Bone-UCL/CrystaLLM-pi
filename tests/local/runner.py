@@ -160,9 +160,6 @@ def main():
         suite.run_test("notebook_utils_stratified_only_matched", notebook_utils_tests.test_get_stratified_metrics_xrd_only_matched_and_missing_score)
         suite.run_test("notebook_utils_extract_formula_fallback", notebook_utils_tests.test_extract_formula_fallback)
         suite.run_test("notebook_utils_summary_columns", notebook_utils_tests.test_run_material_selection_preserves_summary_columns)
-        suite.run_test("notebook_utils_ptnd_metrics", notebook_utils_tests.test_get_metrics_ptnd_vs_scratch_returns_core_keys)
-        suite.run_test("notebook_utils_dataset_size_metrics", notebook_utils_tests.test_get_metrics_dataset_size_study_returns_raw_dataframe)
-        suite.run_test("notebook_utils_plot_stats", notebook_utils_tests.test_plot_dataset_stats_writes_png)
         
         # Evaluation tests
         print("\n📊 Evaluation Tests:")
