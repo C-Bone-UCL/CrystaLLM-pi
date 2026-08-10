@@ -47,7 +47,7 @@ def plot_density_histogram(
     fig, ax = plt.subplots(figsize=figsize)
     
     # Pre-define colors for consistency
-    colors = ['blue', 'orange', 'green', 'red']
+    colors = ['blue', '#F0E442', 'green', 'red']
     
     # Iterate through the dictionary to plot each dataset
     for (label, df), color in zip(dfs_dict.items(), colors):

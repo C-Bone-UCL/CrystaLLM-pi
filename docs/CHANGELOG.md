@@ -33,7 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Reproducibility and Branching
 
-- **Repository Split**: `paper-v2` branch preserves the paper-reproduction workflow and therefore excludes the post-paper generation and validation updates previously introduced on `main`: redundant transition-score removal during perplexity ranking, extra validity checks, full-batch perplexity scoring before slicing to `target_valid_cifs`, and stricter formula-consistency handling. `main` remains the maintained branch and includes those updates.
+- **Repository Split**: this standalone `CrystaLLM-pi-paper` repository preserves the paper-reproduction workflow (v2 on `main`, v1 on `paper_v1`) and therefore excludes the post-paper generation and validation updates introduced on the maintained zoo repository: redundant transition-score removal during perplexity ranking, extra validity checks, full-batch perplexity scoring before slicing to `target_valid_cifs`, and stricter formula-consistency handling. The zoo repository [`CrystaLLM-pi`](https://github.com/C-Bone-UCL/CrystaLLM-pi) remains the maintained package.
 
 ---
 
