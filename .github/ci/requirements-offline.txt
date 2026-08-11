@@ -21,5 +21,6 @@ mace-torch==0.3.13
 fastapi==0.115.5
 uvicorn==0.32.1
 powerxrd==3.0.0
+einops==0.8.1
 pymatgen==2025.1.9
 numpy==1.26.4

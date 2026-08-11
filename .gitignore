@@ -3,7 +3,7 @@ __pycache__/
 model_ckpts/
 _utils/_evaluation/evaluation_files/
 HF-databases/
-_comp_metrics/
+__comp_metrics/
 API_keys.jsonc
 optuna_hpsearch_cllmv2.db
 benchmark_metrics.csv
