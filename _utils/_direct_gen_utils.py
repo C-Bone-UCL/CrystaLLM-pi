@@ -21,6 +21,7 @@ from transformers import AutoConfig
 from _utils import is_valid, normalize_values_with_method
 from _utils._generating.generate_CIFs import DEFAULT_MAX_LENGTH
 from _utils._preprocessing._process_exp_XRD_inputs import process_and_convert
+from _utils._preprocessing._process_exp_XRD_continuous import process_exp_file_to_continuous
 
 # XRD normalization constants
 XRD_TOP_K_PEAKS = 20
@@ -48,9 +49,22 @@ def _as_list(value, fallback):
         return [fallback]
     return [value]
 
+XRD_FORMATS = {"xrd_top20", "xrd_continuous"}
+
+
+def get_condition_format(model_path: str) -> Optional[str]:
+    """Condition format from the registry; legacy fallback: Slider entries are top-20 XRD."""
+    info = MODEL_INFO.get(model_path) or {}
+    fmt = info.get("condition_format")
+    if fmt is None and info.get("model_type") == "Slider":
+        fmt = "xrd_top20"
+    return fmt
+
+
 def is_xrd_model(model_path: str) -> bool:
-    """Return True when the model path indicates XRD conditioning."""
-    return "xrd" in model_path.lower()
+    """Return True when the model consumes XRD conditioning."""
+    # Path substring kept only for overlay registry entries missing condition_format.
+    return get_condition_format(model_path) in XRD_FORMATS or "xrd" in model_path.lower()
 
 def parse_xrd_file_to_condition_vector(file_path: str, wavelength: float = 1.54056) -> List[float]:
     """Parse and process raw XRD file to 40-value condition vector using dynamic processing."""
@@ -93,19 +107,26 @@ def validate_model_conditions(model_path: str, condition_lists: Optional[List[Li
     provided = len(condition_lists) if condition_lists else 0
 
     if expected > 0 and expected != provided:
-        examples = model_info.get("example_conditions", [])
+        examples = model_info.get("example_conditions") or []
+        example_str = ", ".join(examples) if isinstance(examples, list) else str(examples)
         raise ValueError(
-            f"Model {model_path} needs {expected} condition list(s), got {provided}.\n"
-            f"Try: {examples}\n({model_info['description']})"
+            f"Model {model_path} expects {expected} condition value(s) per formula, got {provided}.\n"
+            f'Pass one comma-separated string per formula, e.g.: --condition_lists "{example_str}"\n'
+            f"({model_info['description']})"
         )
 
-def get_hf_model_max_length(hf_model_path: str) -> int:
-    """Fetch max context length from HF config, falling back to default."""
+def get_hf_model_max_length(hf_model_path: str, model_type: Optional[str] = None) -> int:
+    """Fetch usable text context length from HF config, falling back to default."""
     try:
         cfg = AutoConfig.from_pretrained(hf_model_path, trust_remote_code=True)
         for attr in ("n_positions", "max_position_embeddings", "n_ctx"):
             val = getattr(cfg, attr, None)
             if isinstance(val, int) and val > 0:
+                if model_type in ("Prefix", "PrefixXRD"):
+                    # Prefix families extend wpe by n_prefix_tokens; the text budget excludes
+                    # them. PKV is deliberately NOT subtracted so legacy hub models generate
+                    # identically.
+                    return max(val - int(getattr(cfg, "n_prefix_tokens", 0) or 0), 1)
                 return val
     except Exception:
         pass
@@ -173,24 +194,30 @@ def build_reduced_formula_specs(
     formulas: List[str],
     z_values: List[int],
     properties: List[dict],
-    is_xrd: bool = False,
-    xrd_wavelength: float = 1.54056
+    xrd_format: Optional[str] = None,
+    xrd_wavelength: Optional[float] = None,
+    xrd_background_subtract: bool = True
 ) -> List[dict]:
     """Build one prompt spec per formula row using strictly parallel lists.
 
     Each index i in formulas/z_values/properties corresponds to one output spec.
     properties[i] must be a dict with keys: xrd (file path or None), sg (str or None),
-    cond (condition-vector string or None).
+    cond (condition-vector string or None). With an XRD format set, each spec's
+    condition_vector comes from its raw scan file instead: "xrd_top20" yields the
+    legacy 40-value string, "xrd_continuous" the nested (1000, 2) [Q, I] list.
     """
     specs = []
     for prompt_order, (formula, z_val, prop) in enumerate(zip(formulas, z_values, properties), start=1):
-        xrd_source = prop.get("xrd") if is_xrd else None
+        xrd_source = prop.get("xrd") if xrd_format else None
         cond_str = prop.get("cond")
 
-        if is_xrd and xrd_source:
+        if xrd_source and xrd_format == "xrd_top20":
+            legacy_wavelength = xrd_wavelength if xrd_wavelength is not None else 1.54056
             cond_str = ", ".join(
-                str(v) for v in parse_xrd_file_to_condition_vector(xrd_source, xrd_wavelength)
+                str(v) for v in parse_xrd_file_to_condition_vector(xrd_source, legacy_wavelength)
             )
+        elif xrd_source and xrd_format == "xrd_continuous":
+            cond_str = process_exp_file_to_continuous(xrd_source, xrd_wavelength, xrd_background_subtract)
 
         sg = prop.get("sg")
 
@@ -220,6 +247,14 @@ def build_formula_condition_map(formulas: List[str], condition_lists_arg: Option
         return [None] * len(formulas)
 
     raw_condition_vectors = parse_condition_list_args(condition_lists_arg)
+    # zip(*...) below truncates to the shortest vector, so ragged input would silently
+    # drop condition values — reject it before any data can be lost.
+    lengths = {len(vec) for vec in raw_condition_vectors}
+    if len(lengths) > 1:
+        raise ValueError(
+            "Each --condition_lists string must contain the same number of "
+            f"comma-separated values; got lengths {sorted(lengths)}."
+        )
     transposed = [list(x) for x in zip(*raw_condition_vectors)]
     validate_model_conditions(model_path, transposed, is_xrd=False)
 

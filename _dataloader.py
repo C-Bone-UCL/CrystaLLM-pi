@@ -16,8 +16,44 @@ from _utils import (
 )
 
 NUM_PROC_TOK = 4
+MISSING_CONDITION_VALUE = -100.0
 
 np.random.seed(1)
+
+
+def _pack_condition_values(values_list):
+    """Tensorize per-sample conditions (ported from CrystaLLM-graph).
+
+    Flat scalars/vectors stack directly (legacy path, unchanged). Nested 2D conditions —
+    e.g. continuous (1000, 2) XRD profiles — are padded at the front to the longest row
+    count with MISSING_CONDITION_VALUE rows before stacking.
+    """
+    first_cond = values_list[0]
+
+    is_nested = hasattr(first_cond, "__len__") and (
+        (isinstance(first_cond, list) and isinstance(first_cond[0], list)) or
+        (isinstance(first_cond, (np.ndarray, torch.Tensor)) and first_cond.ndim >= 2)
+    )
+
+    if is_nested:
+        cond_tensors = [torch.tensor(cond, dtype=torch.float32) for cond in values_list]
+        max_rows = max(t.shape[0] for t in cond_tensors)
+        padded = []
+        for cond_tensor in cond_tensors:
+            n_rows = cond_tensor.shape[0]
+            if n_rows < max_rows:
+                padding = torch.full(
+                    (max_rows - n_rows, cond_tensor.shape[1]), MISSING_CONDITION_VALUE, dtype=torch.float32
+                )
+                cond_tensor = torch.cat([padding, cond_tensor], dim=0)
+            padded.append(cond_tensor)
+        return torch.stack(padded)
+
+    packed = torch.as_tensor(np.array(values_list), dtype=torch.float)
+    if packed.dim() == 1:
+        packed = packed.unsqueeze(-1)
+    return packed
+
 
 class CustomCIFDataCollator:
     def __init__(self, tokenizer, context_length):
@@ -156,10 +192,7 @@ class CustomCIFDataCollator:
 
         # Add condition values for conditional mode
         if is_conditional:
-            batch_condition_values = torch.as_tensor(np.array(batch_condition_values), dtype=torch.float)
-            if batch_condition_values.dim() == 1:
-                batch_condition_values = batch_condition_values.unsqueeze(-1)
-            batch["condition_values"] = batch_condition_values
+            batch["condition_values"] = _pack_condition_values(batch_condition_values)
 
         return batch
 

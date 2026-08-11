@@ -19,8 +19,10 @@ from _tokenizer import CustomCIFTokenizer
 from _utils import (
     LossTrack_EarlyStop_Callback,
     TrainingArgsCallback,
-    CIFFormattingTrainer, 
+    CIFFormattingTrainer,
     DualLRLogger,
+    ContextExtensionWarmupCallback,
+    has_context_extension_wpe,
     tokenizer_ID_check, 
     start_codecarbon_tracker, 
     find_checkpoint_from_dir, 
@@ -220,6 +222,12 @@ def main():
 
     # Capture arguments here so runtime adjustments are recorded in each checkpoint.
     callbacks = [DualLRLogger(), TrainingArgsCallback(vars(args).copy())]
+    if has_context_extension_wpe(model) and args.context_extension_warmup_steps > 0:
+        callbacks.append(
+            ContextExtensionWarmupCallback(
+                context_extension_warmup_steps=args.context_extension_warmup_steps
+            )
+        )
 
     # Only add early stopping if evaluation is enabled
     if args.eval_strategy != "no" and hasattr(args, 'early_stopping_patience'):

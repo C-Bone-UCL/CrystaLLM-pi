@@ -1,12 +1,23 @@
 {
   // Data Arguments
   //################
-  "dataset_HF": "c-bone/chili100k_strat",
+  "dataset_HF": "c-bone/mpdb-slme-full",
   "pretrained_tokenizer_dir": "HF-cif-tokenizer",
-  "context_length": 1536,
+  "context_length": 1024,
   // Filters
   "remove_CIFs_above_context": false,
   "remove_CIFs_with_unk": true,
+
+    // Conditional Arguments
+  //#######################
+  "condition_columns": "['norm_SLME']" ,
+  "n_prefix_tokens": 1,
+  "n_hidden_cond": 768,
+  "cond_dropout": 0.14,
+  "n_heads_sharing_slider": 2,
+  "cond_lr": 3.27508165E-5,
+  "cond_wd": 0.13,
+  "activate_conditionality": "Prefix",
 
 
   // Model Arguments
@@ -29,34 +40,32 @@
   "gradient_accumulation_steps": 1,
   "auto_find_batch_size": false,
   // Learning Rate and Optimizer
-  "learning_rate":  0.00489,
+  "learning_rate": 1.0596703391605471e-06,
   "lr_scheduler_type": "cosine_with_min_lr",
   "lr_scheduler_kwargs": {
     "min_lr_rate": 0.01
   },
-  "warmup_ratio": 0.0784,
+  "warmup_steps": 250,
   "adam_beta1": 0.9,
   "adam_beta2": 0.999,
   "grad_clip": 1.0,
-  "weight_decay": 0.0743,
+  // "max_grad_norm": 1.0,
+  "weight_decay": 0.09,
   // Logging
-  "output_dir": "model_ckpts/chili100k-uncond-opt/",
+  "output_dir": "model_ckpts/mpdb_slme/prefix-opt",
   "save_total_limit": 2,
   "report_to": "wandb",
-  "wandb_project_folder": "Chili",
-  "pretrained_model_dir": "model_ckpts/mattergen_XRD/uncond_ft/checkpoint-425000/",
-  "eval_strategy": "steps",
-  "eval_steps": 500,
-  "logging_steps": 100,
+  "wandb_project_folder": "SLME",
+  "pretrained_model_dir": "model_ckpts/mpdb-small-base-lematerial/checkpoint-1250000",
+  "eval_strategy": "no",
+  "logging_steps": 50,
   "save_strategy": "steps",
-  "max_steps": 2500,
-  "early_stopping_patience": 15,
-  "early_stopping_threshold": 0.00005,
+  "max_steps": 16000,
   // Utils
   "seed": 1,
   "data_seed": 1,
-  "load_best_model_at_end": true,
-  "metric_for_best_model": "eval_loss",
+  // "load_best_model_at_end": true,
+  "metric_for_best_model": "train_loss",
   "greater_is_better": false,
   "torch_compile": true,
   "fp16": true,

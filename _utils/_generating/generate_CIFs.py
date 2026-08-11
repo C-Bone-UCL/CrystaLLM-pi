@@ -1,5 +1,6 @@
 """Generate CIF structures with validation, ranking, and multi-GPU support."""
 
+import ast
 import os
 import multiprocessing as mp
 import sys
@@ -34,6 +35,7 @@ if torch.cuda.is_available():
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _tokenizer import CustomCIFTokenizer
 from _models import PKVGPT, SliderGPT
+from _utils._model_utils import MODEL_REGISTRY
 from _args import parse_args
 from _utils import find_checkpoint_from_dir, is_sensible, is_formula_consistent, is_space_group_consistent, extract_space_group_symbol, replace_symmetry_operators, bond_length_reasonableness_score
 
@@ -139,22 +141,26 @@ def init_tokenizer(pretrained_tokenizer_dir):
     return tokenizer
 
 def get_model_class(conditionality_type):
-    """Return the appropriate model class based on the conditionality type."""
-    if conditionality_type == "PKV":
-        return PKVGPT
-    elif conditionality_type == "Slider":
-        return SliderGPT
-    else:
-        # Default to GPT2LMHeadModel for unconditional generation ("Base")
+    """Strict lookup: unknown names raise instead of silently loading GPT2."""
+    if conditionality_type in (None, "None", "Base"):
         return GPT2LMHeadModel
+    if conditionality_type in MODEL_REGISTRY:
+        return MODEL_REGISTRY[conditionality_type][1]
+    raise ValueError(f"Unknown model type {conditionality_type!r}. "
+                     f"Valid: Base, {', '.join(sorted(k for k in MODEL_REGISTRY if k))}")
 
 def get_model_max_length(model_ckpt_dir, activate_conditionality):
-    """Get model's max length from config.json without loading the full model."""
+    """Get the usable text length from config.json without loading the full model."""
     config_path = os.path.join(model_ckpt_dir, "config.json")
     try:
         with open(config_path, "r") as f:
             config = json.load(f)
-        return config.get("n_positions", DEFAULT_MAX_LENGTH)
+        n_positions = config.get("n_positions", DEFAULT_MAX_LENGTH)
+        if activate_conditionality in ("Prefix", "PrefixXRD"):
+            # Prefix families extend wpe by n_prefix_tokens; the text budget excludes them.
+            # PKV is deliberately NOT subtracted so legacy hub models generate identically.
+            return max(n_positions - config.get("n_prefix_tokens", 0), 1)
+        return n_positions
     except Exception:
         return DEFAULT_MAX_LENGTH
 
@@ -207,14 +213,30 @@ def setup_device(gpu_id):
     return device
 
 def parse_condition_vector(condition_vector):
-    """Parse condition vector string into tensor values."""
-    if condition_vector in (None, "None"):
+    """Parse condition vectors from various parquet-friendly formats to list of floats."""
+    if condition_vector is None:
         return None
-    
-    if "," in str(condition_vector):
-        return [float(x.strip()) for x in str(condition_vector).split(",")]
-    else:
-        return [float(condition_vector)]
+    if isinstance(condition_vector, str) and condition_vector.strip().lower() == "none":
+        return None
+    if isinstance(condition_vector, (float, np.floating)) and np.isnan(condition_vector):
+        return None
+
+    # str -> try literal_eval first, then comma split
+    if isinstance(condition_vector, str):
+        try:
+            condition_vector = ast.literal_eval(condition_vector)
+        except (ValueError, SyntaxError):
+            if "," in condition_vector:
+                return [float(x.strip()) for x in condition_vector.split(",")]
+            return [float(condition_vector)]
+
+    if isinstance(condition_vector, (list, tuple, np.ndarray)):
+        return [
+            [float(v) for v in item] if isinstance(item, (list, tuple, np.ndarray)) else float(item)
+            for item in condition_vector
+        ]
+
+    return [float(condition_vector)]
 
 def get_material_id(row, count, offset=0):
     """Get material ID from row data or generate one, appending a unique counter."""
@@ -249,31 +271,28 @@ def resolve_generation_plan(scoring_mode, target_valid_cifs, max_return_attempts
     }
 
 
-def _load_worker_model(model_class, model_source_path, model_source, dtype):
+def _load_worker_model(model_class, model_source_path, model_source, dtype, config_overrides=None):
     """Load worker model from local checkpoint or HuggingFace source."""
-    if model_source == "hf":
-        try:
-            return model_class.from_pretrained(
-                model_source_path,
-                torch_dtype=dtype,
-                attn_implementation="sdpa",
-                trust_remote_code=True,
-            ).eval()
-        except Exception:
-            return model_class.from_pretrained(
-                model_source_path,
-                torch_dtype=dtype,
-                trust_remote_code=True,
-            ).eval()
+    extra_kwargs = {"trust_remote_code": True} if model_source == "hf" else {}
+    if config_overrides:
+        # Registry-supplied config overrides (e.g. skip_xrd_convert_model) go straight into
+        # from_pretrained so the model's own config class applies them. Do NOT pre-fetch an
+        # AutoConfig here — that resolves plain GPT2Config and bypasses conditional defaults.
+        extra_kwargs.update(config_overrides)
 
     try:
         return model_class.from_pretrained(
             model_source_path,
             torch_dtype=dtype,
             attn_implementation="sdpa",
+            **extra_kwargs,
         ).eval()
     except Exception:
-        return model_class.from_pretrained(model_source_path, torch_dtype=dtype).eval()
+        return model_class.from_pretrained(
+            model_source_path,
+            torch_dtype=dtype,
+            **extra_kwargs,
+        ).eval()
 
 
 def init_worker(
@@ -282,12 +301,13 @@ def init_worker(
     activate_conditionality,
     base_seed=1,
     model_source="checkpoint",
+    config_overrides=None,
 ):
     global model, tokenizer
-    
+
     tokenizer = init_tokenizer(pretrained_tokenizer_dir)
     model_class = get_model_class(activate_conditionality)
-    
+
     # Determine dtype: prefer bfloat16, fall back to float16 if unsupported
     if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
         dtype = torch.bfloat16
@@ -295,8 +315,8 @@ def init_worker(
         dtype = torch.float16
     else:
         dtype = torch.float32
-    
-    model = _load_worker_model(model_class, model_ckpt_dir, model_source, dtype)
+
+    model = _load_worker_model(model_class, model_ckpt_dir, model_source, dtype, config_overrides)
     model.resize_token_embeddings(len(tokenizer))
     
     # Deterministic seeding per worker
@@ -368,13 +388,13 @@ def generate_on_gpu(
             
             try:
                 # Handle different conditionality types
-                if activate_conditionality in ["PKV", "Slider"]:
-                    # Parse condition vector for conditional models
+                if activate_conditionality in ["PKV", "Slider", "Prefix", "PrefixXRD", "Residual"]:
+                    # Parse first: a nested (1000, 2) profile becomes a (1, 1000, 2) tensor,
+                    # a flat PKV list stays (1, n) — unchanged legacy behavior.
                     condition_tensor = None
-                    if row["condition_vector"] not in (None, "None"):
-                        values = parse_condition_vector(row["condition_vector"])
-                        if values:
-                            condition_tensor = torch.tensor([values], device=device, dtype=model.dtype)
+                    values = parse_condition_vector(row.get("condition_vector"))
+                    if values is not None:
+                        condition_tensor = torch.tensor([values], device=device, dtype=model.dtype)
                     
                     with torch.inference_mode():
                         outputs = model.generate(
@@ -597,7 +617,7 @@ def main():
     ctx = mp.get_context('spawn')
     with ctx.Pool(num_gpus + 1,
                   initializer=init_worker,
-                  initargs=(args.model_ckpt_dir, DEFAULT_TOKENIZER_DIR, args.activate_conditionality, base_seed)) as pool:
+                  initargs=(args.model_ckpt_dir, DEFAULT_TOKENIZER_DIR, args.activate_conditionality, base_seed, "checkpoint", None)) as pool:
         
         pool.apply_async(progress_listener, (queue, total_expected_generations))
         

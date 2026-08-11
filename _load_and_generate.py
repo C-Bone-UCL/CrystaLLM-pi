@@ -10,6 +10,7 @@ import argparse
 import os
 import sys
 
+import numpy as np
 import pandas as pd
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -25,7 +26,9 @@ from _utils._generating.postprocess import process_dataframe
 from _utils import extract_formula_nonreduced
 from _utils._direct_gen_utils import (
     MODEL_INFO,
+    XRD_FORMATS,
     _load_custom_model_registry,
+    get_condition_format,
     get_hf_model_max_length,
     resolve_multi_gpu_workers,
     parse_reduced_formula_list_arg,
@@ -69,11 +72,13 @@ def generate_prompts_from_specs(specs: list, args) -> pd.DataFrame:
 
     condition_lists = []
     for s in specs:
-        cond_str = s.get("condition_vector")
-        if cond_str in (None, "None"):
+        cond_value = s.get("condition_vector")
+        if isinstance(cond_value, (list, np.ndarray)) or cond_value in (None, "None"):
+            # Nested conditions bypass string parsing: attach_prompt_metadata copies the
+            # real condition_vector from the specs into the outgoing dataframe untouched.
             condition_lists.append([None])
         else:
-            condition_lists.append(parse_condition_list_args([str(cond_str)])[0])
+            condition_lists.append(parse_condition_list_args([str(cond_value)])[0])
 
     df = create_manual_prompts(
         compositions=compositions,
@@ -88,13 +93,12 @@ def generate_prompts_from_specs(specs: list, args) -> pd.DataFrame:
 def generate_cifs_with_hf_model(df_prompts: pd.DataFrame, hf_model_path: str, args, worker_count: int = 1) -> pd.DataFrame:
     """Generate CIFs using HF model, optionally across multiple GPUs."""
     tokenizer = init_tokenizer(TOKENIZER_DIR)
-    max_length = get_hf_model_max_length(hf_model_path)
+    model_type = MODEL_INFO[hf_model_path]["model_type"]
+    max_length = get_hf_model_max_length(hf_model_path, model_type)
     args.gen_max_length = max_length
     generation_kwargs = build_generation_kwargs(args, tokenizer, max_length)
     scoring_mode = _normalize_scoring_mode(args.scoring_mode)
     base_seed = getattr(args, "seed", 1)
-    
-    model_type = MODEL_INFO[hf_model_path]["model_type"]
 
     if worker_count >= 2:
         print(f"Multi-GPU generation active with {worker_count} workers.")
@@ -108,7 +112,8 @@ def generate_cifs_with_hf_model(df_prompts: pd.DataFrame, hf_model_path: str, ar
         max_return_attempts=args.max_return_attempts,
         base_seed=base_seed,
         worker_count=worker_count,
-        initargs_override=(hf_model_path, TOKENIZER_DIR, model_type, base_seed, "hf"),
+        initargs_override=(hf_model_path, TOKENIZER_DIR, model_type, base_seed, "hf",
+                           MODEL_INFO[hf_model_path].get("config_overrides")),
     )
     
     return pd.DataFrame(generated_rows)
@@ -134,12 +139,13 @@ def main() -> None:
     z_group.add_argument("--search_zs", action="store_true", help="Search through Z=1 to Z=4 to find valid structures")
     z_group.add_argument("--z_list", type=str, help="Comma-separated explicit Z integers mapping 1:1 to formulas")
     
-    parser.add_argument("--condition_lists", nargs='+', help="Real property values strings.")
+    parser.add_argument("--condition_lists", nargs='+', help="One string per formula (or a single string broadcast to all); each string holds that formula's comma-separated condition values, e.g. --condition_lists \"2.16, 0.0\"")
     parser.add_argument("--level", choices=["level_1", "level_2", "level_3", "level_4"], default="level_2")
     parser.add_argument("--spacegroups", help="Comma-separated spacegroups mapped to formulas")
     
-    parser.add_argument("--xrd_files", nargs='+', help="Files with XRD peaks (.csv, .xy, .dat, .txt) mapped to formulas")
-    parser.add_argument("--xrd_wavelength", type=float, default=1.54056, help="Wavelength of the provided XRD data (default: CuKa 1.54056)")
+    parser.add_argument("--xrd_files", nargs='+', help="Raw XRD scan files (.csv, .xy, .dat, .txt) mapped to formulas")
+    parser.add_argument("--xrd_wavelength", type=float, default=None, help="Wavelength in Angstrom of the provided XRD data (default: CuKa1 1.54056, assumed with a warning)")
+    parser.add_argument("--xrd_no_background_subtract", action="store_true", help="Continuous-XRD models: skip background removal")
 
     parser.add_argument("--temperature", type=float, default=1.0, help="Sampling temperature")
     parser.add_argument("--num_return_sequences", type=int, default=1, help="Sequences per sample")
@@ -231,14 +237,27 @@ def main() -> None:
         else:
             z_list = None
 
-        is_slider_model = model_info["model_type"] == "Slider"
-        if is_slider_model and not args.xrd_files:
-            print(
-                "\nWarning: Slider model selected without --xrd_files. "
-                "Generation will run with missing conditioning values."
-            )
+        # Gate on XRD_FORMATS membership, never truthiness: "scalar" is truthy, and a
+        # truthiness gate would silently drop --condition_lists for every PKV model.
+        xrd_format = get_condition_format(args.hf_model_path)
+        is_xrd = xrd_format in XRD_FORMATS
+        if is_xrd and not args.xrd_files:
+            if xrd_format == "xrd_continuous":
+                # PrefixXRD raises "requires condition_values at every forward pass" on EVERY
+                # attempt — there is no missing-conditioning fallback, so fail fast instead
+                # of burning attempts.
+                raise ValueError("This continuous-XRD model requires --xrd_files (a raw powder pattern).")
+            print("\nWarning: Slider XRD model selected without --xrd_files. "
+                  "Generation will run with missing conditioning values.")
+        if args.xrd_files and args.xrd_wavelength is None:
+            print("\nWarning: --xrd_wavelength not given; assuming CuKa1 1.54056 A. "
+                  "Specify it explicitly for non-CuKa data.")
+            args.xrd_wavelength = 1.54056  # resolve once here so the module doesn't warn a second time per file
+        if xrd_format == "xrd_continuous" and args.level != "level_3":
+            print("\nWarning: continuous-XRD models were benchmarked with level_3 prompts; "
+                  f"{args.level} is untested. Consider --level level_3.")
 
-        if args.condition_lists and not is_slider_model:
+        if args.condition_lists and not is_xrd:
             cond_list = build_formula_condition_map(canonical_formulas, args.condition_lists, args.hf_model_path)
         else:
             cond_list = [None] * n_formulas
@@ -269,7 +288,7 @@ def main() -> None:
                 active_fs = [r[0] for r in active_rows]
                 active_ps = [r[1] for r in active_rows]
                 print(f"\nSearching Z={z} for {len(active_rows)} formulas...")
-                specs = build_reduced_formula_specs(active_fs, [z] * len(active_rows), active_ps, is_slider_model, args.xrd_wavelength)
+                specs = build_reduced_formula_specs(active_fs, [z] * len(active_rows), active_ps, xrd_format, args.xrd_wavelength, not args.xrd_no_background_subtract)
                 df_prompts = generate_prompts_from_specs(specs, args)
 
                 worker_count = resolve_multi_gpu_workers(args, len(df_prompts))
@@ -302,10 +321,10 @@ def main() -> None:
                 expanded_formulas = [f for f in canonical_formulas for _ in DEFAULT_Z_LIST]
                 expanded_z_values = [z for _ in canonical_formulas for z in DEFAULT_Z_LIST]
                 expanded_properties = [p for p in row_properties for _ in DEFAULT_Z_LIST]
-                specs = build_reduced_formula_specs(expanded_formulas, expanded_z_values, expanded_properties, is_slider_model, args.xrd_wavelength)
+                specs = build_reduced_formula_specs(expanded_formulas, expanded_z_values, expanded_properties, xrd_format, args.xrd_wavelength, not args.xrd_no_background_subtract)
             else:
                 flat_z_values = z_list if z_list else [1] * n_formulas
-                specs = build_reduced_formula_specs(canonical_formulas, flat_z_values, row_properties, is_slider_model, args.xrd_wavelength)
+                specs = build_reduced_formula_specs(canonical_formulas, flat_z_values, row_properties, xrd_format, args.xrd_wavelength, not args.xrd_no_background_subtract)
 
             df_prompts = generate_prompts_from_specs(specs, args)
 

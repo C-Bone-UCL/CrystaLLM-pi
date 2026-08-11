@@ -83,19 +83,45 @@ class GenerationTests:
         assert check_cif(None) is False, "None should be handled gracefully"
     
     def test_get_model_class(self):
-        """Test model class selection."""
+        """Test strict model class selection."""
         from _utils._generating.generate_CIFs import get_model_class
-        from _models import PKVGPT, SliderGPT
+        from _models import PKVGPT, SliderGPT, PrefixGPT, PrefixXRDGPT, ResidualGPT
         from transformers import GPT2LMHeadModel
 
         # Test each conditionality type
         assert get_model_class("PKV") == PKVGPT, "PKV should return PKVGPT"
         assert get_model_class("Slider") == SliderGPT, "Slider should return SliderGPT"
+        assert get_model_class("Prefix") == PrefixGPT, "Prefix should return PrefixGPT"
+        assert get_model_class("PrefixXRD") == PrefixXRDGPT, "PrefixXRD should return PrefixXRDGPT"
+        assert get_model_class("Residual") == ResidualGPT, "Residual should return ResidualGPT"
 
-        # Test default/unconditional cases
+        # Base/None aliases still map to plain GPT2
         assert get_model_class(None) == GPT2LMHeadModel, "None should return GPT2LMHeadModel"
-        assert get_model_class("unconditional") == GPT2LMHeadModel, "Unknown type should return GPT2LMHeadModel"
-    
+        assert get_model_class("Base") == GPT2LMHeadModel, "Base should return GPT2LMHeadModel"
+
+        # Unknown names now raise instead of silently falling back to GPT2
+        try:
+            get_model_class("unconditional")
+            assert False, "Unknown model type should raise ValueError"
+        except ValueError as err:
+            assert "Unknown model type" in str(err), f"Unexpected error: {err}"
+
+    def test_parse_condition_vector_nested(self):
+        """Nested condition vectors (continuous XRD) survive parsing; flat strings unchanged."""
+        from _utils._generating.generate_CIFs import parse_condition_vector
+
+        # Nested string form (parquet round-trip) and native nested lists preserve 2D shape
+        assert parse_condition_vector("[[0.0, 0.1], [0.01, 0.2]]") == [[0.0, 0.1], [0.01, 0.2]]
+        profile = [[round(0.01 * i, 2), 0.5] for i in range(1000)]
+        parsed = parse_condition_vector(profile)
+        assert len(parsed) == 1000 and parsed == profile
+
+        # Legacy flat forms are unchanged
+        assert parse_condition_vector("1.0, 2.0") == [1.0, 2.0]
+        assert parse_condition_vector("0.5") == [0.5]
+        assert parse_condition_vector(None) is None
+        assert parse_condition_vector("None") is None
+
     def test_build_generation_kwargs_modes(self):
         """Test build_generation_kwargs with different sampling modes."""
         from _utils._generating.generate_CIFs import init_tokenizer, build_generation_kwargs

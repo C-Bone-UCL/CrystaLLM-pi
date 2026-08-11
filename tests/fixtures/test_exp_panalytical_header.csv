@@ -1,0 +1,27 @@
+[Measurement conditions]
+Sample identification,
+Comment - 2,"Configuration=Conf.Flatstage PW3071, Owner=User-1, Creation date=2003-2-3 13:53:48"
+Anode material,Cu
+K-Alpha1 wavelength,1.5405980
+K-Alpha2 wavelength,1.5444260
+Ratio K-Alpha2/K-Alpha1,0.500
+Generator voltage, 40
+Tube current, 40
+h k l, 0 0 0
+Scan range,5.000000004,79.989288566
+No. of points, 2239
+Time per step,12.70
+[Scan points]
+Angle,Intensity
+5.016746160,866.0
+5.050238473,875.0
+5.083730786,916.0
+5.117223099,951.0
+5.150715412,895.0
+5.184207724,895.0
+5.217700037,904.0
+5.251192350,881.0
+5.284684663,837.0
+5.318176976,873.0
+5.351669289,850.0
+5.385161602,771.0

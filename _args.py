@@ -8,6 +8,20 @@ with support for conditional models (PKV and Slider architectures).
 import argparse
 import commentjson
 
+def str_to_bool(value):
+    """Parse booleans from CLI flags or config-provided strings."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return True
+
+    lowered = str(value).strip().lower()
+    if lowered in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if lowered in {"0", "false", "f", "no", "n", "off"}:
+        return False
+    raise argparse.ArgumentTypeError(f"Invalid boolean value: {value}")
+
 def parse_args():
     """Parse command-line arguments, supporting JSON config files with comments."""
 
@@ -32,14 +46,22 @@ def parse_args():
     parser.add_argument("--n_hidden_cond", type=int, default=None, help="Hidden dimension for property embedding projections (PKV and Slider).")
     parser.add_argument("--cond_dropout", type=float, default=None, help="Dropout rate applied to conditional embeddings during training (PKV an Slider)).")
     parser.add_argument("--share_layers", type=bool, default=None, help="Share conditional key-value projections across all layers (PKV-GPT only). Reduces parameters but may limit expressivity.")
-    parser.add_argument("--n_heads_sharing_slider", type=int, default=None, help="Number of attention heads that use shared conditioning weights (Slider-GPT only). Must be ≤ n_head.")
+    parser.add_argument("--n_heads_sharing_slider", type=int, default=None, help="Number of attention heads that use shared conditioning weights (Residual-GPT only). Must be ≤ n_head.")
     parser.add_argument("--cond_lr", type=float, default=None, help="Learning rate for conditional parameters. Separate from main model learning rate.")
     parser.add_argument("--cond_wd", type=float, default=None, help="Weight decay for conditional parameters.")
+    parser.add_argument("--skip_xrd_convert_model", nargs="?", const=True, default=False, type=str_to_bool, help="Skip PrefixXRD's discrete peak broadening and expect 1000x2 continuous [Q, I] inputs instead.")
+
+    # Perceiver arguments (PrefixXRD)
+    parser.add_argument("--perceiver_n_heads", type=int, default=8, help="Number of attention heads in the Perceiver Resampler. Keep perceiver_n_heads * perceiver_dim_head equal to the Perceiver width.")
+    parser.add_argument("--perceiver_depth", type=int, default=1, help="Number of Perceiver Resampler layers.")
+    parser.add_argument("--perceiver_dim_head", type=int, default=64, help="Dimension of each attention head in the Perceiver Resampler. Keep perceiver_n_heads * perceiver_dim_head equal to the Perceiver width.")
+    parser.add_argument("--perceiver_ff_mult", type=int, default=2, help="Feedforward network expansion multiplier in Perceiver Resampler.")
+    parser.add_argument("--context_extension_warmup_steps", type=int, default=0, help="Number of initial optimizer steps that keep checkpoint-copied positional embedding rows frozen after extending context length.")
 
     # Model Arguments
     #######################
     # Model Depth
-    parser.add_argument("--activate_conditionality", type=str, default=None, help="Select conditioning architecture: 'PKV', 'Slider', or None for unconditional model. Default None loads base unconditional model.")
+    parser.add_argument("--activate_conditionality", type=str, default=None, help="Select conditioning architecture: 'Prefix' (PKV successor), 'PrefixXRD' (continuous/discrete XRD conditioning), 'Residual' (Slider successor), or None for unconditional model. 'PKV' and 'Slider' are legacy generation-only families — training them raises. Default None loads base unconditional model.")
     # parser.add_argument("--n_positions", type=int, default=1024, help="Model context size")
     parser.add_argument("--n_embd", type=int, default=256, help="Transformer embedding dimension size.")
     parser.add_argument("--n_layer", type=int, default=4, help="Number of Transformer layers in the model.")

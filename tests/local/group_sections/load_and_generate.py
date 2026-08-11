@@ -30,13 +30,21 @@ class LoadAndGenerateTests:
         from _utils._direct_gen_utils import MODEL_INFO
 
         required = {"description", "conditions", "example_conditions",
-                    "max", "min", "normalization", "model_type"}
+                    "max", "min", "normalization", "model_type", "condition_format"}
+        optional = {"config_overrides"}
         assert MODEL_INFO, "default registry is empty"
         for path, info in MODEL_INFO.items():
             missing = required - set(info)
             assert not missing, f"{path} missing keys: {missing}"
-            assert info["model_type"] in {"Base", "PKV", "Slider"}, \
+            unknown = set(info) - required - optional
+            assert not unknown, f"{path} unknown keys: {unknown}"
+            assert info["model_type"] in {"Base", "PKV", "Slider", "Prefix", "PrefixXRD", "Residual"}, \
                 f"{path}: unknown model_type {info['model_type']!r}"
+            assert info["condition_format"] in {None, "scalar", "xrd_top20", "xrd_continuous"}, \
+                f"{path}: unknown condition_format {info['condition_format']!r}"
+            if "config_overrides" in info:
+                assert isinstance(info["config_overrides"], dict), \
+                    f"{path}: config_overrides must be a dict"
 
     def test_custom_model_registry(self) -> None:
         """A custom registry resolves a Hub path and normalizes raw conditions."""
@@ -190,7 +198,7 @@ class LoadAndGenerateTests:
 
         canonical = _direct_gen_utils.canonicalize_reduced_formulas(["TiO2"])
         specs = _direct_gen_utils.build_reduced_formula_specs(
-            canonical, [2], [{"xrd": xrd_file, "sg": "P4_2/mnm", "cond": None}], is_xrd=True, xrd_wavelength=1.54056
+            canonical, [2], [{"xrd": xrd_file, "sg": "P4_2/mnm", "cond": None}], xrd_format="xrd_top20", xrd_wavelength=1.54056
         )
         
         df_prompts = _load_and_generate.generate_prompts_from_specs(specs, args)
@@ -219,7 +227,7 @@ class LoadAndGenerateTests:
             canonical,
             [2],
             [{"xrd": None, "sg": None, "cond": None}],
-            is_xrd=True,
+            xrd_format="xrd_top20",
             xrd_wavelength=1.54056,
         )
         assert specs[0]["condition_vector"] is None
@@ -336,7 +344,7 @@ class LoadAndGenerateTests:
         expanded_z_values = [z for _ in canonical for z in [1, 2, 3, 4]]
         expanded_properties = [{"xrd": None, "sg": None, "cond": None} for _ in expanded_formulas]
 
-        specs = _direct_gen_utils.build_reduced_formula_specs(expanded_formulas, expanded_z_values, expanded_properties, is_xrd=False)
+        specs = _direct_gen_utils.build_reduced_formula_specs(expanded_formulas, expanded_z_values, expanded_properties, xrd_format=None)
         df_prompts = _load_and_generate.generate_prompts_from_specs(specs, args)
         
         assert len(df_prompts) == 8, "Expected 2 formulas x 4 Z values"
@@ -487,3 +495,67 @@ class LoadAndGenerateTests:
             _load_and_generate.generate_prompts_from_specs = original_generate_prompts
             _load_and_generate.generate_cifs_with_hf_model = original_generate
             _load_and_generate.reduce_rows_for_reduced_formula_search = original_reduce
+
+    def test_condition_format_routing(self) -> None:
+        """Registry-driven condition_format resolution with the Slider legacy fallback."""
+        from _utils import _direct_gen_utils
+        from _utils._direct_gen_utils import XRD_FORMATS, get_condition_format
+
+        # Built-in entries carry the key explicitly
+        assert get_condition_format("c-bone/CrystaLLM-pi_Chili100K-XRD") == "xrd_top20"
+        assert get_condition_format("c-bone/CrystaLLM-pi_density") == "scalar"
+        assert get_condition_format("c-bone/CrystaLLM-pi_base") is None
+        assert get_condition_format("not/registered") is None
+
+        # scalar is NOT an XRD format: PKV models must keep their --condition_lists path
+        assert "scalar" not in XRD_FORMATS
+
+        # Legacy fallback: a user-overlay Slider entry without the key is top-20 XRD
+        _direct_gen_utils.MODEL_INFO["overlay/legacy-slider"] = {"model_type": "Slider"}
+        try:
+            assert get_condition_format("overlay/legacy-slider") == "xrd_top20"
+        finally:
+            del _direct_gen_utils.MODEL_INFO["overlay/legacy-slider"]
+
+    def test_continuous_xrd_spec_building(self) -> None:
+        """build_reduced_formula_specs converts a raw scan to a nested (1000, 2) profile."""
+        import numpy as np
+        from _utils import _direct_gen_utils
+
+        # Synthetic gaussian scan (the tiny fixtures fail MIN_POINTS_ON_GRID by design)
+        two_theta = np.linspace(10.0, 80.0, 3000)
+        intensity = 50.0 + 1000.0 * np.exp(-0.5 * ((two_theta - 27.4) / 0.15) ** 2)
+        scan_path = os.path.join(self.temp_dir, "synthetic_gaussian.xy")
+        with open(scan_path, "w", encoding="utf-8") as fh:
+            fh.write("Wavelength = 1.54059\n")
+            fh.writelines(f"{t:.6f} {i:.6f}\n" for t, i in zip(two_theta, intensity))
+
+        canonical = _direct_gen_utils.canonicalize_reduced_formulas(["TiO2"])
+        specs = _direct_gen_utils.build_reduced_formula_specs(
+            canonical, [2], [{"xrd": scan_path, "sg": None, "cond": None}],
+            xrd_format="xrd_continuous", xrd_wavelength=1.54059,
+        )
+
+        cond = specs[0]["condition_vector"]
+        assert isinstance(cond, list) and len(cond) == 1000
+        assert all(len(pair) == 2 for pair in cond)
+        assert cond[0][0] == 0.0, "Q grid must start at 0.0"
+        assert abs(max(pair[1] for pair in cond) - 1.0) < 1e-9, "intensity must be max-normalized"
+
+    def test_condition_lists_ragged_input_rejected(self) -> None:
+        """Ragged --condition_lists strings raise instead of silently dropping values."""
+        from _utils._direct_gen_utils import build_formula_condition_map
+
+        try:
+            build_formula_condition_map(
+                ["NaCl", "KCl"], ["2.16, 0.0", "3.0, 0.1, 7.7"], "c-bone/CrystaLLM-pi_density"
+            )
+            assert False, "ragged condition lists should raise"
+        except ValueError as err:
+            assert "same number" in str(err), f"Unexpected error: {err}"
+
+        # The corrected per-formula form still round-trips (values normalized per dimension)
+        cond = build_formula_condition_map(
+            ["NaCl"], ["2.16, 0.0"], "c-bone/CrystaLLM-pi_density"
+        )
+        assert len(cond) == 1 and len(cond[0].split(",")) == 2

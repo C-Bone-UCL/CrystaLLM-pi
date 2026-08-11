@@ -6,7 +6,8 @@
     "max": null,
     "min": null,
     "normalization": null,
-    "model_type": "Base"
+    "model_type": "Base",
+    "condition_format": null
   },
   "c-bone/CrystaLLM-pi_alex_mp_20_base": {
     "description": "Unconditional generation",
@@ -15,7 +16,8 @@
     "max": null,
     "min": null,
     "normalization": null,
-    "model_type": "Base"
+    "model_type": "Base",
+    "condition_format": null
   },
   "c-bone/CrystaLLM-pi_mp_20_base": {
     "description": "Unconditional generation",
@@ -24,7 +26,8 @@
     "max": null,
     "min": null,
     "normalization": null,
-    "model_type": "Base"
+    "model_type": "Base",
+    "condition_format": null
   },
   "c-bone/CrystaLLM-pi_SLME": {
     "description": "Solar cell efficiency (SLME) conditioning",
@@ -33,7 +36,8 @@
     "max": 33.192,
     "min": 0.0,
     "normalization": "linear",
-    "model_type": "PKV"
+    "model_type": "PKV",
+    "condition_format": "scalar"
   },
   "c-bone/CrystaLLM-pi_bandgap": {
     "description": "Bandgap + stability conditioning",
@@ -42,7 +46,8 @@
     "max": [17.891, 5.418],
     "min": [0.0, 0.0],
     "normalization": ["power_log", "linear"],
-    "model_type": "PKV"
+    "model_type": "PKV",
+    "condition_format": "scalar"
   },
   "c-bone/CrystaLLM-pi_density": {
     "description": "Density + stability conditioning",
@@ -51,7 +56,8 @@
     "max": [25.494, 0.1],
     "min": [0.0, 0.0],
     "normalization": ["linear", "linear"],
-    "model_type": "PKV"
+    "model_type": "PKV",
+    "condition_format": "scalar"
   },
   "c-bone/CrystaLLM-pi_Mattergen-XRD": {
     "description": "Theoretical XRD conditioning",
@@ -60,7 +66,8 @@
     "max": [90.0, 100.0],
     "min": [0.0, 0.0],
     "normalization": ["linear", "linear"],
-    "model_type": "Slider"
+    "model_type": "Slider",
+    "condition_format": "xrd_top20"
   },
   "c-bone/CrystaLLM-pi_Chili100K-XRD": {
     "description": "Experimental Struct. XRD conditioning",
@@ -69,6 +76,37 @@
     "max": [90.0, 100.0],
     "min": [0.0, 0.0],
     "normalization": ["linear", "linear"],
-    "model_type": "Slider"
+    "model_type": "Slider",
+    "condition_format": "xrd_top20"
+  },
+  "c-bone/CrystaLLM-pi_Chili100K-cXRD": {
+    "description": "Continuous-XRD conditioned generation (PrefixXRD, CHILI-100K KD student)",
+    "conditions": 0,
+    "example_conditions": "Pass a raw powder pattern via --xrd_files (see _utils/_preprocessing/_process_exp_XRD_continuous.py)",
+    "max": null,
+    "min": null,
+    "normalization": null,
+    "model_type": "PrefixXRD",
+    "condition_format": "xrd_continuous"
+  },
+  "c-bone/CrystaLLM-pi_alex_mp_20-cXRD": {
+    "description": "Continuous-XRD conditioned generation (PrefixXRD, alex_mp_20 KD student)",
+    "conditions": 0,
+    "example_conditions": "Pass a raw powder pattern via --xrd_files (see _utils/_preprocessing/_process_exp_XRD_continuous.py)",
+    "max": null,
+    "min": null,
+    "normalization": null,
+    "model_type": "PrefixXRD",
+    "condition_format": "xrd_continuous"
+  },
+  "c-bone/CrystaLLM-pi_ft_alex_mp_20-text": {
+    "description": "Model pre-trained on lemat-bulk and fine-tuned on alex_mp_20, text only",
+    "conditions": 0,
+    "example_conditions": null,
+    "max": null,
+    "min": null,
+    "normalization": null,
+    "model_type": "Base",
+    "condition_format": null
   }
 }

@@ -26,7 +26,7 @@ class DirectGenerationRequest(BaseModel):
     z_list: Optional[str] = Field(None, description="Comma-separated explicit Z integers mapping 1:1 to formulas")
     condition_lists: Optional[List[str]] = Field(None, description="Condition vectors")
     xrd_files: Optional[List[str]] = Field(None, description="Files with XRD peaks (.csv, .xy, .txt, .dat) for XRD models")
-    xrd_wavelength: float = Field(1.54056, description="Wavelength of the provided XRD data (default CuKa)")
+    xrd_wavelength: Optional[float] = Field(None, description="Wavelength in Angstrom (default: CuKa1 1.54056, assumed with a warning)")
     level: Literal["level_1", "level_2", "level_3", "level_4"] = Field("level_2", description="Prompt detail level")
     spacegroups: Optional[str] = Field(None, description="Comma-separated spacegroups (level_4 only)")
     temperature: float = Field(1.0, description="Sampling temperature")
@@ -163,7 +163,8 @@ def register_generation_routes(
             if request.xrd_files:
                 cmd.append("--xrd_files")
                 cmd.extend(request.xrd_files)
-                cmd.extend(["--xrd_wavelength", str(request.xrd_wavelength)])
+                if request.xrd_wavelength is not None:
+                    cmd.extend(["--xrd_wavelength", str(request.xrd_wavelength)])
             if request.condition_lists:
                 cmd.append("--condition_lists")
                 cmd.extend(request.condition_lists)

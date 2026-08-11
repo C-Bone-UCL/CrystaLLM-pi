@@ -268,9 +268,103 @@ class DualLRLogger(TrainerCallback):
         # Log both base (group 0) and conditioning (group 1) learning rates
         logs["base_lr"] = opt.param_groups[0]["lr"]
         logs["cond_lr"] = opt.param_groups[1]["lr"]
-        
+
         return control
-    
+
+
+def _context_extension_metadata(model: object) -> dict | None:
+    """Return resize metadata attached during checkpoint context extension."""
+    unwrapped_model = getattr(model, "module", model)
+    metadata = getattr(unwrapped_model, "context_extension_metadata", None)
+    return metadata if isinstance(metadata, dict) else None
+
+
+def has_context_extension_wpe(model: object) -> bool:
+    """Return whether the model has true context-extension positional rows."""
+    metadata = _context_extension_metadata(model)
+    if metadata is None:
+        return False
+    protected_ranges = metadata.get("protected_wpe_row_ranges")
+    return bool(metadata.get("is_context_extension") and protected_ranges)
+
+
+def _context_extension_wpe_weight(model: object) -> torch.nn.Parameter | None:
+    """Return the positional embedding weight when context extension is active."""
+    if not has_context_extension_wpe(model):
+        return None
+    unwrapped_model = getattr(model, "module", model)
+    transformer = getattr(unwrapped_model, "transformer", None)
+    wpe = getattr(transformer, "wpe", None)
+    return getattr(wpe, "weight", None)
+
+
+class ContextExtensionWarmupCallback(TrainerCallback):
+    """Mask copied positional embedding row gradients during context-extension warmup."""
+
+    def __init__(self, context_extension_warmup_steps: int) -> None:
+        super().__init__()
+        self.context_extension_warmup_steps = int(context_extension_warmup_steps)
+        self._state: object | None = None
+        self._hook_handle: torch.utils.hooks.RemovableHandle | None = None
+        self._protected_row_ranges: list[tuple[int, int]] = []
+
+    def on_train_begin(self, args: object, state: object, control: object, **kwargs: object) -> object:
+        """Register a parameter hook before the first backward pass."""
+        model = kwargs.get("model")
+        if model is None or self.context_extension_warmup_steps <= 0:
+            return control
+
+        metadata = _context_extension_metadata(model)
+        if not has_context_extension_wpe(model) or metadata is None:
+            return control
+
+        protected_row_ranges = []
+        for start, end in metadata.get("protected_wpe_row_ranges", []):
+            start_idx = int(start)
+            end_idx = int(end)
+            if end_idx > start_idx:
+                protected_row_ranges.append((start_idx, end_idx))
+        if not protected_row_ranges:
+            return control
+
+        wpe_weight = _context_extension_wpe_weight(model)
+        if wpe_weight is None:
+            return control
+
+        if self._hook_handle is not None:
+            self._hook_handle.remove()
+
+        self._state = state
+        self._protected_row_ranges = protected_row_ranges
+        self._hook_handle = wpe_weight.register_hook(self._zero_protected_rows)
+        print(
+            "Context-extension warmup active: "
+            f"protecting transformer.wpe rows {protected_row_ranges} "
+            f"for {self.context_extension_warmup_steps} optimizer steps"
+        )
+        return control
+
+    def on_train_end(self, args: object, state: object, control: object, **kwargs: object) -> object:
+        """Remove the hook once training exits."""
+        if self._hook_handle is not None:
+            self._hook_handle.remove()
+            self._hook_handle = None
+        return control
+
+    def _zero_protected_rows(self, gradient: torch.Tensor) -> torch.Tensor:
+        """Return a gradient tensor with checkpoint-copied rows masked."""
+        if self._state is None:
+            return gradient
+        global_step = int(getattr(self._state, "global_step", 0))
+        if global_step >= self.context_extension_warmup_steps:
+            return gradient
+
+        masked_gradient = gradient.clone()
+        for start_idx, end_idx in self._protected_row_ranges:
+            masked_gradient[start_idx:end_idx].zero_()
+        return masked_gradient
+
+
 def start_codecarbon_tracker(args):
     """Start the CodeCarbon tracker to log emissions during training."""
     output_directory = os.path.join('__comp_metrics', args.output_dir)
@@ -345,18 +439,23 @@ def setup_scheduler(args, model):
         cond_params = [] # Conditioning module params (AdamW with cond_lr)
 
         # Keywords that identify conditioning module parameters
-        cond_keywords = ["slider", "conditioning", "prefix_embedding"]
-        use_cond_separation = args.activate_conditionality in ["PKV", "Slider"]
+        cond_keywords = ["slider", "conditioning", "prefix_embedding", "perceiver"]
+        use_cond_separation = args.activate_conditionality in ["Prefix", "PrefixXRD", "Residual"]
+        context_extension_wpe_weight = _context_extension_wpe_weight(model)
 
         for name, param in model.named_parameters():
             if not param.requires_grad:
                 continue
-            
+
             name_lower = name.lower()
-            
+
             # First check if this is a conditioning parameter (separate from Muon entirely)
             if use_cond_separation and any(k in name_lower for k in cond_keywords):
                 cond_params.append(param)
+            # Context-extension loads protect existing rows and train newly initialized
+            # rows, so keep the whole positional table on AdamW.
+            elif param is context_extension_wpe_weight:
+                adamw_params.append(param)
             # AdamW for: embeddings, lm_head, and 1D params
             elif "embed" in name_lower:
                 adamw_params.append(param)
@@ -371,6 +470,8 @@ def setup_scheduler(args, model):
                 hidden_matrix_params.append(param)
 
         print(f"Muon params: {len(hidden_matrix_params)}, AdamW params: {len(adamw_params)}, Conditioning params: {len(cond_params)}")
+        if context_extension_wpe_weight is not None:
+            print("Routing transformer.wpe.weight through AdamW for context-extension load")
         
         is_distributed = dist.is_initialized() and dist.get_world_size() > 1
         
@@ -410,12 +511,12 @@ def setup_scheduler(args, model):
         )
         return optimizer, lr_scheduler
 
-    if args.activate_conditionality in ["PKV", "Slider"]:
+    if args.activate_conditionality in ["Prefix", "PrefixXRD", "Residual"]:
         base_params, cond_params = [], []
         for n, p in model.named_parameters():
             if not p.requires_grad:
                 continue
-            if any(k in n.lower() for k in ["slider", "conditioning"]):
+            if any(k in n.lower() for k in ["slider", "conditioning", "perceiver"]):
                 cond_params.append(p)
             else:
                 base_params.append(p)

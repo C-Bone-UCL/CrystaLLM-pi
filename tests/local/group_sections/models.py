@@ -294,6 +294,265 @@ class ModelTests:
         except ValueError:
             pass
 
+    def test_positional_embedding_resize_shift_right(self):
+        """Test positional embedding resize shifts pretrained rows right for Prefix-style loads."""
+        from transformers import GPT2Config, GPT2LMHeadModel
+        from _utils._model_utils import resize_positional_embeddings
+
+        config = GPT2Config(
+            vocab_size=32,
+            n_positions=8,
+            n_embd=4,
+            n_layer=1,
+            n_head=1,
+        )
+        model = GPT2LMHeadModel(config)
+        with torch.no_grad():
+            model.transformer.wpe.weight.copy_(
+                torch.arange(32, dtype=torch.float32).view(8, 4)
+            )
+
+        resized = resize_positional_embeddings(model, 12, shift_right_by=4)
+
+        assert resized.config.n_positions == 12
+        assert resized.transformer.wpe.num_embeddings == 12
+        assert torch.equal(
+            resized.transformer.wpe.weight.data[4:12],
+            torch.arange(32, dtype=torch.float32).view(8, 4),
+        ), "Old rows should be copied to the right-shifted slice"
+        assert resized.transformer.wpe.weight.data[:4].shape == (4, 4)
+        assert torch.isfinite(resized.transformer.wpe.weight.data[:4]).all()
+
+    def test_positional_embedding_resize_marks_context_extension(self):
+        """True long-context growth records the copied rows to protect."""
+        from transformers import GPT2Config, GPT2LMHeadModel
+        from _utils._model_utils import resize_positional_embeddings
+
+        config = GPT2Config(
+            vocab_size=32,
+            n_positions=8,
+            n_embd=4,
+            n_layer=1,
+            n_head=1,
+        )
+        model = GPT2LMHeadModel(config)
+
+        resized = resize_positional_embeddings(model, 14, shift_right_by=4)
+        metadata = resized.context_extension_metadata
+
+        assert metadata["is_context_extension"] is True
+        assert metadata["protected_wpe_row_ranges"] == [(4, 12)]
+        assert metadata["source_n_positions"] == 8
+        assert metadata["target_n_positions"] == 14
+
+    def test_positional_embedding_resize_marks_prefix_conversion_only(self):
+        """Prefix slots alone should not activate context-extension warmup."""
+        from transformers import GPT2Config, GPT2LMHeadModel
+        from _utils._model_utils import resize_positional_embeddings
+
+        config = GPT2Config(
+            vocab_size=32,
+            n_positions=8,
+            n_embd=4,
+            n_layer=1,
+            n_head=1,
+        )
+        model = GPT2LMHeadModel(config)
+
+        resized = resize_positional_embeddings(model, 12, shift_right_by=4)
+        metadata = resized.context_extension_metadata
+
+        assert metadata["is_context_extension"] is False
+        assert metadata["protected_wpe_row_ranges"] == [(4, 12)]
+
+    def _run_prefix_load_shift_probe(self, source_config_dict):
+        """Drive load_pretrained_model with dummy classes; return the recorded resize call."""
+        from types import SimpleNamespace
+        import _utils._model_utils as model_utils
+
+        calls = {}
+
+        class DummyConfig:
+            def __init__(self, n_positions=8):
+                self.n_positions = n_positions
+
+            @classmethod
+            def from_pretrained(cls, *args, **kwargs):
+                return cls(n_positions=8)
+
+            @classmethod
+            def get_config_dict(cls, *args, **kwargs):
+                return (source_config_dict, None)
+
+        class DummyModel:
+            def __init__(self, config):
+                self.config = config
+                self.transformer = SimpleNamespace(
+                    wpe=torch.nn.Embedding(config.n_positions, 4)
+                )
+
+            @classmethod
+            def from_pretrained(cls, ckpt_dir, config=None, **kwargs):
+                return cls(config)
+
+            def resize_token_embeddings(self, vocab_size):
+                self.vocab_size = vocab_size
+                return self
+
+        def fake_loader(model_class, ckpt_dir, config, **kwargs):
+            return model_class.from_pretrained(ckpt_dir, config=config), {"mismatched_keys": []}
+
+        def fake_resize(model, new_n_positions, shift_right_by=0):
+            calls["new_n_positions"] = new_n_positions
+            calls["shift_right_by"] = shift_right_by
+            return model
+
+        # Restore by mutating the entry in place: generate_CIFs imports MODEL_REGISTRY by
+        # name, so rebinding the module attribute would leak the dummy entry to it.
+        original_entry = model_utils.MODEL_REGISTRY["Prefix"]
+        original_loader = model_utils._load_with_sdpa_fallback
+        original_resize = model_utils.resize_positional_embeddings
+        try:
+            model_utils.MODEL_REGISTRY["Prefix"] = (DummyConfig, DummyModel)
+            model_utils._load_with_sdpa_fallback = fake_loader
+            model_utils.resize_positional_embeddings = fake_resize
+
+            args = SimpleNamespace(
+                pretrained_model_dir="dummy_ckpt",
+                activate_conditionality="Prefix",
+                context_length=8,
+                n_prefix_tokens=4,
+                n_hidden_cond=32,
+                condition_columns="['bandgap']",
+            )
+
+            class DummyTokenizer:
+                bos_token_id = None
+                eos_token_id = None
+                pad_token_id = None
+
+                def __len__(self):
+                    return 16
+
+            model = model_utils.load_pretrained_model(args, DummyTokenizer())
+        finally:
+            model_utils.MODEL_REGISTRY["Prefix"] = original_entry
+            model_utils._load_with_sdpa_fallback = original_loader
+            model_utils.resize_positional_embeddings = original_resize
+
+        assert model is not None
+        return calls
+
+    def test_prefix_load_resizes_wpe_with_shift(self):
+        """Base checkpoint -> Prefix target should request a right shift."""
+        calls = self._run_prefix_load_shift_probe(source_config_dict={})
+        assert calls["new_n_positions"] == 12
+        assert calls["shift_right_by"] == 4
+
+    def test_prefix_load_resizes_wpe_without_shift_for_prefix_source(self):
+        """Prefix checkpoint -> Prefix target should not request an extra shift."""
+        calls = self._run_prefix_load_shift_probe(
+            source_config_dict={"n_prefix_tokens": 4, "architectures": ["PrefixGPT"]}
+        )
+        assert calls["new_n_positions"] == 12
+        assert calls["shift_right_by"] == 0
+
+    def test_pretrained_load_shape_check(self):
+        """Loading a checkpoint with mismatched conditioning widths raises instead of silently re-initializing."""
+        import os
+        from types import SimpleNamespace
+        from _models.PrefixXRD_model import PrefixXRDGPT
+        from _utils._model_utils import load_pretrained_model
+
+        ckpt_dir = os.path.join(self.temp_dir, "tiny_prefixxrd_ckpt")
+        model = PrefixXRDGPT(self._xrd_config())  # n_hidden_cond=64 (2 heads x 32)
+        model.save_pretrained(ckpt_dir)
+
+        class DummyTokenizer:
+            bos_token_id = None
+            eos_token_id = None
+            pad_token_id = None
+
+            def __len__(self):
+                return 1000
+
+        args = SimpleNamespace(
+            pretrained_model_dir=ckpt_dir,
+            activate_conditionality="PrefixXRD",
+            context_length=252,        # + n_prefix_tokens = checkpoint's 256, so no wpe resize
+            n_prefix_tokens=4,
+            n_hidden_cond=32,          # checkpoint used 64 -> conditioning shapes mismatch
+            perceiver_depth=1,
+            perceiver_n_heads=2,
+            perceiver_dim_head=16,     # heads * dim_head must equal the mutated n_hidden_cond
+            perceiver_ff_mult=2,
+            skip_xrd_convert_model=False,
+            cond_dropout=0.0,
+        )
+
+        try:
+            load_pretrained_model(args, DummyTokenizer())
+            assert False, "Expected ValueError for mismatched conditioning weights"
+        except ValueError as err:
+            assert "does not fit" in str(err), f"Unexpected error: {err}"
+
+    def test_context_extension_warmup_freeze(self):
+        """Copied wpe rows stay frozen during warmup steps and train afterwards."""
+        from types import SimpleNamespace
+        from transformers import GPT2Config, GPT2LMHeadModel
+        from _utils._model_utils import resize_positional_embeddings
+        from _utils._trainer_utils import ContextExtensionWarmupCallback, has_context_extension_wpe
+
+        model = GPT2LMHeadModel(GPT2Config(vocab_size=32, n_positions=8, n_embd=4, n_layer=1, n_head=1))
+        # 8 -> 14 with shift 4: rows 4-12 are checkpoint-copied, rows beyond are true extension
+        model = resize_positional_embeddings(model, 14, shift_right_by=4)
+        assert has_context_extension_wpe(model)
+
+        callback = ContextExtensionWarmupCallback(context_extension_warmup_steps=1)
+        state = SimpleNamespace(global_step=0)
+        callback.on_train_begin(None, state, None, model=model)
+
+        wpe = model.transformer.wpe.weight
+
+        def _wpe_grad():
+            model.zero_grad()
+            input_ids = torch.randint(0, 32, (1, 14))
+            model(input_ids=input_ids, labels=input_ids).loss.backward()
+            return wpe.grad
+
+        # Step 0 (< warmup): protected rows masked, other rows receive gradient
+        grad = _wpe_grad()
+        assert torch.all(grad[4:12] == 0), "protected rows should have zero grad during warmup"
+        assert torch.any(grad[:4] != 0) or torch.any(grad[12:] != 0), \
+            "unprotected rows should receive gradient"
+
+        # Past warmup: gradient flows into the protected rows again
+        state.global_step = 1
+        grad = _wpe_grad()
+        assert torch.any(grad[4:12] != 0), "protected rows should train after warmup"
+
+        callback.on_train_end(None, state, None)
+
+    def test_legacy_training_rail(self):
+        """build_model refuses the legacy PKV/Slider families with a pointer to the successors."""
+        from types import SimpleNamespace
+        from _utils._model_utils import build_model
+
+        class DummyTokenizer:
+            bos_token_id = None
+            eos_token_id = None
+            pad_token_id = None
+
+            def __len__(self):
+                return 100
+
+        for legacy in ("PKV", "Slider"):
+            try:
+                build_model(SimpleNamespace(activate_conditionality=legacy), DummyTokenizer())
+                assert False, f"Expected ValueError for legacy family {legacy}"
+            except ValueError as err:
+                assert "legacy" in str(err), f"Unexpected error: {err}"
+
     def test_conditional_model_with_labels(self):
         """Test conditional models compute loss when labels provided."""
         from _models.PKV_model import PKVGPT, PKVGPT2Config
