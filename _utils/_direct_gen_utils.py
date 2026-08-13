@@ -332,10 +332,15 @@ def reduce_rows_for_reduced_formula_search(
     if valid_subset.empty:
         return pd.DataFrame()
 
-    if scoring_mode == "logp":
+    if scoring_mode in ("logp", "pearson"):
         valid_subset["score"] = pd.to_numeric(valid_subset.get("score"), errors="coerce")
         valid_subset = valid_subset[np.isfinite(valid_subset["score"])]
-        sorted_subset = valid_subset.sort_values(["score", "prompt_order", "_generation_order"])
+        # logp (perplexity) is lower-better, pearson r is higher-better.
+        score_ascending = scoring_mode != "pearson"
+        sorted_subset = valid_subset.sort_values(
+            ["score", "prompt_order", "_generation_order"],
+            ascending=[score_ascending, True, True],
+        )
     else:
         sorted_subset = valid_subset.sort_values(["prompt_order", "_generation_order"])
 

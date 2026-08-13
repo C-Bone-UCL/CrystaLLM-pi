@@ -78,7 +78,6 @@ def read_xrd_file(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
             "'2theta intensity' separated by whitespace, commas or semicolons."
         )
 
-    # turn into array w/ numpy
     data = np.array([p for p in parsed[start:] if p is not None], dtype=np.float64)
     return data[:, 0], data[:, 1]
 
@@ -255,9 +254,11 @@ def main() -> None:
     if not args.output_csv and not args.save_plot:
         parser.error("nothing to write, pass --output_csv or --save_plot")
 
-    profile = process_exp_file_to_continuous(args.input_data, args.xrd_wavelength, not args.no_background_subtract)
-
+    # Plot-only runs re-read and re-process inside save_pipeline_plot, so the
+    # conversion only runs when its result is actually written out.
     if args.output_csv:
+        profile = process_exp_file_to_continuous(args.input_data, args.xrd_wavelength, not args.no_background_subtract)
+
         with open(args.output_csv, "w", encoding="utf-8") as file:
             file.write("Q,intensity\n")
             file.writelines(f"{point[0]:.2f},{point[1]:.6f}\n" for point in profile)

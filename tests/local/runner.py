@@ -230,6 +230,8 @@ def main():
         suite.run_test("scoring_mode_normalization_helper", load_gen_tests.test_scoring_mode_normalization_helper)
         suite.run_test("reduced_formula_prompt_expansion", load_gen_tests.test_reduced_formula_prompt_expansion)
         suite.run_test("reduced_formula_selection_modes", load_gen_tests.test_reduced_formula_selection_modes)
+        suite.run_test("reduced_formula_selection_xrd_fit_direction", load_gen_tests.test_reduced_formula_selection_xrd_fit_direction)
+        suite.run_test("xrd_fit_scores_discriminate", load_gen_tests.test_xrd_fit_scores_discriminate)
         suite.run_test("reduced_formula_selection_uses_provided_cif_text", load_gen_tests.test_reduced_formula_selection_uses_provided_cif_text)
         suite.run_test("mattergen_xrd_allows_missing_xrd_inputs", load_gen_tests.test_mattergen_xrd_allows_missing_xrd_inputs)
         suite.run_test("level1_dummy_formula_canonicalization", load_gen_tests.test_level1_dummy_formula_canonicalization)

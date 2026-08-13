@@ -409,6 +409,60 @@ class LoadAndGenerateTests:
         si_row = out_logp[out_logp["reduced_formula_target"] == "SiO2"].iloc[0]
         assert si_row["Generated CIF"] == "cif_good_b"
 
+    def test_reduced_formula_selection_xrd_fit_direction(self):
+        """pearson keeps the highest score per formula, unlike lower-better logp."""
+        from _utils import _direct_gen_utils
+
+        df_prompts = pd.DataFrame([
+            {"Material ID": "TiO2_Z1", "reduced_formula_target": "TiO2", "Z_search": 1, "prompt_order": 1},
+            {"Material ID": "TiO2_Z2", "reduced_formula_target": "TiO2", "Z_search": 2, "prompt_order": 2},
+        ])
+        df_generated = pd.DataFrame([
+            {"Material ID": "TiO2_Z1_1", "Generated CIF": "cif_low", "score": 0.1, "is_valid": True},
+            {"Material ID": "TiO2_Z2_1", "Generated CIF": "cif_high", "score": 0.9, "is_valid": True},
+        ])
+
+        out = _direct_gen_utils.reduce_rows_for_reduced_formula_search(
+            df_generated=df_generated,
+            df_prompts=df_prompts,
+            formulas_in_order=["TiO2"],
+            scoring_mode="pearson",
+        )
+        assert len(out) == 1
+        assert out.iloc[0]["Generated CIF"] == "cif_high", "pearson must keep the highest score"
+
+    def test_xrd_fit_scores_discriminate(self):
+        """XRD fit scoring must prefer the phase that produced the scan.
+
+        The candidate CIF is a raw model generation: asymmetric unit plus a placeholder
+        operator list. Skipping the symmetry expansion drops its pearson r below 0.3,
+        so the threshold also protects that step.
+        """
+        import numpy as np
+        from pymatgen.core import Lattice, Structure
+        from _utils._generating.xrd_fit import pearson_score, simulate_profile
+        from _utils._preprocessing._process_exp_XRD_continuous import process_exp_file_to_continuous
+
+        scan = os.path.join(fixtures_dir, "Rutile-TiO2-unproc.txt")
+        raw_cif = os.path.join(fixtures_dir, "raw_gen_rutile.cif")
+
+        profile = np.asarray(process_exp_file_to_continuous(scan, 1.54059, True))
+        input_iq = profile[:, 1]
+
+        with open(raw_cif, encoding="utf-8") as fh:
+            rutile_sim = simulate_profile(fh.read())
+
+        # Wrong-phase contrast: fluorite-structured TiO2, same formula, different pattern.
+        fluorite = Structure.from_spacegroup(
+            "Fm-3m", Lattice.cubic(4.8), ["Ti", "O"], [[0, 0, 0], [0.25, 0.25, 0.25]],
+        )
+        wrong_sim = simulate_profile(fluorite.to(fmt="cif"))
+
+        rutile_r, wrong_r = pearson_score(input_iq, rutile_sim), pearson_score(input_iq, wrong_sim)
+
+        assert rutile_r > 0.3, f"raw generated rutile should fit its own scan, got r={rutile_r:.3f}"
+        assert rutile_r > wrong_r, f"pearson ranked the wrong phase over rutile ({wrong_r:.3f} vs {rutile_r:.3f})"
+
     def test_reduced_formula_selection_uses_provided_cif_text(self):
         """Selection should validate the CIF text as provided when consistency flags are absent."""
         from _utils import _direct_gen_utils

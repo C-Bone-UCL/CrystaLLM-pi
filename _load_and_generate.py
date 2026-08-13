@@ -23,6 +23,7 @@ from _utils._generating.generate_CIFs import (
     _normalize_scoring_mode,
 )
 from _utils._generating.postprocess import process_dataframe
+from _utils._generating.xrd_fit import XRD_FIT_MODES, score_generated_rows
 from _utils import extract_formula_nonreduced
 from _utils._direct_gen_utils import (
     MODEL_INFO,
@@ -151,7 +152,7 @@ def main() -> None:
     parser.add_argument("--max_return_attempts", type=int, default=1, help="Generation attempts per sample")
     parser.add_argument("--target_valid_cifs", type=int, default=1, help="Number of valid CIFs to target per prompt. If no scoring mode, we can also specify 0 to return all generated CIFs regardless of validity.")
 
-    parser.add_argument("--scoring_mode", type=str, default="None", help="Scoring: 'LOGP' or 'None'")
+    parser.add_argument("--scoring_mode", type=str, default=None, help="Scoring: 'LOGP' (model perplexity), 'PEARSON' (XRD fit, continuous-XRD models only), or 'None'. Unset, a continuous-XRD Z search defaults to PEARSON.")
     
     parser.add_argument("--num_workers", type=int, default=4, help="CPU Post-processing workers")
     parser.add_argument("--num_workers_gpu", type=int, default=None, help="Max GPU workers for inference")
@@ -163,10 +164,6 @@ def main() -> None:
     args.do_sample = DO_SAMPLE
     args.top_k = TOP_K
     args.top_p = TOP_P
-
-    normalized_scoring_mode = _normalize_scoring_mode(args.scoring_mode)
-    if normalized_scoring_mode == "logp" and args.target_valid_cifs == 0:
-        parser.error("scoring_mode=LOGP requires --target_valid_cifs > 0.")
 
     if args.model_registry:
         try:
@@ -184,6 +181,26 @@ def main() -> None:
         
     print(f"\nModel Configuration\nPath: {args.hf_model_path}\nType: {model_info['model_type']}\nTask: {model_info['description']}")
 
+    # The argparse default is None so an explicit 'None' (early-stop Z search) stays
+    # distinguishable from not choosing at all. A continuous-XRD Z search ranked by
+    # perplexity or first-valid picks fluent simple cells over the phase that made the
+    # scan, so when nothing was chosen it defaults to XRD-fit ranking instead.
+    if args.scoring_mode is None:
+        is_cxrd_z_search = (args.search_zs and args.target_valid_cifs > 0
+                            and get_condition_format(args.hf_model_path) == "xrd_continuous")
+        args.scoring_mode = "PEARSON" if is_cxrd_z_search else "None"
+        if is_cxrd_z_search:
+            print("\nNo scoring mode given, ranking the Z search by PEARSON XRD fit.")
+
+    normalized_scoring_mode = _normalize_scoring_mode(args.scoring_mode)
+    if normalized_scoring_mode in ("logp",) + XRD_FIT_MODES and args.target_valid_cifs == 0:
+        parser.error(f"scoring_mode={args.scoring_mode} requires --target_valid_cifs > 0.")
+
+    # XRD fit scoring needs a per-row (1000, 2) conditioning profile to compare against,
+    # which only the continuous-XRD models carry.
+    if normalized_scoring_mode in XRD_FIT_MODES and get_condition_format(args.hf_model_path) != "xrd_continuous":
+        parser.error(f"scoring_mode={args.scoring_mode} requires a continuous-XRD model.")
+
     # Apply Level 1 bypass logic
     if not args.input_parquet and not args.reduced_formula_list:
         if args.level == "level_1":
@@ -200,7 +217,11 @@ def main() -> None:
         worker_count = resolve_multi_gpu_workers(args, len(df_prompts))
         print("\nStarting CIF Generation")
         df_work = generate_cifs_with_hf_model(df_prompts, args.hf_model_path, args, worker_count)
-        
+
+        if normalized_scoring_mode in XRD_FIT_MODES and not df_work.empty:
+            print(f"\nScoring {len(df_work)} candidates by XRD fit ({normalized_scoring_mode})")
+            df_work["score"] = score_generated_rows(df_work, args.xrd_wavelength)
+
     elif args.reduced_formula_list:
         raw_formulas = parse_reduced_formula_list_arg(args.reduced_formula_list)
         canonical_formulas = canonicalize_reduced_formulas(raw_formulas)
@@ -329,6 +350,10 @@ def main() -> None:
 
             worker_count = resolve_multi_gpu_workers(args, len(df_prompts))
             df_gen = generate_cifs_with_hf_model(df_prompts, args.hf_model_path, args, worker_count)
+
+            if normalized_scoring_mode in XRD_FIT_MODES and not df_gen.empty:
+                print(f"\nScoring {len(df_gen)} candidates by XRD fit ({normalized_scoring_mode})")
+                df_gen["score"] = score_generated_rows(df_gen, args.xrd_wavelength)
 
             if args.search_zs and args.target_valid_cifs > 0:
                 df_work = reduce_rows_for_reduced_formula_search(

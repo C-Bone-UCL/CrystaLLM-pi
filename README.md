@@ -246,6 +246,23 @@ python _load_and_generate.py \
     --output_cif_dir outputs/cxrd_demo
 ```
 
+**XRD-Fit Ranked Z-Search (Continuous XRD, recommended)**
+
+Sweep Z values and rank every valid candidate by agreement between its simulated pattern and the input scan (Pearson correlation on the model's Q grid). This is the default when `--search_zs` is used with a continuous-XRD model and no `--scoring_mode` is given.
+
+```bash
+python _load_and_generate.py \
+    --hf_model_path "c-bone/CrystaLLM-pi_alex_mp_20-cXRD" \
+    --reduced_formula_list "TiO2" \
+    --search_zs \
+    --scoring_mode "PEARSON" \
+    --xrd_files tests/fixtures/Rutile-TiO2-unproc.txt \
+    --xrd_wavelength 1.54059 \
+    --level level_3 \
+    --num_return_sequences 10 \
+    --output_parquet xrd_fit_ranked.parquet
+```
+
 **Mapped Lists (Bandgap Conditioning)**
 
 Provide parallel lists to generate multiple specific structures at once. Each condition vector (bandgap, E_hull) directly corresponds to the respective formula.
@@ -655,7 +672,7 @@ python _utils/_generating/generate_CIFs.py \
 
 * **Temperature:** Controls randomness (default ~1.0, higher is more exploratory but higher chance of gibberish)
 * **Top-p/Top-k:** Sampling parameters (typical: 0.95, 50)
-* **scoring_mode:** if set to `None` and `target_valid_cifs = 0`, then we generate `max_return_attempts * num_return_sequences` CIFs per Prompt/Condition pair without validation. If set to `None` and `target_valid_cifs > 0`, then we validate generated CIFs and stop once that many valid CIFs are found, without ranking. If set to `LOGP`, we validate and rank using a perplexity based scoring method.
+* **scoring_mode:** if set to `None` and `target_valid_cifs = 0`, then we generate `max_return_attempts * num_return_sequences` CIFs per Prompt/Condition pair without validation. If set to `None` and `target_valid_cifs > 0`, then we validate generated CIFs and stop once that many valid CIFs are found, without ranking. If set to `LOGP`, we validate and rank using a perplexity based scoring method. `PEARSON` (continuous-XRD models only) validates and ranks by agreement between each candidate's simulated diffraction pattern and the input scan; a continuous-XRD `--search_zs` run defaults to `PEARSON` when no mode is given.
 * **num_return_sequences:** Batch size for generation (adjust for GPU mem.)
 * **max_return_attempts:** In raw mode, total generation for each Prompt/Condition pair = `max_return_attempts * num_return_sequences`. In validation-targeted modes, generation stops when `target_valid_cifs` valid CIFs are found or `max_return_attempts` is reached.
 

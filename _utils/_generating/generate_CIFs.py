@@ -364,6 +364,11 @@ def generate_on_gpu(
     scoring_mode = _normalize_scoring_mode(scoring_mode)
     need_scores = (scoring_mode == "logp")
     check_validity = need_scores or (target_valid_cifs > 0)
+
+    # XRD fit scoring ranks after generation in _load_and_generate, so workers hand
+    # back every valid candidate. Truncating to target_valid_cifs here would rank on
+    # first-come order and starve the XRD comparison of its candidate pool.
+    keep_all_valid = scoring_mode == "pearson"
     
     # Process each prompt individually
     for idx in range(start_idx, end_idx):
@@ -476,8 +481,9 @@ def generate_on_gpu(
                                 queue.put(1)
                                 progress_made += 1
                     
-                    # Validation-only mode can stop mid-batch. LOGP mode must score the full batch before ranking.
-                    if len(valid_cifs) >= target_generations and not need_scores:
+                    # Validation-only mode can stop mid-batch. LOGP and XRD fit scoring
+                    # must keep the full batch for ranking.
+                    if len(valid_cifs) >= target_generations and not need_scores and not keep_all_valid:
                         break
                         
             except Exception as e:
@@ -498,8 +504,8 @@ def generate_on_gpu(
                     )
                 else:
                     ranked_cifs = valid_cifs
-                
-                best_cifs = ranked_cifs[:target_generations]
+
+                best_cifs = ranked_cifs if keep_all_valid else ranked_cifs[:target_generations]
                 for rank, cif_data in enumerate(best_cifs, 1):
                     cif_data["rank"] = rank
                 results.extend(best_cifs)

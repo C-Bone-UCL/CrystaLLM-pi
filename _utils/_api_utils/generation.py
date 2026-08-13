@@ -33,7 +33,7 @@ class DirectGenerationRequest(BaseModel):
     num_return_sequences: int = Field(1, description="Sequences per sample")
     max_return_attempts: int = Field(1, description="Generation attempts per sample")
     max_samples: Optional[int] = Field(None, description="Max samples to process")
-    scoring_mode: str = Field("None", description="Scoring mode for filtering (case-insensitive: LOGP or None)")
+    scoring_mode: Optional[str] = Field(None, description="Scoring mode for filtering (case-insensitive: LOGP, PEARSON or None; PEARSON ranks by XRD fit and needs a continuous-XRD model). Left unset, continuous-XRD Z searches default to PEARSON.")
     target_valid_cifs: int = Field(1, description="Target valid CIFs per prompt (LOGP requires sensibility + formula-structure consistency)")
     multi_gpu: Literal["auto", "true", "false"] = Field("auto", description="Generation launcher mode")
     nproc_per_node: Optional[int] = Field(None, description="Max GPU workers when multi_gpu is enabled (will be passed as --num_workers_gpu)")
@@ -95,9 +95,9 @@ def register_generation_routes(
                 detail="Provide exactly one output target: output_parquet or output_cif_dir.",
             )
 
-        normalized_scoring_mode = str(request.scoring_mode).lower()
-        if normalized_scoring_mode not in {"logp", "none"}:
-            raise HTTPException(status_code=422, detail="scoring_mode must be LOGP or None.")
+        normalized_scoring_mode = str(request.scoring_mode).lower() if request.scoring_mode is not None else None
+        if normalized_scoring_mode not in {"logp", "pearson", "none", None}:
+            raise HTTPException(status_code=422, detail="scoring_mode must be LOGP, PEARSON or None.")
         
         # Auto-inject a dummy formula for level_1 if no inputs are provided
         if not request.input_parquet and not request.reduced_formula_list:
@@ -132,10 +132,10 @@ def register_generation_routes(
                 if len(request.condition_lists) not in {1, formula_count}:
                     raise HTTPException(status_code=422, detail="condition vector mappings must provide either one vector or one per reduced formula.")
 
-        if normalized_scoring_mode == "logp" and request.target_valid_cifs == 0:
+        if normalized_scoring_mode in {"logp", "pearson"} and request.target_valid_cifs == 0:
             raise HTTPException(
                 status_code=422,
-                detail="scoring_mode='LOGP' requires target_valid_cifs > 0.",
+                detail=f"scoring_mode='{request.scoring_mode}' requires target_valid_cifs > 0.",
             )
 
         job_id = str(uuid.uuid4())
@@ -176,11 +176,15 @@ def register_generation_routes(
             "--temperature", str(request.temperature),
             "--num_return_sequences", str(request.num_return_sequences),
             "--max_return_attempts", str(request.max_return_attempts),
-            "--scoring_mode", request.scoring_mode,
             "--multi_gpu", request.multi_gpu,
             "--target_valid_cifs", str(request.target_valid_cifs),
             "--num_workers", str(request.num_workers),
         ])
+
+        # Unset scoring_mode stays off the command line so the CLI can pick the
+        # continuous-XRD Z search default (PEARSON) itself.
+        if request.scoring_mode is not None:
+            cmd.extend(["--scoring_mode", request.scoring_mode])
 
         if request.max_samples is not None:
             cmd.extend(["--max_samples", str(request.max_samples)])

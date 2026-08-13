@@ -240,7 +240,12 @@ class GenerationEndpointTests(IntegrationMixin):
         )
 
     def test_direct_generation_continuous_xrd(self):
-        """Continuous-XRD models take a raw scan, sweep Z, and must recover the scanned phase."""
+        """Continuous-XRD models take a raw scan, sweep Z, and must recover the scanned phase.
+
+        scoring_mode stays unset on purpose: this is the webapp's default request shape,
+        and the CLI must pick PEARSON XRD-fit ranking on its own. LOGP here ranks by
+        fluency and reliably prefers a wrong simple cell over rutile.
+        """
         if self._should_skip_integration():
             return
 
@@ -249,13 +254,11 @@ class GenerationEndpointTests(IntegrationMixin):
             "hf_model_path": "c-bone/CrystaLLM-pi_alex_mp_20-cXRD",
             "reduced_formula_list": "TiO2",
             "search_zs": True,
-            "scoring_mode": "LOGP",
             "xrd_files": ["/app/tests/fixtures/Rutile-TiO2-unproc.txt"],
             "xrd_wavelength": 1.54059,
             "level": "level_3",
             "num_return_sequences": 10,
             "max_return_attempts": 1,
-            "target_valid_cifs": 1,
             "output_parquet": output_parquet
         })
         data = self._wait_and_assert(response, job_name="generate_continuous_xrd", timeout=900)
@@ -265,7 +268,7 @@ class GenerationEndpointTests(IntegrationMixin):
         assert "--xrd_files /app/tests/fixtures/Rutile-TiO2-unproc.txt" in cmd
         assert "--xrd_wavelength 1.54059" in cmd
         assert "--search_zs" in cmd
-        assert "--scoring_mode LOGP" in cmd
+        assert "--scoring_mode" not in cmd, "unset scoring_mode must stay off the CLI so the PEARSON default applies"
 
         # Smoke mode cancels the job before it generates, so the structure check is
         # only meaningful once generation has run.
