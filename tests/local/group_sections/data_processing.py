@@ -81,8 +81,8 @@ class DataProcessingTests:
         assert 'Prompt' in df.columns, "Prompt column missing"
         assert any('Si' in str(prompt) for prompt in df['Prompt']), "Composition missing from prompts"
 
-    def test_xrd_top20_matches_golden(self):
-        """Legacy top-20 processing must reproduce the committed golden vector.
+    def test_xrd_top20_matches_reference(self):
+        """Legacy top-20 processing must reproduce the committed reference vector.
 
         Structural assertions elsewhere are order-independent, so a change in peak
         ordering slips past them while silently changing what the model is conditioned
@@ -91,11 +91,11 @@ class DataProcessingTests:
         from _utils._preprocessing._process_exp_XRD_inputs import process_and_convert
 
         peaks = process_and_convert(str(FIXTURES / "test_rutile_raw.xy"))
-        expected = self._read_golden(FIXTURES / "golden_rutile_top20.csv")
+        expected = self._read_reference(FIXTURES / "proc_rutile_top20.csv")
 
-        assert len(peaks) == len(expected), f"peak count {len(peaks)} != golden {len(expected)}"
+        assert len(peaks) == len(expected), f"peak count {len(peaks)} != reference {len(expected)}"
         for i, ((angle, intensity), (exp_angle, exp_intensity)) in enumerate(zip(peaks, expected)):
-            assert abs(angle - exp_angle) < 1e-3, f"row {i}: 2theta {angle} != golden {exp_angle}"
+            assert abs(angle - exp_angle) < 1e-3, f"row {i}: 2theta {angle} != reference {exp_angle}"
             assert abs(intensity - exp_intensity) < 1e-2, f"row {i}: intensity drift at {angle}"
 
     def test_xrd_top20_tie_break_is_deterministic(self):
@@ -113,22 +113,22 @@ class DataProcessingTests:
             f"tied peaks should follow ascending angle, got {list(sorted_angles[1:])}"
         )
 
-    def test_continuous_profile_matches_golden(self):
-        """Continuous conversion must reproduce the committed golden profile.
+    def test_continuous_profile_matches_reference(self):
+        """Continuous conversion must reproduce the committed reference profile.
 
         Guards against a pybaselines or numpy upgrade quietly shifting the SNIP
         baseline, which would change the conditioning for every continuous-XRD run.
         """
         two_theta, intensity = read_xrd_file(FIXTURES / "Rutile-TiO2-unproc.txt")
         profile = convert_to_continuous_profile(two_theta, intensity, 1.54056)
-        expected = self._read_golden(FIXTURES / "golden_rutile_continuous.csv")
+        expected = self._read_reference(FIXTURES / "proc_rutile_continuous.csv")
 
-        assert len(profile) == len(expected), f"{len(profile)} points != golden {len(expected)}"
+        assert len(profile) == len(expected), f"{len(profile)} points != reference {len(expected)}"
         worst = max(abs(got[1] - exp[1]) for got, exp in zip(profile, expected))
         assert worst < 1e-5, f"largest intensity drift {worst:.2e} exceeds tolerance"
 
-    def _read_golden(self, path):
-        """Read a two-column golden csv, skipping its header."""
+    def _read_reference(self, path):
+        """Read a two-column reference csv, skipping its header."""
         with open(path) as handle:
             return [tuple(float(v) for v in line.split(",")) for line in handle.read().splitlines()[1:]]
 
