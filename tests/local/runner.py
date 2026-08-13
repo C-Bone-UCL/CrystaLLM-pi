@@ -114,8 +114,9 @@ def main():
         suite.run_test("tokenizer_basic", data_tests.test_tokenizer_basic)
         suite.run_test("cif_validation", data_tests.test_cif_validation)
         suite.run_test("prompt_creation", data_tests.test_prompt_creation)
-        suite.run_test("logit_analysis_reconstruction", data_tests.test_logit_analysis_reconstruction)
-        suite.run_test("logit_analysis_condition_dtype_matches_model", data_tests.test_logit_analysis_condition_dtype_matches_model)
+        suite.run_test("xrd_top20_matches_golden", data_tests.test_xrd_top20_matches_golden)
+        suite.run_test("xrd_top20_tie_break", data_tests.test_xrd_top20_tie_break_is_deterministic)
+        suite.run_test("continuous_profile_matches_golden", data_tests.test_continuous_profile_matches_golden)
         suite.run_test("exp_continuous_reader", data_tests.test_exp_continuous_reader)
         suite.run_test("exp_continuous_profile_synthetic", data_tests.test_exp_continuous_profile_synthetic)
         suite.run_test("exp_continuous_binary_rejected", data_tests.test_exp_continuous_binary_rejected)
@@ -138,6 +139,7 @@ def main():
         suite.run_test("pretrained_load_shape_check", model_tests.test_pretrained_load_shape_check)
         suite.run_test("context_extension_warmup_freeze", model_tests.test_context_extension_warmup_freeze)
         suite.run_test("legacy_training_rail", model_tests.test_legacy_training_rail)
+        suite.run_test("train_data_mode_registry_coverage", model_tests.test_train_data_mode_covers_every_registry_family)
         suite.run_test("conditional_model_with_labels", model_tests.test_conditional_model_with_labels)
         suite.run_test("generation_basic", gen_tests.test_generation_basic)
         suite.run_test("generation_conditional", gen_tests.test_generation_conditional)
@@ -167,13 +169,9 @@ def main():
         suite.run_test("parse_condition_value", data_utils_tests.test_parse_condition_value)
 
         print("\nNotebook Utils Tests:")
-        suite.run_test("notebook_utils_metrics_xrd", notebook_utils_tests.test_get_metrics_xrd_keys_and_counts)
-        suite.run_test("notebook_utils_stratified_metrics_xrd", notebook_utils_tests.test_get_stratified_metrics_xrd_tiers)
-        suite.run_test("notebook_utils_xrd_condition_vector", notebook_utils_tests.test_process_xrd_to_condition_vector_output_length)
         suite.run_test("notebook_utils_novelty_round_trip", notebook_utils_tests.test_build_and_parse_novelty_round_trip)
         suite.run_test("notebook_utils_select_top_materials", notebook_utils_tests.test_select_top_materials_returns_summary)
         suite.run_test("notebook_utils_material_selection_io", notebook_utils_tests.test_export_and_run_material_selection_write_files)
-        suite.run_test("notebook_utils_stratified_only_matched", notebook_utils_tests.test_get_stratified_metrics_xrd_only_matched_and_missing_score)
         suite.run_test("notebook_utils_extract_formula_fallback", notebook_utils_tests.test_extract_formula_fallback)
         suite.run_test("notebook_utils_summary_columns", notebook_utils_tests.test_run_material_selection_preserves_summary_columns)
         
@@ -197,6 +195,7 @@ def main():
         
         # Training pipeline tests
         print("\n🚀 Training Pipeline Tests:")
+        suite.run_test("train_cli_help", training_tests.test_train_cli_help_runs)
         suite.run_test("training_setup", training_tests.test_training_setup)
         suite.run_test("model_initialization", training_tests.test_model_initialization)
         
@@ -220,6 +219,8 @@ def main():
         
         # Load and generate tests
         print("\n🤗 HF Load & Generate Tests:")
+        suite.run_test("load_and_generate_cli_help", load_gen_tests.test_cli_help_runs)
+        suite.run_test("load_and_generate_cli_unknown_model", load_gen_tests.test_cli_rejects_unknown_model)
         suite.run_test("hf_model_loading", load_gen_tests.test_hf_model_loading)
         suite.run_test("model_registry_json_schema", load_gen_tests.test_model_registry_json_schema)
         suite.run_test("custom_model_registry", load_gen_tests.test_custom_model_registry)
@@ -237,7 +238,7 @@ def main():
         suite.run_test("xrd_raw_file_parsing_and_conversion", load_gen_tests.test_xrd_raw_file_parsing_and_conversion)
         suite.run_test("condition_format_routing", load_gen_tests.test_condition_format_routing)
         suite.run_test("continuous_xrd_spec_building", load_gen_tests.test_continuous_xrd_spec_building)
-        suite.run_test("condition_lists_ragged_input_rejected", load_gen_tests.test_condition_lists_ragged_input_rejected)
+        suite.run_test("condition_lists_uneven_input_rejected", load_gen_tests.test_condition_lists_uneven_input_rejected)
 
         if tier in ("secrets", "full"):
             suite.run_test("mattergen_xrd_generation_smoke", load_gen_tests.test_mattergen_xrd_generation_smoke)

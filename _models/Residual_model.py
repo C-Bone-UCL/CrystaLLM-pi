@@ -101,7 +101,7 @@ class ResidualEncoder(nn.Module):
         prefix = prefix.to(device=device, dtype=dtype)
 
         # Create mask for present conditions
-        # The sentinel marks missing values; the extra numeric bounds protect
+        # The sentinel marks missing values. The extra numeric bounds protect
         # against accidental extreme inputs that should not contribute.
         condition_mask = (prefix != MISSING_CONDITION_VALUE) & (prefix > -100.1) & (prefix < 100.1)
 

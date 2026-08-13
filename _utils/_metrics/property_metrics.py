@@ -217,7 +217,7 @@ def main():
             property_targets = [property_targets]
     except Exception:
         property_targets = []
-        print("\nNo valid property targets provided; skipping property calculation.")
+        print("\nNo valid property targets provided, skipping property calculation.")
     
     if not property_targets:
         print("\nNo property targets specified. Exiting.")

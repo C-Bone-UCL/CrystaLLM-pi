@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [v1.4.0] - 2026-08-11
+## [Unreleased]
 
 ### New Model Generation
 - **New conditional families**: `Prefix`, `PrefixXRD` and `Residual` are ported over from CrystaLLM-graph. They succeed PKV and Slider respectively (some minor upgrades). New dependency `einops`.
@@ -16,8 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Repository Split
 - **Paper content moved out**: The paper notebooks and the Prepend/Raw baseline families now live in the standalone reproduction repo [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper). This repo keeps the PKV, Slider, and unconditional models plus new tutorial notebooks (finetuning pipeline, load-and-generate, API, SLME). All configs for the paper are in that reproducibility repo now.
-- **Branch cleanup**: Branches `paper_v2` and `reproduce_paper` were deleted; their tips are preserved as tags `archive/paper_v2` and `archive/paper_v1`. Tag `v1.3.0` remains the exact state cited by the paper.
-- **ALIGNN removed**: The separate `alignn_env` environment is gone which was used for bandgap predicitions in some of the paper studies, the repo now only needs the single environment. We can still generate with bandgap model, and evaluate the density property if wanted.
+- **Branch cleanup**: Branches `paper_v2` and `reproduce_paper` were deleted, their tips are preserved as tags `archive/paper_v2` and `archive/paper_v1`. Tag `v1.3.0` remains the exact state cited by the paper.
+- **ALIGNN removed**: The separate `alignn_env` environment is gone which was used for bandgap predictions in some of the paper studies, the repo now only needs the single environment. We can still generate with bandgap model, and evaluate the density property if wanted.
 
 ## [v1.3.2] - 2026-07-20
 

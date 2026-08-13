@@ -24,8 +24,7 @@ from .xrd_utils import (
 
 VERBOSE = False
 
-# Inlined from the graph repo's mace_adapter.py — the MACE/KD pathway stays in CrystaLLM-graph.
-# Names the discrete-peak padding sentinel used by _build_continuous_points below.
+# padding value
 MISSING_CONDITION_VALUE = -100.0
 
 def _is_torch_compiling() -> bool:

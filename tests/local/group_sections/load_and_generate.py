@@ -18,6 +18,33 @@ class LoadAndGenerateTests:
         self.temp_dir = temp_dir
         self.test_data = test_data
     
+    def test_cli_help_runs(self) -> None:
+        """The entrypoint must at least build its parser and exit cleanly.
+
+        Nothing else drives _load_and_generate.py's main(), so a broken argparse or a
+        NameError at import level would otherwise only surface for a user.
+        """
+        result = subprocess.run(
+            [sys.executable, os.path.join(script_dir, "_load_and_generate.py"), "--help"],
+            capture_output=True, text=True, cwd=script_dir, timeout=120,
+        )
+
+        assert result.returncode == 0, f"--help exited {result.returncode}: {result.stderr[-400:]}"
+        assert "--hf_model_path" in result.stdout, "help text should list the model flag"
+
+    def test_cli_rejects_unknown_model(self) -> None:
+        """An unregistered model must fail before any generation work starts."""
+        result = subprocess.run(
+            [sys.executable, os.path.join(script_dir, "_load_and_generate.py"),
+             "--hf_model_path", "nobody/not-a-real-model",
+             "--reduced_formula_list", "TiO2",
+             "--output_parquet", os.path.join(self.temp_dir, "unused.parquet")],
+            capture_output=True, text=True, cwd=script_dir, timeout=120,
+        )
+
+        assert result.returncode != 0, "unknown model should not exit 0"
+        assert "registry" in result.stderr.lower(), f"unhelpful error: {result.stderr[-400:]}"
+
     def test_hf_model_loading(self) -> None:
         """Built-in models remain available without an external registry."""
         import _load_and_generate
@@ -542,7 +569,7 @@ class LoadAndGenerateTests:
         assert cond[0][0] == 0.0, "Q grid must start at 0.0"
         assert abs(max(pair[1] for pair in cond) - 1.0) < 1e-9, "intensity must be max-normalized"
 
-    def test_condition_lists_ragged_input_rejected(self) -> None:
+    def test_condition_lists_uneven_input_rejected(self) -> None:
         """Ragged --condition_lists strings raise instead of silently dropping values."""
         from _utils._direct_gen_utils import build_formula_condition_map
 
@@ -550,7 +577,7 @@ class LoadAndGenerateTests:
             build_formula_condition_map(
                 ["NaCl", "KCl"], ["2.16, 0.0", "3.0, 0.1, 7.7"], "c-bone/CrystaLLM-pi_density"
             )
-            assert False, "ragged condition lists should raise"
+            assert False, "uneven condition lists should raise"
         except ValueError as err:
             assert "same number" in str(err), f"Unexpected error: {err}"
 

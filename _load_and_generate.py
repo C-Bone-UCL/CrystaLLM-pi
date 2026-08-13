@@ -74,8 +74,7 @@ def generate_prompts_from_specs(specs: list, args) -> pd.DataFrame:
     for s in specs:
         cond_value = s.get("condition_vector")
         if isinstance(cond_value, (list, np.ndarray)) or cond_value in (None, "None"):
-            # Nested conditions bypass string parsing: attach_prompt_metadata copies the
-            # real condition_vector from the specs into the outgoing dataframe untouched.
+            # Nested conditions bypass string parsing: dont round trip through str() and back.
             condition_lists.append([None])
         else:
             condition_lists.append(parse_condition_list_args([str(cond_value)])[0])
@@ -139,7 +138,7 @@ def main() -> None:
     z_group.add_argument("--search_zs", action="store_true", help="Search through Z=1 to Z=4 to find valid structures")
     z_group.add_argument("--z_list", type=str, help="Comma-separated explicit Z integers mapping 1:1 to formulas")
     
-    parser.add_argument("--condition_lists", nargs='+', help="One string per formula (or a single string broadcast to all); each string holds that formula's comma-separated condition values, e.g. --condition_lists \"2.16, 0.0\"")
+    parser.add_argument("--condition_lists", nargs='+', help="One string per formula, or a single string broadcast to all. Each string holds that formula's comma-separated condition values, e.g. --condition_lists \"2.16, 0.0\"")
     parser.add_argument("--level", choices=["level_1", "level_2", "level_3", "level_4"], default="level_2")
     parser.add_argument("--spacegroups", help="Comma-separated spacegroups mapped to formulas")
     
@@ -171,7 +170,7 @@ def main() -> None:
 
     if args.model_registry:
         try:
-            # The CLI is one-shot; sharing this overlay keeps existing metadata consumers unchanged.
+            # The CLI is one-shot, so sharing this overlay keeps existing metadata consumers unchanged.
             MODEL_INFO.update(_load_custom_model_registry(args.model_registry))
         except (OSError, ValueError) as exc:
             parser.error(str(exc))
@@ -237,25 +236,25 @@ def main() -> None:
         else:
             z_list = None
 
-        # Gate on XRD_FORMATS membership, never truthiness: "scalar" is truthy, and a
-        # truthiness gate would silently drop --condition_lists for every PKV model.
+        # The registry tags each model "scalar", "xrd_top20", "xrd_continuous" or None, and
+        # only the two xrd_ ones belong in XRD_FORMATS. Test membership rather than
+        # to avoid counting scalar PKV models as XRD
         xrd_format = get_condition_format(args.hf_model_path)
         is_xrd = xrd_format in XRD_FORMATS
+
         if is_xrd and not args.xrd_files:
             if xrd_format == "xrd_continuous":
                 # PrefixXRD raises "requires condition_values at every forward pass" on EVERY
-                # attempt — there is no missing-conditioning fallback, so fail fast instead
-                # of burning attempts.
+                # attempt. There is no missing-conditioning fallback because we cant  mask with this model, so raise the error.
                 raise ValueError("This continuous-XRD model requires --xrd_files (a raw powder pattern).")
             print("\nWarning: Slider XRD model selected without --xrd_files. "
                   "Generation will run with missing conditioning values.")
         if args.xrd_files and args.xrd_wavelength is None:
-            print("\nWarning: --xrd_wavelength not given; assuming CuKa1 1.54056 A. "
+            print("\nWarning: --xrd_wavelength not given, assuming CuKa1 1.54056 A. "
                   "Specify it explicitly for non-CuKa data.")
-            args.xrd_wavelength = 1.54056  # resolve once here so the module doesn't warn a second time per file
+            args.xrd_wavelength = 1.54056  # once here so the module doesn't warn a second time per file
         if xrd_format == "xrd_continuous" and args.level != "level_3":
-            print("\nWarning: continuous-XRD models were benchmarked with level_3 prompts; "
-                  f"{args.level} is untested. Consider --level level_3.")
+            print("\nWarning: continuous-XRD models were benchmarked with level_3 prompts")
 
         if args.condition_lists and not is_xrd:
             cond_list = build_formula_condition_map(canonical_formulas, args.condition_lists, args.hf_model_path)

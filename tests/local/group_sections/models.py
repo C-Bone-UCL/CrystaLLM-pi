@@ -231,7 +231,7 @@ class ModelTests:
         B, S, P = 2, 10, 3
         input_ids = torch.randint(0, 1000, (B, S))
         attn_mask = torch.ones(B, S)
-        # discrete [Q, I] peaks — Q must be > 0 for non-padding
+        # discrete [Q, I] peaks, Q must be > 0 for non-padding
         peaks = torch.rand(B, P, 2).clamp(min=0.01)
 
         with torch.no_grad():
@@ -552,6 +552,43 @@ class ModelTests:
                 assert False, f"Expected ValueError for legacy family {legacy}"
             except ValueError as err:
                 assert "legacy" in str(err), f"Unexpected error: {err}"
+
+    def test_train_data_mode_covers_every_registry_family(self):
+        """_train.py's data dispatch must stay in step with MODEL_REGISTRY."""
+        from _utils._model_utils import (
+            LEGACY_FAMILIES,
+            MODEL_REGISTRY,
+            TRAINABLE_CONDITIONAL_FAMILIES,
+            resolve_data_mode,
+        )
+
+        # Every trainable family must reach the conditional dataloader. Before this guard,
+        # _train.py listed PKV/Slider by hand, so Prefix, PrefixXRD and Residual matched no
+        # branch and training died on an unassigned tokenized_dataset.
+        for family in TRAINABLE_CONDITIONAL_FAMILIES:
+            mode = resolve_data_mode(family)
+            assert mode == "conditional", f"{family} resolved to {mode!r}, expected 'conditional'"
+
+        assert set(TRAINABLE_CONDITIONAL_FAMILIES) == {
+            name for name in MODEL_REGISTRY if name and name not in LEGACY_FAMILIES
+        }, "TRAINABLE_CONDITIONAL_FAMILIES drifted from MODEL_REGISTRY"
+
+        for unconditional in ("None", None):
+            mode = resolve_data_mode(unconditional)
+            assert mode == "unconditional", f"{unconditional!r} resolved to {mode!r}"
+
+        for legacy in LEGACY_FAMILIES:
+            try:
+                resolve_data_mode(legacy)
+                assert False, f"Expected ValueError for legacy family {legacy}"
+            except ValueError as err:
+                assert "legacy" in str(err), f"Unexpected error for {legacy}: {err}"
+
+        try:
+            resolve_data_mode("NotAFamily")
+            assert False, "Expected ValueError for an unknown family"
+        except ValueError as err:
+            assert "Unknown activate_conditionality" in str(err), f"Unexpected error: {err}"
 
     def test_conditional_model_with_labels(self):
         """Test conditional models compute loss when labels provided."""

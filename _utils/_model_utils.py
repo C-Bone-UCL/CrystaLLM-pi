@@ -1,8 +1,8 @@
 """
 Model utilities for loading and building CrystaLLM conditional and standard GPT models.
 
-PKV and Slider are legacy load-and-generate-only families kept for released checkpoints;
-training builds them nowhere — new work uses Prefix (PKV successor), PrefixXRD or
+PKV and Slider are legacy load-and-generate-only families kept for released checkpoints.
+Training builds them nowhere, new work uses Prefix (PKV successor), PrefixXRD or
 Residual (Slider successor), ported from CrystaLLM-graph.
 """
 
@@ -23,28 +23,44 @@ from _models import (
     ResidualGPT2Config,
 )
 
-# Registry mapping conditionality types to (config_class, model_class)
+# Registry
 MODEL_REGISTRY = {
-    # Legacy families: byte-identical classes, kept for released checkpoints (deprecated for new work)
+    # Legacy families
     "PKV": (PKVGPT2Config, PKVGPT),
     "Slider": (SliderGPT2Config, SliderGPT),
-    # New generation, ported from CrystaLLM-graph
+    # New generation, from CrystaLLM-graph
     "Prefix": (PrefixGPT2Config, PrefixGPT),
     "PrefixXRD": (PrefixXRDGPT2Config, PrefixXRDGPT),
     "Residual": (ResidualGPT2Config, ResidualGPT),
     None: (GPT2Config, GPT2LMHeadModel),
 }
 
-# PrefixPerceiverGPT stays in CrystaLLM-graph but its checkpoints are still detectable sources.
 PREFIX_ARCHITECTURE_NAMES = {"PrefixGPT", "PrefixXRDGPT", "PrefixPerceiverGPT"}
+
+LEGACY_FAMILIES = ("PKV", "Slider")
+
+# Derived from the registry so adding a family cannot leave the training dispatch behind.
+TRAINABLE_CONDITIONAL_FAMILIES = tuple(
+    name for name in MODEL_REGISTRY if name and name not in LEGACY_FAMILIES
+)
+
+
+def resolve_data_mode(conditionality):
+    """Map activate_conditionality to the dataloader mode used by _train.py."""
+    if conditionality in TRAINABLE_CONDITIONAL_FAMILIES:
+        return "conditional"
+    if conditionality in ("None", None):
+        return "unconditional"
+    _resolve_model_entry(conditionality)
+    raise ValueError(f"No dataloader mode registered for {conditionality!r}")
 
 
 def _resolve_model_entry(conditionality):
     """Strict registry lookup for training/finetuning, with the legacy-training rail."""
-    if conditionality in ("PKV", "Slider"):
+    if conditionality in LEGACY_FAMILIES:
         raise ValueError(
-            f"{conditionality} is a legacy load-and-generate-only family (kept for released checkpoints). "
-            "Train new models with 'Prefix' (PKV successor) or 'Residual' (Slider successor)."
+            f"{conditionality} is a legacy family (kept for older model ckpts). "
+            "Train new models with 'Prefix' (same logic as PKV) or 'Residual' (same for slider)."
         )
     if conditionality not in MODEL_REGISTRY:
         raise ValueError(
@@ -150,7 +166,7 @@ def _source_checkpoint_is_prefix_family(config_class, pretrained_model_dir):
 
 
 def resize_positional_embeddings(model, new_n_positions, shift_right_by=0):
-    """Resize GPT-2 positional embeddings, optionally shifting old rows right."""
+    """Resize GPT-2 positional embeddings, shifting old rows right when needed."""
     old_n_positions = model.config.n_positions
     if new_n_positions == old_n_positions:
         return model
@@ -276,7 +292,7 @@ def load_pretrained_model(args, tokenizer):
     )
     # ignore_mismatched_sizes silently re-initializes any weight whose shape disagrees with
     # the checkpoint. Outside the legitimate resize surface (positions, vocab, tied head)
-    # that means the checkpoint does not belong to this architecture — fail loudly instead
+    # that means the checkpoint does not belong to this architecture, so fail loudly instead
     # of finetuning partially random weights.
     benign = ("transformer.wpe", "transformer.wte", "lm_head")
     bad = [k for k, *_ in info["mismatched_keys"] if not k.startswith(benign)]

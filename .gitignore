@@ -14,12 +14,18 @@ logs/
 # .github/
 notebooks/Z_rsync.ipynb
 .exclude-rsync.txt
-data/
-outputs/
+/data/
+/outputs/
 *ignore.txt
 __amil_xrd__/
 .env
-__amil_xrd__/
 .ignore/
 docker/.env
 .tmp/
+.vscode/
+.pytest_cache/
+CLAUDE.md
+*.egg-info/
+build/
+dist/
+tests/artifacts/

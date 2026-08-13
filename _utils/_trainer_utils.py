@@ -134,7 +134,7 @@ class TrainingArgsCallback(TrainerCallback):
         control: TrainerControl,
         **kwargs: object,
     ) -> TrainerControl:
-        # Trainer invokes callbacks on every rank; only one process should write.
+        # Trainer invokes callbacks on every rank. Only one process should write.
         if not state.is_world_process_zero:
             return control
 
@@ -299,7 +299,9 @@ def _context_extension_wpe_weight(model: object) -> torch.nn.Parameter | None:
 
 
 class ContextExtensionWarmupCallback(TrainerCallback):
-    """Mask copied positional embedding row gradients during context-extension warmup."""
+    """Mask copied positional embedding row gradients during context-extension warmup.
+    We do a gradient hook instead of freezing bc freezing is per tensor, wed have to split the params into two groups which breaks stuff.
+    """
 
     def __init__(self, context_extension_warmup_steps: int) -> None:
         super().__init__()
@@ -334,6 +336,7 @@ class ContextExtensionWarmupCallback(TrainerCallback):
         if self._hook_handle is not None:
             self._hook_handle.remove()
 
+        # ref to the trainers live state
         self._state = state
         self._protected_row_ranges = protected_row_ranges
         self._hook_handle = wpe_weight.register_hook(self._zero_protected_rows)
@@ -359,6 +362,7 @@ class ContextExtensionWarmupCallback(TrainerCallback):
         if global_step >= self.context_extension_warmup_steps:
             return gradient
 
+        # this does the cloning
         masked_gradient = gradient.clone()
         for start_idx, end_idx in self._protected_row_ranges:
             masked_gradient[start_idx:end_idx].zero_()
@@ -456,9 +460,9 @@ def setup_scheduler(args, model):
             # rows, so keep the whole positional table on AdamW.
             elif param is context_extension_wpe_weight:
                 adamw_params.append(param)
-            # AdamW for: embeddings, lm_head, and 1D params
-            elif "embed" in name_lower:
-                adamw_params.append(param)
+            # wte/wpe are 2D and match nothing here, so embeddings fall through to Muon at
+            # muon_lr. Deliberate, all released models were trained that way and work well.
+            # TODO: check perf diff if we add wpe and wte here
             elif "lm_head" in name_lower:
                 adamw_params.append(param)
             elif param.ndim < 2:

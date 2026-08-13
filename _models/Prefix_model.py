@@ -85,7 +85,7 @@ class PrefixEncoder(nn.Module):
     def forward(self, x):
         batch_size = x.shape[0]
 
-        # The encoder emits one flat prefix blob per batch item; reshape happens
+        # The encoder emits one flat prefix blob per batch item. Reshape happens
         # only after the final linear layer so the MLP can stay token-agnostic.
         x = self.processor(x)
         x = self.to_kv(x)

@@ -70,7 +70,9 @@ def process_and_save(angles, intensities):
         warnings.warn("No valid peaks found in the 0-90 degree range.")
         return np.array([]), np.array([])
 
-    sort_idx = np.argsort(intensities)[::-1]
+    # Tie-break on angle. The condition vector pairs thetas to intensities by position, so
+    # two peaks of equal intensity swapping places changes what the model is conditioned on.
+    sort_idx = np.lexsort((angles, -intensities))
     angles = angles[sort_idx][:MAX_PEAKS]
     intensities = intensities[sort_idx][:MAX_PEAKS]
     
@@ -89,7 +91,7 @@ def process_and_convert(input_data, xrd_wavelength=TARGET_WAVELENGTH, peak_pick=
     raw_angles, raw_intensities = load_picked_peaks(input_data)
     
     if len(raw_angles) > 250:
-        warnings.warn(f"Loaded {len(raw_angles)} peaks; check if this is raw data rather than picked peaks.")
+        warnings.warn(f"Loaded {len(raw_angles)} peaks, check if this is raw data rather than picked peaks.")
     
     conv_angles, mask = convert_wavelength(raw_angles, xrd_wavelength, TARGET_WAVELENGTH)
     processed_ang, processed_int = process_and_save(conv_angles[mask], raw_intensities[mask])

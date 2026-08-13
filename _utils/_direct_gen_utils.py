@@ -37,7 +37,7 @@ def _load_custom_model_registry(path: str) -> dict[str, object]:
     return registry
 
 
-# Default registry of published hub models; --model_registry overlays extra entries on top.
+# Default registry of published hub models, --model_registry overlays extra entries on top.
 _DEFAULT_REGISTRY_PATH = Path(__file__).with_name("model_registry.json")
 MODEL_INFO: Dict[str, dict] = _load_custom_model_registry(str(_DEFAULT_REGISTRY_PATH))
 
@@ -123,9 +123,9 @@ def get_hf_model_max_length(hf_model_path: str, model_type: Optional[str] = None
             val = getattr(cfg, attr, None)
             if isinstance(val, int) and val > 0:
                 if model_type in ("Prefix", "PrefixXRD"):
-                    # Prefix families extend wpe by n_prefix_tokens; the text budget excludes
-                    # them. PKV is deliberately NOT subtracted so legacy hub models generate
-                    # identically.
+                    # Prefix families extend wpe by n_prefix_tokens, so the text budget
+                    # excludes them. PKV is deliberately NOT subtracted so legacy hub models
+                    # generate identically.
                     return max(val - int(getattr(cfg, "n_prefix_tokens", 0) or 0), 1)
                 return val
     except Exception:
@@ -247,8 +247,8 @@ def build_formula_condition_map(formulas: List[str], condition_lists_arg: Option
         return [None] * len(formulas)
 
     raw_condition_vectors = parse_condition_list_args(condition_lists_arg)
-    # zip(*...) below truncates to the shortest vector, so ragged input would silently
-    # drop condition values — reject it before any data can be lost.
+    # zip truncates to the shortest vector, so bad input would silently
+    # drop condition values, so we reject it before any data can be lost.
     lengths = {len(vec) for vec in raw_condition_vectors}
     if len(lengths) > 1:
         raise ValueError(

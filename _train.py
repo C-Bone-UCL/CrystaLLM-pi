@@ -21,6 +21,7 @@ from _utils import (
     TrainingArgsCallback,
     CIFFormattingTrainer,
     DualLRLogger,
+    resolve_data_mode,
     ContextExtensionWarmupCallback,
     has_context_extension_wpe,
     tokenizer_ID_check, 
@@ -117,7 +118,8 @@ def main():
     )
 
     ## Fetch data_collator and tokenized dataset
-    if args.activate_conditionality in ["PKV", "Slider"]:
+    data_mode = resolve_data_mode(args.activate_conditionality)
+    if data_mode == "conditional":
         print("\n**CONDITIONALITY ACTIVATED**")
         print(f"Condition type: {args.activate_conditionality}")
         # Load data and data collator
@@ -132,7 +134,7 @@ def main():
             show_token_stats=VERBOSE,
             validate_conditions=VERBOSE
         )
-    elif args.activate_conditionality == "None" or args.activate_conditionality is None:
+    else:
         print("\n**CONDITIONALITY DEACTIVATED**")
         # Load data and data collator
         tokenized_dataset, data_collator = load_data(
@@ -153,7 +155,7 @@ def main():
 
     # Build or Load a model
     ## If conditional model chosen, we assume finetuning, and so we always want to eval on start
-    eval_on_start = args.activate_conditionality in ["PKV", "Slider"] and args.eval_strategy != "no"
+    eval_on_start = data_mode == "conditional" and args.eval_strategy != "no"
     ## Build base model (works for all)
     model = build_model(args, tokenizer)
     

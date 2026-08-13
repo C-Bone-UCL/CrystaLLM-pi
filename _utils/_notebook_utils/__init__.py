@@ -1,8 +1,6 @@
 """Notebook-scoped helper package."""
 
-from _utils._notebook_utils._shared_utils import get_metrics_xrd, get_stratified_metrics_xrd
-from _utils._notebook_utils.x_xrd_tio2_utils import process_xrd_to_condition_vector
-from _utils._notebook_utils.x_slme_utils import (
+from _utils._notebook_utils.t6_slme_utils import (
     extract_formula,
     build_novelty_tag,
     parse_novelty_from_tag,
@@ -11,9 +9,6 @@ from _utils._notebook_utils.x_slme_utils import (
 )
 
 __all__ = [
-    "get_metrics_xrd",
-    "get_stratified_metrics_xrd",
-    "process_xrd_to_condition_vector",
     "extract_formula",
     "build_novelty_tag",
     "parse_novelty_from_tag",

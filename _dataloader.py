@@ -24,9 +24,10 @@ np.random.seed(1)
 def _pack_condition_values(values_list):
     """Tensorize per-sample conditions (ported from CrystaLLM-graph).
 
-    Flat scalars/vectors stack directly (legacy path, unchanged). Nested 2D conditions —
-    e.g. continuous (1000, 2) XRD profiles — are padded at the front to the longest row
-    count with MISSING_CONDITION_VALUE rows before stacking.
+    A scalar condition is one row per sample so a plain stack works. A continuous XRD
+    condition is a (1000, 2) table per sample, and uneven row counts make np.array build
+    an object array that torch cannot use. Pad short tables up to the tallest, at the
+    front with MISSING_CONDITION_VALUE where the models expect filler.
     """
     first_cond = values_list[0]
 

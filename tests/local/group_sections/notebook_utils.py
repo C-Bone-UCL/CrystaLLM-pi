@@ -2,7 +2,6 @@
 
 import os
 
-import numpy as np
 import pandas as pd
 
 
@@ -12,23 +11,6 @@ class NotebookUtilsTests:
     def __init__(self, temp_dir, test_data):
         self.temp_dir = temp_dir
         self.test_data = test_data
-
-    def _toy_metrics_df(self):
-        return pd.DataFrame({
-            "RMS-d": [0.1, 0.2, np.nan],
-            "True a": [5.0, 6.0, 7.0],
-            "Gen a": [5.1, 5.9, 7.2],
-            "True b": [5.0, 6.0, 7.0],
-            "Gen b": [5.1, 5.9, 7.2],
-            "True c": [5.0, 6.0, 7.0],
-            "Gen c": [5.1, 5.9, 7.2],
-            "True volume": [100.0, 200.0, 300.0],
-            "Gen volume": [105.0, 195.0, 310.0],
-            "Score": [0.9, 0.8, 0.7],
-            "is_novel": [True, False, True],
-            "is_comp_novel": [False, False, True],
-            "atom_counts": [8, 12, 16],
-        })
 
     def _toy_selection_df(self):
         return pd.DataFrame({
@@ -43,48 +25,6 @@ class NotebookUtilsTests:
             "is_comp_novel": [False, False],
             "is_comp_novel_pt": [False, False],
         })
-
-    def test_get_metrics_xrd_keys_and_counts(self):
-        from _utils._notebook_utils import get_metrics_xrd
-
-        metrics = get_metrics_xrd(self._toy_metrics_df(), n_test=3, verbose=False)
-
-        assert metrics["Number of matched structures"] == 2
-        assert metrics["Total number of structures"] == 3
-        assert "Volume MAE" in metrics
-        assert "Average Score" in metrics
-
-    def test_get_stratified_metrics_xrd_tiers(self):
-        from _utils._notebook_utils import get_stratified_metrics_xrd
-
-        metrics = get_stratified_metrics_xrd(self._toy_metrics_df(), verbose=False)
-
-        assert "Overall" in metrics.index
-        assert "Memorized (Seen Comp & Struct)" in metrics.index
-        assert "Structurally Novel (Seen Comp)" in metrics.index
-        assert "Compositionally Novel (Unseen Comp)" in metrics.index
-        assert "Atom Count (matched mean)" in metrics.columns
-
-    def test_get_stratified_metrics_xrd_only_matched_and_missing_score(self):
-        from _utils._notebook_utils import get_stratified_metrics_xrd
-
-        df = self._toy_metrics_df().drop(columns=["Score"])
-        metrics = get_stratified_metrics_xrd(df, only_matched=True, verbose=False)
-
-        assert metrics.loc["Overall", "Matched"] == 2
-        assert pd.isna(metrics.loc["Overall", "Avg Score"])
-        assert "Vol MAE" in metrics.columns
-
-    def test_process_xrd_to_condition_vector_output_length(self):
-        from _utils._notebook_utils import process_xrd_to_condition_vector
-
-        raw_pattern = "two_theta intensity\n10 100\n20 50\n"
-        vec = process_xrd_to_condition_vector(raw_pattern)
-        values = vec.split(",")
-
-        assert len(values) == 40
-        assert values[0] == "0.111"
-        assert values[20] == "1.0"
 
     def test_build_and_parse_novelty_round_trip(self):
         from _utils._notebook_utils import build_novelty_tag, parse_novelty_from_tag

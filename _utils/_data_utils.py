@@ -47,7 +47,7 @@ def validate_condition_values(tokenized_dataset, dataset_with_idx, parsed_condit
     if isinstance(tokenized_conditions, torch.Tensor):
         tokenized_conditions = tokenized_conditions.tolist()
 
-    print(f"Row {row_idx_raw} — Original: {original_conditions}, Tokenized: {tokenized_conditions}")
+    print(f"Row {row_idx_raw} Original: {original_conditions}, Tokenized: {tokenized_conditions}")
     if len(original_conditions) == len(tokenized_conditions):
         if all(abs(o - t) < 1e-5 for o, t in zip(original_conditions, tokenized_conditions)):
             print("Condition values match")

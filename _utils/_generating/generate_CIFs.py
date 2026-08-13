@@ -157,7 +157,7 @@ def get_model_max_length(model_ckpt_dir, activate_conditionality):
             config = json.load(f)
         n_positions = config.get("n_positions", DEFAULT_MAX_LENGTH)
         if activate_conditionality in ("Prefix", "PrefixXRD"):
-            # Prefix families extend wpe by n_prefix_tokens; the text budget excludes them.
+            # Prefix families extend wpe by n_prefix_tokens, so the text budget excludes them.
             # PKV is deliberately NOT subtracted so legacy hub models generate identically.
             return max(n_positions - config.get("n_prefix_tokens", 0), 1)
         return n_positions
@@ -277,7 +277,7 @@ def _load_worker_model(model_class, model_source_path, model_source, dtype, conf
     if config_overrides:
         # Registry-supplied config overrides (e.g. skip_xrd_convert_model) go straight into
         # from_pretrained so the model's own config class applies them. Do NOT pre-fetch an
-        # AutoConfig here — that resolves plain GPT2Config and bypasses conditional defaults.
+        # AutoConfig here, it resolves plain GPT2Config and bypasses conditional defaults.
         extra_kwargs.update(config_overrides)
 
     try:
@@ -390,7 +390,7 @@ def generate_on_gpu(
                 # Handle different conditionality types
                 if activate_conditionality in ["PKV", "Slider", "Prefix", "PrefixXRD", "Residual"]:
                     # Parse first: a nested (1000, 2) profile becomes a (1, 1000, 2) tensor,
-                    # a flat PKV list stays (1, n) — unchanged legacy behavior.
+                    # a flat PKV list stays (1, n), unchanged legacy behavior.
                     condition_tensor = None
                     values = parse_condition_vector(row.get("condition_vector"))
                     if values is not None:
@@ -476,7 +476,7 @@ def generate_on_gpu(
                                 queue.put(1)
                                 progress_made += 1
                     
-                    # Validation-only mode can stop mid-batch; LOGP mode must score the full batch before ranking.
+                    # Validation-only mode can stop mid-batch. LOGP mode must score the full batch before ranking.
                     if len(valid_cifs) >= target_generations and not need_scores:
                         break
                         

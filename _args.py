@@ -1,8 +1,8 @@
 """
 Argument parsing for CrystaLLM_pi training and generation scripts.
 
-Handles configuration for Transformer-based crystalline structure generation
-with support for conditional models (PKV and Slider architectures).
+Handles configs for the conditional architectures Prefix, PrefixXRD and Residual.
+The legacy PKV and Slider families load for generation but cant be trained.
 """
 
 import argparse
@@ -42,11 +42,10 @@ def parse_args():
     # Conditional Arguments
     #######################
     parser.add_argument("--condition_columns", type=str, default=None, help="Comma-separated dataset column names to condition on (e.g., 'bandgap,density'). Must match exact column names in dataset. Values should be pre-normalized.")
-    parser.add_argument("--n_prefix_tokens", type=int, default=None, help="Number of learned prefix tokens or ghost tokens prefixed to input sequence (PKV-GPT only).")
-    parser.add_argument("--n_hidden_cond", type=int, default=None, help="Hidden dimension for property embedding projections (PKV and Slider).")
-    parser.add_argument("--cond_dropout", type=float, default=None, help="Dropout rate applied to conditional embeddings during training (PKV an Slider)).")
-    parser.add_argument("--share_layers", type=bool, default=None, help="Share conditional key-value projections across all layers (PKV-GPT only). Reduces parameters but may limit expressivity.")
-    parser.add_argument("--n_heads_sharing_slider", type=int, default=None, help="Number of attention heads that use shared conditioning weights (Residual-GPT only). Must be ≤ n_head.")
+    parser.add_argument("--n_prefix_tokens", type=int, default=None, help="Number of conditioning tokens. Prefix and PrefixXRD prepend this many ghost tokens as past_key_values and extend n_positions by the same amount. Residual reads it as the number of slider variables, which must equal the number of condition columns.")
+    parser.add_argument("--n_hidden_cond", type=int, default=None, help="Hidden dimension for property embedding projections (Prefix, PrefixXRD and Residual).")
+    parser.add_argument("--cond_dropout", type=float, default=None, help="Dropout rate applied to conditional embeddings during training (Prefix, PrefixXRD and Residual).")
+    parser.add_argument("--n_heads_sharing_slider", type=int, default=None, help="Number of attention heads that use shared conditioning weights (Residual-GPT only). Must be less or equal to n_head.")
     parser.add_argument("--cond_lr", type=float, default=None, help="Learning rate for conditional parameters. Separate from main model learning rate.")
     parser.add_argument("--cond_wd", type=float, default=None, help="Weight decay for conditional parameters.")
     parser.add_argument("--skip_xrd_convert_model", nargs="?", const=True, default=False, type=str_to_bool, help="Skip PrefixXRD's discrete peak broadening and expect 1000x2 continuous [Q, I] inputs instead.")
@@ -61,7 +60,7 @@ def parse_args():
     # Model Arguments
     #######################
     # Model Depth
-    parser.add_argument("--activate_conditionality", type=str, default=None, help="Select conditioning architecture: 'Prefix' (PKV successor), 'PrefixXRD' (continuous/discrete XRD conditioning), 'Residual' (Slider successor), or None for unconditional model. 'PKV' and 'Slider' are legacy generation-only families — training them raises. Default None loads base unconditional model.")
+    parser.add_argument("--activate_conditionality", type=str, default=None, help="Select conditioning architecture: 'Prefix' (PKV successor), 'PrefixXRD' (continuous/discrete XRD conditioning), 'Residual' (Slider successor), or None for unconditional model. 'PKV' and 'Slider' are legacy generation-only families, training them raises error. Default None loads base unconditional model.")
     # parser.add_argument("--n_positions", type=int, default=1024, help="Model context size")
     parser.add_argument("--n_embd", type=int, default=256, help="Transformer embedding dimension size.")
     parser.add_argument("--n_layer", type=int, default=4, help="Number of Transformer layers in the model.")
