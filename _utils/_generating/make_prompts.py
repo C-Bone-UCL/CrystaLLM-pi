@@ -126,17 +126,21 @@ def create_automatic_prompts(df, cif_column, level, condition_columns=None):
     # Extract condition vector if specified
     if condition_columns:
         if 'Condition Vector' in condition_columns or 'condition_vector' in condition_columns:
-            # take the string, and make a vector by removing the brackets and splitting by comma
-            def parse_condition_vector(row):
-                vec_str = row.get('Condition Vector') or row.get('condition_vector')
-                # remove brackets
-                if pd.isna(vec_str):
-                    return "-100.0"
-                vec_str = str(vec_str).replace('[', '').replace(']', '')
-                return vec_str
-            condition_vectors = df.apply(parse_condition_vector, axis=1)
-            # remove Condition Vector from df
-            df = df.drop(columns=['Condition Vector'], errors='ignore')
+            # Take the column as it is. Stringifying here would flatten a nested
+            # (1000, 2) continuous XRD profile into unparseable text, and the generation
+            # side already accepts bracketed strings, comma strings and raw lists.
+            condition_column = "condition_vector" if "condition_vector" in df.columns else "Condition Vector"
+            if condition_column not in df.columns:
+                raise ValueError("Missing condition column: condition_vector")
+
+            # A missing scalar keeps the -100 sentinel the conditional models read as
+            # "no condition supplied". Only scalars can be missing, so guard on scalars.
+            condition_vectors = [
+                "-100.0" if isinstance(value, float) and pd.isna(value) else value
+                for value in df[condition_column]
+            ]
+            if condition_column != "condition_vector":
+                df = df.drop(columns=[condition_column])
         else:
             def get_condition_value(row, col):
                 if col not in df.columns or pd.isna(row[col]):

@@ -60,6 +60,30 @@ class DataProcessingTests:
             # Exception for malformed input is acceptable
             pass
     
+    def test_automatic_prompts_keep_condition_column_intact(self):
+        """condition_vector must reach the output unmangled, including nested XRD profiles.
+
+        The old implementation ran str(value).replace("[", "") over the column, which
+        flattens a nested (1000, 2) [Q, I] profile into unparseable text, and pd.isna on a
+        nested value raises instead of returning False. A missing scalar still has to come
+        out as the -100 sentinel the conditional models read as "no condition supplied".
+        """
+        import pandas as pd
+        from _utils._generating.make_prompts import create_automatic_prompts
+
+        nested_profile = [[0.0, 0.0], [0.01, 0.5], [0.02, 1.0]]
+        df = pd.DataFrame({
+            "CIF": [self.test_data["test_cif"]] * 3,
+            "condition_vector": [nested_profile, "2.16, 0.0", float("nan")],
+        })
+
+        out = create_automatic_prompts(df, "CIF", "level_2", condition_columns=["condition_vector"])
+        values = list(out["condition_vector"])
+
+        assert values[0] == nested_profile, f"nested profile was mangled: {values[0]!r}"
+        assert values[1] == "2.16, 0.0", f"scalar string was altered: {values[1]!r}"
+        assert values[2] == "-100.0", f"missing scalar lost its sentinel: {values[2]!r}"
+
     def test_prompt_creation(self):
         """Test prompt creation utilities."""
         from _utils._generating.make_prompts import create_manual_prompts

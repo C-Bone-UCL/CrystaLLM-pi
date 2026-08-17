@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import json
 import re
-from collections import OrderedDict
+from collections.abc import Sequence
+from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -39,7 +39,7 @@ def _load_custom_model_registry(path: str) -> dict[str, object]:
 
 # Default registry of published hub models, --model_registry overlays extra entries on top.
 _DEFAULT_REGISTRY_PATH = Path(__file__).with_name("model_registry.json")
-MODEL_INFO: Dict[str, dict] = _load_custom_model_registry(str(_DEFAULT_REGISTRY_PATH))
+MODEL_INFO: dict[str, dict] = _load_custom_model_registry(str(_DEFAULT_REGISTRY_PATH))
 
 
 def _as_list(value, fallback):
@@ -52,7 +52,7 @@ def _as_list(value, fallback):
 XRD_FORMATS = {"xrd_top20", "xrd_continuous"}
 
 
-def get_condition_format(model_path: str) -> Optional[str]:
+def get_condition_format(model_path: str) -> str | None:
     """Condition format from the registry; legacy fallback: Slider entries are top-20 XRD."""
     info = MODEL_INFO.get(model_path) or {}
     fmt = info.get("condition_format")
@@ -66,12 +66,12 @@ def is_xrd_model(model_path: str) -> bool:
     # Path substring kept only for overlay registry entries missing condition_format.
     return get_condition_format(model_path) in XRD_FORMATS or "xrd" in model_path.lower()
 
-def parse_xrd_file_to_condition_vector(file_path: str, wavelength: float = 1.54056) -> List[float]:
+def parse_xrd_file_to_condition_vector(file_path: str, wavelength: float = 1.54056) -> list[float]:
     """Parse and process raw XRD file to 40-value condition vector using dynamic processing."""
     try:
         processed_peaks = process_and_convert(file_path, xrd_wavelength=wavelength)
     except Exception as err:
-        raise ValueError(f"Failed to process XRD file '{file_path}': {err}")
+        raise ValueError(f"Failed to process XRD file '{file_path}': {err}") from err
 
     thetas = [p[0] for p in processed_peaks]
     intensities = [p[1] for p in processed_peaks]
@@ -97,9 +97,8 @@ def parse_xrd_file_to_condition_vector(file_path: str, wavelength: float = 1.540
 
     return scaled_thetas + scaled_intensities
 
-def validate_model_conditions(model_path: str, condition_lists: Optional[List[List[float]]], is_xrd: bool = False) -> None:
+def validate_model_conditions(model_path: str, condition_lists: list[list[float]] | None) -> None:
     """Validate that provided condition dimensions match model expectations."""
-    if is_xrd: return
     model_info = MODEL_INFO.get(model_path)
     if not model_info: return
 
@@ -115,8 +114,13 @@ def validate_model_conditions(model_path: str, condition_lists: Optional[List[Li
             f"({model_info['description']})"
         )
 
-def get_hf_model_max_length(hf_model_path: str, model_type: Optional[str] = None) -> int:
-    """Fetch usable text context length from HF config, falling back to default."""
+@lru_cache(maxsize=None)
+def get_hf_model_max_length(hf_model_path: str, model_type: str | None = None) -> int:
+    """Fetch usable text context length from HF config, falling back to default.
+
+    Cached per (model, type): the Z-search loop asks repeatedly and AutoConfig
+    re-reads the HF cache on every call.
+    """
     try:
         cfg = AutoConfig.from_pretrained(hf_model_path, trust_remote_code=True)
         for attr in ("n_positions", "max_position_embeddings", "n_ctx"):
@@ -137,36 +141,32 @@ def get_visible_gpu_count() -> int:
     return torch.cuda.device_count() if torch.cuda.is_available() else 0
 
 def resolve_multi_gpu_workers(args, n_prompts: int) -> int:
-    """Resolve effective GPU worker count for generation."""
-    if getattr(args, "output_cif_dir", None):
-        return 0
+    """Resolve effective GPU worker count for generation.
 
+    --num_workers_gpu is the single arg: unset uses all visible GPUs,
+    an integer caps the worker count, and 1 forces the single-process path.
+    """
     gpu_count = get_visible_gpu_count()
-    if gpu_count < 2 or args.multi_gpu == "false" or n_prompts < 1:
+    if gpu_count < 2 or n_prompts < 1:
         return 0
 
     requested_workers = args.num_workers_gpu if args.num_workers_gpu else gpu_count
     worker_count = min(requested_workers, gpu_count) if n_prompts == 1 else min(requested_workers, gpu_count, n_prompts)
     return worker_count if worker_count >= 2 else 0
 
-def parse_reduced_formula_list_arg(reduced_formula_list: str) -> List[str]:
+def parse_reduced_formula_list_arg(reduced_formula_list: str) -> list[str]:
     """Parse comma-separated reduced formulas from CLI input."""
     return [item.strip() for item in str(reduced_formula_list).split(",") if item.strip()]
 
-def canonicalize_reduced_formulas(formulas: Sequence[str]) -> List[str]:
+def canonicalize_reduced_formulas(formulas: Sequence[str]) -> list[str]:
     """Canonicalize formulas using pymatgen reduced formula representation, preserving duplicates."""
-    result = []
-    for raw_formula in formulas:
-        token = str(raw_formula).strip()
-        if token == "X":
-            result.append("X")
-        else:
-            result.append(Composition(token).reduced_formula)
-    if not result:
+    tokens = [str(f).strip() for f in formulas]
+    if not tokens:
         raise ValueError("No valid reduced formulas were provided")
-    return result
+    # "X" is the level-1 placeholder and must bypass pymatgen parsing.
+    return [t if t == "X" else Composition(t).reduced_formula for t in tokens]
 
-def _parse_formula_tokens(reduced_formula: str) -> List[Tuple[str, float]]:
+def _parse_formula_tokens(reduced_formula: str) -> list[tuple[str, float]]:
     """Extract chemical symbols and their amounts, maintaining string order."""
     comp = Composition(reduced_formula).as_dict()
     pattern = re.compile(r"([A-Z][a-z]?)")
@@ -191,13 +191,13 @@ def reduced_formula_to_explicit_formula(reduced_formula: str, z_value: int) -> s
     return "".join([f"{sym}{_format_atom_count(amount * z_value)}" for sym, amount in tokens])
 
 def build_reduced_formula_specs(
-    formulas: List[str],
-    z_values: List[int],
-    properties: List[dict],
-    xrd_format: Optional[str] = None,
-    xrd_wavelength: Optional[float] = None,
+    formulas: list[str],
+    z_values: list[int],
+    properties: list[dict],
+    xrd_format: str | None = None,
+    xrd_wavelength: float | None = None,
     xrd_background_subtract: bool = True
-) -> List[dict]:
+) -> list[dict]:
     """Build one prompt spec per formula row using strictly parallel lists.
 
     Each index i in formulas/z_values/properties corresponds to one output spec.
@@ -241,7 +241,7 @@ def build_reduced_formula_specs(
 
     return specs
 
-def build_formula_condition_map(formulas: List[str], condition_lists_arg: Optional[List[str]], model_path: str) -> List[Optional[str]]:
+def build_formula_condition_map(formulas: list[str], condition_lists_arg: list[str] | None, model_path: str) -> list[str | None]:
     """Return one normalized condition-vector string per formula row (positional)."""
     if not condition_lists_arg:
         return [None] * len(formulas)
@@ -256,7 +256,7 @@ def build_formula_condition_map(formulas: List[str], condition_lists_arg: Option
             f"comma-separated values; got lengths {sorted(lengths)}."
         )
     transposed = [list(x) for x in zip(*raw_condition_vectors)]
-    validate_model_conditions(model_path, transposed, is_xrd=False)
+    validate_model_conditions(model_path, transposed)
 
     if not is_xrd_model(model_path):
         model_info = MODEL_INFO.get(model_path)
@@ -284,19 +284,18 @@ def build_formula_condition_map(formulas: List[str], condition_lists_arg: Option
 
     raise ValueError(f"Need either 1 condition vector or one per formula. Got {len(as_str)}.")
 
-def parse_condition_list_args(condition_lists_arg: Optional[List[str]]) -> List[List[float]]:
+def parse_condition_list_args(condition_lists_arg: list[str] | None) -> list[list[float]]:
     """Parse CLI condition list strings into vectors of floats."""
     if not condition_lists_arg: return []
     return [[float(x.strip()) for x in cond_str.split(",")] for cond_str in condition_lists_arg]
 
-def attach_prompt_metadata(df_prompts: pd.DataFrame, specs: List[dict]) -> pd.DataFrame:
+def attach_prompt_metadata(df_prompts: pd.DataFrame, specs: list[dict]) -> pd.DataFrame:
     """Attach reduced-formula metadata columns to generated prompt dataframe."""
     specs_df = pd.DataFrame(specs)
     if len(df_prompts) != len(specs_df):
         raise ValueError(f"Prompt/spec mismatch: got {len(df_prompts)} prompts but {len(specs_df)} specs")
-    
+
     out = df_prompts.copy().reset_index(drop=True)
-    # The fix + robust `.get` assignment
     for col in ["reduced_formula_target", "Z_search", "prompt_order", "Material ID", "condition_vector"]:
         if col in specs_df.columns:
             out[col] = specs_df[col].values
@@ -305,9 +304,9 @@ def attach_prompt_metadata(df_prompts: pd.DataFrame, specs: List[dict]) -> pd.Da
     return out
 
 def reduce_rows_for_reduced_formula_search(
-    df_generated: pd.DataFrame, 
-    df_prompts: pd.DataFrame, 
-    formulas_in_order: List[str], 
+    df_generated: pd.DataFrame,
+    df_prompts: pd.DataFrame,
+    formulas_in_order: list[str],
     scoring_mode: str
 ) -> pd.DataFrame:
     """Select one best row per reduced formula according to scoring mode."""
@@ -315,11 +314,15 @@ def reduce_rows_for_reduced_formula_search(
         return pd.DataFrame()
 
     prompts_meta = df_prompts[["Material ID", "reduced_formula_target", "Z_search", "prompt_order"]].drop_duplicates()
-    
-    df_generated["base_Material ID"] = df_generated["Material ID"].str.rsplit('_', n=1).str[0]
     prompts_meta = prompts_meta.rename(columns={"Material ID": "base_Material ID"})
-    
-    generated = df_generated.merge(prompts_meta, on="base_Material ID", how="left").reset_index(drop=True)
+
+    # assign() keeps the join key local: the caller's dataframe must not gain columns.
+    generated = (
+        df_generated
+        .assign(**{"base_Material ID": df_generated["Material ID"].str.rsplit('_', n=1).str[0]})
+        .merge(prompts_meta, on="base_Material ID", how="left")
+        .reset_index(drop=True)
+    )
     generated["_generation_order"] = generated.index
     
     if "is_consistent" in generated.columns:

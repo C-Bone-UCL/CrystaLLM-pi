@@ -104,8 +104,16 @@ class VirtualiserTests:
             )
 
     def test_promote_symmetry(self):
-        """promote_symmetry returns a valid Structure."""
+        """promote_symmetry rebuilds the virtualised cell in its conventional setting.
+
+        Asserting only that a Structure with sites comes back is satisfied by returning
+        the input untouched, which is the one failure worth catching in a function whose
+        whole job is to change the cell. The ordered Mg/Zn cell is Cm, virtualising the
+        pair raises it to R3m, and symmetrising then expands the primitive 6-site cell
+        into the 18-site conventional one.
+        """
         from pymatgen.core import Structure
+        from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
         from _utils._virtualiser import virtualise_structure, promote_symmetry
 
         struct = self._make_ordered_struct()
@@ -113,7 +121,10 @@ class VirtualiserTests:
         refined = promote_symmetry(virt, symprec=0.01, angle_tol=0.5)
 
         assert isinstance(refined, Structure)
-        assert len(refined.sites) > 0
+        assert len(refined.sites) > len(virt.sites), "conventional cell should be larger than the input"
+        assert SpacegroupAnalyzer(refined, symprec=0.01).get_space_group_number() == 160, "expected R3m"
+        # The virtual Mg/Zn site has to survive symmetrisation, not collapse to one element.
+        assert {"Mg", "Zn"} <= {str(sp) for site in refined.sites for sp in site.species}
 
     def test_load_config(self):
         """load_config reads YAML and applies defaults."""
@@ -130,7 +141,7 @@ class VirtualiserTests:
         assert ("Mg", "Zn") in cfg["virtual_pairs"]
 
     def test_full_pipeline_to_cif(self):
-        """End-to-end: ordered structure → virtualised → CIF written to disk."""
+        """End-to-end: ordered structure, virtualised, then CIF written to disk."""
         from pymatgen.io.cif import CifWriter
         from _utils._virtualiser import virtualise_structure, promote_symmetry
 

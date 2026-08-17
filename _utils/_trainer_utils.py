@@ -300,7 +300,9 @@ def _context_extension_wpe_weight(model: object) -> torch.nn.Parameter | None:
 
 class ContextExtensionWarmupCallback(TrainerCallback):
     """Mask copied positional embedding row gradients during context-extension warmup.
-    We do a gradient hook instead of freezing bc freezing is per tensor, wed have to split the params into two groups which breaks stuff.
+
+    We do a gradient hook instead of freezing bc freezing is per tensor, wed have to split
+    the params into two groups which breaks stuff.
     """
 
     def __init__(self, context_extension_warmup_steps: int) -> None:
@@ -310,7 +312,7 @@ class ContextExtensionWarmupCallback(TrainerCallback):
         self._hook_handle: torch.utils.hooks.RemovableHandle | None = None
         self._protected_row_ranges: list[tuple[int, int]] = []
 
-    def on_train_begin(self, args: object, state: object, control: object, **kwargs: object) -> object:
+    def on_train_begin(self, args, state, control, **kwargs):
         """Register a parameter hook before the first backward pass."""
         model = kwargs.get("model")
         if model is None or self.context_extension_warmup_steps <= 0:
@@ -318,15 +320,6 @@ class ContextExtensionWarmupCallback(TrainerCallback):
 
         metadata = _context_extension_metadata(model)
         if not has_context_extension_wpe(model) or metadata is None:
-            return control
-
-        protected_row_ranges = []
-        for start, end in metadata.get("protected_wpe_row_ranges", []):
-            start_idx = int(start)
-            end_idx = int(end)
-            if end_idx > start_idx:
-                protected_row_ranges.append((start_idx, end_idx))
-        if not protected_row_ranges:
             return control
 
         wpe_weight = _context_extension_wpe_weight(model)
@@ -338,16 +331,18 @@ class ContextExtensionWarmupCallback(TrainerCallback):
 
         # ref to the trainers live state
         self._state = state
-        self._protected_row_ranges = protected_row_ranges
+        self._protected_row_ranges = [
+            (int(start), int(end)) for start, end in metadata["protected_wpe_row_ranges"]
+        ]
         self._hook_handle = wpe_weight.register_hook(self._zero_protected_rows)
         print(
             "Context-extension warmup active: "
-            f"protecting transformer.wpe rows {protected_row_ranges} "
+            f"protecting transformer.wpe rows {self._protected_row_ranges} "
             f"for {self.context_extension_warmup_steps} optimizer steps"
         )
         return control
 
-    def on_train_end(self, args: object, state: object, control: object, **kwargs: object) -> object:
+    def on_train_end(self, args, state, control, **kwargs):
         """Remove the hook once training exits."""
         if self._hook_handle is not None:
             self._hook_handle.remove()

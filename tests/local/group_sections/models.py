@@ -533,6 +533,92 @@ class ModelTests:
 
         callback.on_train_end(None, state, None)
 
+    def test_context_extension_warmup_ignores_prefix_conversion_only(self):
+        """A Prefix conversion shifts wpe without extending it, so no rows get protected."""
+        from types import SimpleNamespace
+        from _utils._trainer_utils import ContextExtensionWarmupCallback
+
+        class TinyModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.transformer = torch.nn.Module()
+                self.transformer.wpe = torch.nn.Embedding(6, 3)
+                # is_context_extension False is what a shift-only resize records.
+                self.context_extension_metadata = {
+                    "is_context_extension": False,
+                    "protected_wpe_row_ranges": [(2, 6)],
+                }
+
+            def forward(self):
+                return self.transformer.wpe(torch.arange(6)).sum()
+
+        model = TinyModel()
+        callback = ContextExtensionWarmupCallback(context_extension_warmup_steps=2)
+        callback.on_train_begin(None, SimpleNamespace(global_step=0), None, model=model)
+        model().backward()
+
+        assert torch.all(model.transformer.wpe.weight.grad != 0), \
+            "prefix-only resize must not mask any gradients"
+
+    def _muon_args(self):
+        """Minimal args namespace for exercising the Muon parameter grouping."""
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            optimizer="muon", max_steps=2, warmup_steps=0, warmup_ratio=0.0,
+            lr_scheduler_kwargs={}, lr_scheduler_type="constant",
+            muon_lr=1e-3, muon_momentum=0.95, weight_decay=0.0,
+            learning_rate=1e-4, adam_beta1=0.9, adam_beta2=0.95,
+            cond_lr=None, cond_wd=None, activate_conditionality=None,
+        )
+
+    def test_muon_routes_wpe_to_adamw_for_context_extension(self):
+        """Muon orthogonalizes whole matrices, so extended wpe must sit in the AdamW group.
+
+        Without this the zeroed gradient rows would still be moved by the Muon update,
+        defeating the warmup mask entirely.
+        """
+        from _utils._trainer_utils import setup_scheduler
+
+        class TinyModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.transformer = torch.nn.Module()
+                self.transformer.wpe = torch.nn.Embedding(6, 3)
+                self.hidden = torch.nn.Linear(3, 3, bias=False)
+                self.context_extension_metadata = {
+                    "is_context_extension": True,
+                    "protected_wpe_row_ranges": [(0, 4)],
+                }
+
+        model = TinyModel()
+        optimizer, _ = setup_scheduler(self._muon_args(), model)
+        wpe_parameter = model.transformer.wpe.weight
+
+        assert any(p is wpe_parameter for p in optimizer.param_groups[1]["params"]), \
+            "extended wpe should be in the AdamW group"
+        assert not any(p is wpe_parameter for p in optimizer.param_groups[0]["params"]), \
+            "extended wpe should not be in the Muon group"
+
+    def test_muon_keeps_wpe_grouping_without_context_extension(self):
+        """Ordinary runs keep wpe on Muon, which is how every released model was trained."""
+        from _utils._trainer_utils import setup_scheduler
+
+        class TinyModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.transformer = torch.nn.Module()
+                self.transformer.wpe = torch.nn.Embedding(6, 3)
+                self.hidden = torch.nn.Linear(3, 3, bias=False)
+
+        model = TinyModel()
+        optimizer, _ = setup_scheduler(self._muon_args(), model)
+        wpe_parameter = model.transformer.wpe.weight
+
+        assert any(p is wpe_parameter for p in optimizer.param_groups[0]["params"]), \
+            "wpe should stay on Muon without context extension"
+        assert not any(p is wpe_parameter for p in optimizer.param_groups[1]["params"])
+
     def test_legacy_training_rail(self):
         """build_model refuses the legacy PKV/Slider families with a pointer to the successors."""
         from types import SimpleNamespace

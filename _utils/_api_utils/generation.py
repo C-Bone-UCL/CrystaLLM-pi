@@ -35,8 +35,8 @@ class DirectGenerationRequest(BaseModel):
     max_samples: Optional[int] = Field(None, description="Max samples to process")
     scoring_mode: Optional[str] = Field(None, description="Scoring mode for filtering (case-insensitive: LOGP, PEARSON or None; PEARSON ranks by XRD fit and needs a continuous-XRD model). Left unset, continuous-XRD Z searches default to PEARSON.")
     target_valid_cifs: int = Field(1, description="Target valid CIFs per prompt (LOGP requires sensibility + formula-structure consistency)")
-    multi_gpu: Literal["auto", "true", "false"] = Field("auto", description="Generation launcher mode")
-    nproc_per_node: Optional[int] = Field(None, description="Max GPU workers when multi_gpu is enabled (will be passed as --num_workers_gpu)")
+    multi_gpu: Literal["auto", "true", "false"] = Field("auto", description="Deprecated: 'false' translates to --num_workers_gpu 1, other values are ignored. Use nproc_per_node instead")
+    nproc_per_node: Optional[int] = Field(None, description="Max GPU workers (passed as --num_workers_gpu; unset uses all visible GPUs)")
     num_workers: int = Field(4, description="Post-processing workers")
     skip_postprocess: bool = Field(False, description="Skip CIF validation/postprocessing")
 
@@ -176,7 +176,6 @@ def register_generation_routes(
             "--temperature", str(request.temperature),
             "--num_return_sequences", str(request.num_return_sequences),
             "--max_return_attempts", str(request.max_return_attempts),
-            "--multi_gpu", request.multi_gpu,
             "--target_valid_cifs", str(request.target_valid_cifs),
             "--num_workers", str(request.num_workers),
         ])
@@ -188,7 +187,11 @@ def register_generation_routes(
 
         if request.max_samples is not None:
             cmd.extend(["--max_samples", str(request.max_samples)])
-        if request.nproc_per_node is not None:
+        # The CLI's single GPU knob is --num_workers_gpu; deprecated multi_gpu="false"
+        # translates to a cap of 1 so existing API clients keep single-GPU behavior.
+        if request.multi_gpu == "false":
+            cmd.extend(["--num_workers_gpu", "1"])
+        elif request.nproc_per_node is not None:
             cmd.extend(["--num_workers_gpu", str(request.nproc_per_node)])
 
         if request.skip_postprocess:

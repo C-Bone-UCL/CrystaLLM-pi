@@ -334,19 +334,24 @@ class LoadAndGenerateTests:
         assert set(df_generated["reduced_formula_target"].dropna()) == {"SiO2"}, "Expected SiO2-only output for this README example"
 
     def test_multi_gpu_single_prompt_worker_resolution(self):
-        """Single prompt should still enable multi-GPU when forced and GPUs are visible."""
+        """num_workers_gpu is the single knob: unset fans out, N caps, 1 forces single-GPU."""
         from _utils import _direct_gen_utils
 
         original_get_visible_gpu_count = _direct_gen_utils.get_visible_gpu_count
         try:
             _direct_gen_utils.get_visible_gpu_count = lambda: 4
-            args = argparse.Namespace(
-                output_cif_dir=None,
-                multi_gpu="true",
-                num_workers_gpu=None,
-            )
-            workers = _direct_gen_utils.resolve_multi_gpu_workers(args, n_prompts=1)
+
+            workers = _direct_gen_utils.resolve_multi_gpu_workers(
+                argparse.Namespace(num_workers_gpu=None), n_prompts=1)
             assert workers == 4, f"Expected 4 workers for single prompt fanout, got {workers}"
+
+            workers = _direct_gen_utils.resolve_multi_gpu_workers(
+                argparse.Namespace(num_workers_gpu=2), n_prompts=1)
+            assert workers == 2, f"Expected the cap of 2 workers, got {workers}"
+
+            workers = _direct_gen_utils.resolve_multi_gpu_workers(
+                argparse.Namespace(num_workers_gpu=1), n_prompts=1)
+            assert workers == 0, f"Expected 0 (single-process path) for a cap of 1, got {workers}"
         finally:
             _direct_gen_utils.get_visible_gpu_count = original_get_visible_gpu_count
 
@@ -576,6 +581,48 @@ class LoadAndGenerateTests:
             _load_and_generate.generate_prompts_from_specs = original_generate_prompts
             _load_and_generate.generate_cifs_with_hf_model = original_generate
             _load_and_generate.reduce_rows_for_reduced_formula_search = original_reduce
+
+    def test_search_zs_early_stop_selects_first_valid(self):
+        """Early-stop Z search drops a formula once found and ships one clean row for it."""
+        import _load_and_generate
+
+        output_parquet = os.path.join(self.temp_dir, "early_stop_first_valid.parquet")
+        original_argv = sys.argv[:]
+        original_generate = _load_and_generate.generate_cifs_with_hf_model
+        seen_zs = []
+
+        def _fake_generate(df_prompts, hf_model_path, args, worker_count=1):
+            seen_zs.extend(df_prompts["Z_search"].tolist())
+            if df_prompts.iloc[0]["Z_search"] != 2:  # only Z=2 "succeeds"
+                return pd.DataFrame()
+            return pd.DataFrame([{
+                "Material ID": f"{df_prompts.iloc[0]['Material ID']}_1",
+                "Generated CIF": "data_test",
+                "is_consistent": True,
+            }])
+
+        try:
+            _load_and_generate.generate_cifs_with_hf_model = _fake_generate
+            sys.argv = [
+                "_load_and_generate.py",
+                "--hf_model_path", "c-bone/CrystaLLM-pi_base",
+                "--reduced_formula_list", "SiO2",
+                "--search_zs",
+                "--output_parquet", output_parquet,
+                "--skip_postprocess",
+            ]
+            _load_and_generate.main()
+
+            assert seen_zs == [1, 2], f"Expected early stop after Z=2, searched {seen_zs}"
+            df = pd.read_parquet(output_parquet)
+            assert len(df) == 1, f"Expected 1 selected row, got {len(df)}"
+            assert df.iloc[0]["Material ID"] == "SiO2_Z2_1"
+            assert df.iloc[0]["reduced_formula_target"] == "SiO2"
+            for col in ("Z_search", "prompt_order", "is_consistent", "is_valid"):
+                assert col not in df.columns, f"Bookkeeping column {col} leaked into output"
+        finally:
+            sys.argv = original_argv
+            _load_and_generate.generate_cifs_with_hf_model = original_generate
 
     def test_condition_format_routing(self) -> None:
         """Registry-driven condition_format resolution with the Slider legacy fallback."""

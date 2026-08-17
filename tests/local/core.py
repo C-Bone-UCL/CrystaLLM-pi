@@ -13,11 +13,14 @@ Covers all scripts mentioned in README:
 - Dataloader: collator, round-robin packing, conditional mode
 - HF integration: model loading, direct generation
 
-Usage:
-    python tests/local/suite.py          # Run on GPU if available, else CPU
-    python tests/local/suite.py --cpu    # Force CPU execution
-    python tests/local/suite.py --gpu    # Force GPU execution
-    python run-tests.py                  # Compatibility wrapper
+Usage (from the repository root):
+    python tests/local/suite.py --cpu              # Force CPU execution
+    python tests/local/suite.py --gpu              # Force GPU execution
+    python tests/local/suite.py --cpu --offline    # CI tier, no network or secrets
+    python tests/local/suite.py --cpu --secrets    # Adds HF/W&B-backed tests
+    python tests/local/suite.py --cpu --full       # Full local suite (the default)
+
+    python -m tests.local.runner --cpu             # Equivalent module form
 """
 
 import os

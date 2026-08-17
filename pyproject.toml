@@ -27,7 +27,11 @@ py-modules = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["_models*", "_utils*", "tests*"]
+# "tests" is deliberately not shipped. Installing it would claim the top-level name in the
+# user's site-packages, where mace-torch, pybtex, dtw-python and crystal-toolkit also install
+# a package called tests and the last one installed wins. The suite runs from a clone
+# instead, so nothing needs it on the install path.
+include = ["_models*", "_utils*"]
 
 [tool.setuptools.package-data]
 "_utils" = ["model_registry.json"]
