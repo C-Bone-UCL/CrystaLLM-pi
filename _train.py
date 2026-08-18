@@ -1,5 +1,11 @@
-"""
-Main training script for CrystaLLM_pi conditional or unconditional crystal structure generation.
+r"""Train or finetune a CrystaLLM-pi model, conditional or unconditional.
+
+Reads a JSONC config through `_args.parse_args`, logs in to Hugging Face and W&B with the keys in `API_keys.jsonc`, builds or loads the model through the registry in `_utils.model`, prepares the dataset with `_dataloader.load_data`, and runs the HuggingFace Trainer. Conditional runs require `condition_columns` and an `activate_conditionality` family. Unconditional runs train a plain GPT-2. Under torchrun, rank 0 owns logging and checkpoint writes.
+
+Holds an unused port for the run's lifetime, which stops a second job on the same node from colliding on the distributed rendezvous address.
+
+Usage:
+    python _train.py --config _config_files/training/conditional/density-example/mpdb-density-finetune_example.jsonc
 """
 
 import os
@@ -44,7 +50,7 @@ np.set_printoptions(threshold=np.inf)
 process_socket = None
 process_port = None
 
-def cleanup():
+def cleanup() -> None:
     """Clean up distributed processes if initialized."""
     if dist.is_initialized():
         dist.destroy_process_group()
@@ -59,8 +65,8 @@ if torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
     torch.set_float32_matmul_precision('high')
 
-def main():
-    """Main training function for CrystaLLM_pi."""
+def main() -> None:
+    """Parse the config and run the training job."""
     global process_socket, process_port
 
     # Setting up environment

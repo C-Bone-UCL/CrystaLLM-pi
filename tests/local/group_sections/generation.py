@@ -11,7 +11,8 @@ class GenerationTests:
     
     def test_generation_basic(self):
         """Test basic generation utilities."""
-        from _utils._generating.generate_CIFs import init_tokenizer, setup_device, build_generation_kwargs
+        from _utils._generating.generate_cifs import init_tokenizer, build_generation_kwargs
+        from _utils._generating.workers import setup_device
         
         # Test tokenizer init
         tokenizer = init_tokenizer("HF-cif-tokenizer")
@@ -44,7 +45,7 @@ class GenerationTests:
     
     def test_generation_conditional(self):
         """Test conditional generation setup."""
-        from _utils._generating.generate_CIFs import parse_condition_vector
+        from _utils._generating.generate_cifs import parse_condition_vector
         
         # Test condition parsing with comma-separated values
         condition_str = "0.5,0.3"
@@ -64,7 +65,7 @@ class GenerationTests:
     
     def test_check_cif(self):
         """Test CIF validation function."""
-        from _utils._generating.generate_CIFs import check_cif
+        from _utils._generating.generate_cifs import check_cif
         
         # Test with valid CIF (from test data)
         valid_cif = self.test_data['test_cif']
@@ -84,7 +85,7 @@ class GenerationTests:
     
     def test_get_model_class(self):
         """Test strict model class selection."""
-        from _utils._generating.generate_CIFs import get_model_class
+        from _utils._generating.generate_cifs import get_model_class
         from _models import PKVGPT, SliderGPT, PrefixGPT, PrefixXRDGPT, ResidualGPT
         from transformers import GPT2LMHeadModel
 
@@ -108,7 +109,7 @@ class GenerationTests:
 
     def test_parse_condition_vector_nested(self):
         """Nested condition vectors (continuous XRD) survive parsing; flat strings unchanged."""
-        from _utils._generating.generate_CIFs import parse_condition_vector
+        from _utils._generating.generate_cifs import parse_condition_vector
 
         # Nested string form (parquet round-trip) and native nested lists preserve 2D shape
         assert parse_condition_vector("[[0.0, 0.1], [0.01, 0.2]]") == [[0.0, 0.1], [0.01, 0.2]]
@@ -124,7 +125,7 @@ class GenerationTests:
 
     def test_build_generation_kwargs_modes(self):
         """Test build_generation_kwargs with different sampling modes."""
-        from _utils._generating.generate_CIFs import init_tokenizer, build_generation_kwargs
+        from _utils._generating.generate_cifs import init_tokenizer, build_generation_kwargs
         
         tokenizer = init_tokenizer("HF-cif-tokenizer")
         
@@ -166,7 +167,7 @@ class GenerationTests:
     
     def test_get_material_id(self):
         """Test material ID extraction/generation."""
-        from _utils._generating.generate_CIFs import get_material_id
+        from _utils._generating.generate_cifs import get_material_id
         
         # Test with Material ID in row - now expects unique counter suffix
         row_with_id = pd.Series({"Material ID": "mp-1234", "Formula": "Si1O2"})
@@ -187,7 +188,7 @@ class GenerationTests:
     
     def test_build_output_df(self):
         """Test output dataframe construction."""
-        from _utils._generating.generate_CIFs import build_output_df
+        from _utils._generating.generate_cifs import build_output_df
         
         # Create mock generated data
         generated_data = [

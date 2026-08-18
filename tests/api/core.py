@@ -37,7 +37,7 @@ import time
 import json
 import traceback
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Any
 
 from tests.fixtures.shared_cif_fixtures import (
     TEST_CIF_SIO2,
@@ -55,7 +55,7 @@ if project_root not in sys.path:
 class APITestSuite:
     """Main API test coordinator with temporary file management."""
     
-    def __init__(self, hf_key: str, wandb_key: str, docker_url: Optional[str] = None):
+    def __init__(self, hf_key: str, wandb_key: str, docker_url: str | None = None):
         self.hf_key = hf_key
         self.wandb_key = wandb_key
         self.docker_url = docker_url
@@ -120,7 +120,7 @@ class APITestSuite:
                     handle.write("Traceback:\n")
                     handle.write(traceback.format_exc())
             
-    def create_test_data(self) -> Dict[str, Any]:
+    def create_test_data(self) -> dict[str, Any]:
         """Create minimal test CIF data."""
         test_cif = TEST_CIF_SIO2
         partial_occ_valid_cif = PARTIAL_OCC_VALID_CIF

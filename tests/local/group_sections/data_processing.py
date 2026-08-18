@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from _utils._preprocessing._process_exp_XRD_continuous import (
+from _utils._preprocessing.process_exp_xrd_continuous import (
     convert_to_continuous_profile,
     read_xrd_file,
     save_pipeline_plot,
@@ -40,7 +40,7 @@ class DataProcessingTests:
     
     def test_cif_validation(self):
         """Test CIF validation utilities."""
-        from _utils._metrics_utils import is_valid
+        from _utils.metrics import is_valid
         
         # Test that the validation function works without crashing
         try:
@@ -63,10 +63,7 @@ class DataProcessingTests:
     def test_automatic_prompts_keep_condition_column_intact(self):
         """condition_vector must reach the output unmangled, including nested XRD profiles.
 
-        The old implementation ran str(value).replace("[", "") over the column, which
-        flattens a nested (1000, 2) [Q, I] profile into unparseable text, and pd.isna on a
-        nested value raises instead of returning False. A missing scalar still has to come
-        out as the -100 sentinel the conditional models read as "no condition supplied".
+        The old implementation ran str(value).replace("[", "") over the column, which flattens a nested (1000, 2) [Q, I] profile into unparseable text, and pd.isna on a nested value raises instead of returning False. A missing scalar still has to come out as the -100 sentinel the conditional models read as "no condition supplied".
         """
         import pandas as pd
         from _utils._generating.make_prompts import create_automatic_prompts
@@ -108,11 +105,9 @@ class DataProcessingTests:
     def test_xrd_top20_matches_reference(self):
         """Legacy top-20 processing must reproduce the committed reference vector.
 
-        Structural assertions elsewhere are order-independent, so a change in peak
-        ordering slips past them while silently changing what the model is conditioned
-        on. This pins the exact output instead.
+        Structural assertions elsewhere are order-independent, so a change in peak ordering slips past them while silently changing what the model is conditioned on. This pins the exact output instead.
         """
-        from _utils._preprocessing._process_exp_XRD_inputs import process_and_convert
+        from _utils._preprocessing.process_exp_xrd_inputs import process_and_convert
 
         peaks = process_and_convert(str(FIXTURES / "test_rutile_raw.xy"))
         expected = self._read_reference(FIXTURES / "proc_rutile_top20.csv")
@@ -124,7 +119,7 @@ class DataProcessingTests:
 
     def test_xrd_top20_tie_break_is_deterministic(self):
         """Equal intensities must sort by ascending angle, not by numpy's sort order."""
-        from _utils._preprocessing._process_exp_XRD_inputs import process_and_save
+        from _utils._preprocessing.process_exp_xrd_inputs import process_and_save
 
         # Angles ascending in the input, so numpy's reverse-stable order would emit the
         # tied peaks descending. Only an explicit angle tie-break gives 10, 20, 40.
@@ -140,8 +135,7 @@ class DataProcessingTests:
     def test_continuous_profile_matches_reference(self):
         """Continuous conversion must reproduce the committed reference profile.
 
-        Guards against a pybaselines or numpy upgrade quietly shifting the SNIP
-        baseline, which would change the conditioning for every continuous-XRD run.
+        Guards against a pybaselines or numpy upgrade quietly shifting the SNIP baseline, which would change the conditioning for every continuous-XRD run.
         """
         two_theta, intensity = read_xrd_file(FIXTURES / "Rutile-TiO2-unproc.txt")
         profile = convert_to_continuous_profile(two_theta, intensity, 1.54056)

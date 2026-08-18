@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Main entry point for loading and generating CIF structures from HuggingFace CrystaLLM models.
+r"""Load a released CrystaLLM-pi model from the Hugging Face Hub and generate CIF structures.
 
-This script processes input data (either from parquet or mapped reduced formula strings), builds
-the necessary conditioning prompts, and manages generation across single or multi-GPU environments.
-Features an early-stopping iteration loop for efficient Z-value discovery.
+Takes either a parquet of prebuilt prompts or a list of reduced formulas, attaches the conditioning values the chosen model family expects, generates across every visible GPU, and optionally ranks the candidates before writing them out. Formula mode can search Z values instead of taking them as given, stopping at the first that yields a valid structure, or returning the one that scores the highest on the given scoring method if specified.
+
+Prompts come from `--input_parquet` or `--reduced_formula_list`. Level 1 needs neither and substitutes a placeholder formula, since it generates unconditionally. `--model_registry` overlays extra Hub models onto the packaged registry, which is how the unregistered checkpoints are reached.
+
+`--scoring_mode` chooses between `LOGP` perplexity ranking, `PEARSON` fit against the conditioning XRD profile, and `None`. Left unset, a continuous-XRD Z search defaults to `PEARSON`, because perplexity ranking favours fluent simple cells over the phase that actually produced the scan. `PEARSON` requires a continuous-XRD model, and both scoring modes require `--target_valid_cifs` above 0.
+
+Usage:
+    python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-pi_ft_alex_mp_20-text \
+        --reduced_formula_list "TiO2,SiO2" --z_list "2,4" --output_cif_dir outputs/cifs
 """
 
 import argparse
@@ -16,17 +22,18 @@ import pandas as pd
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from _tokenizer import CustomCIFTokenizer
 from _utils._generating.make_prompts import create_manual_prompts
-from _utils._generating.generate_CIFs import (
+from _utils._generating.generate_cifs import (
     init_tokenizer,
     build_generation_kwargs,
     run_generation_pool,
     _normalize_scoring_mode,
 )
 from _utils._generating.postprocess import process_dataframe
-from _utils._generating.xrd_fit import XRD_FIT_MODES, score_generated_rows
+from _utils._generating.scoring_methods import XRD_FIT_MODES, score_generated_rows
 from _utils import extract_formula_nonreduced
-from _utils._direct_gen_utils import (
+from _utils.direct_gen import (
     MODEL_INFO,
     XRD_FORMATS,
     _load_custom_model_registry,
@@ -52,7 +59,7 @@ DEFAULT_Z_LIST = [1, 2, 3, 4, 6]
 
 
 @lru_cache(maxsize=1)
-def _tokenizer():
+def _tokenizer() -> CustomCIFTokenizer:
     """Load the CIF tokenizer once per process; the early-stop Z loop reuses it."""
     return init_tokenizer(TOKENIZER_DIR)
 
@@ -80,8 +87,13 @@ def _postprocess_non_empty_cifs(df: pd.DataFrame, num_workers: int, column_name:
     return pd.concat([df_non_empty, df_empty], ignore_index=False).sort_index().reset_index(drop=True)
 
 
-def generate_prompts_from_specs(specs: list, args) -> pd.DataFrame:
-    """Construct prompt dataframe natively mapped from specs."""
+def generate_prompts_from_specs(specs: list, args: argparse.Namespace) -> pd.DataFrame:
+    """Build the prompt DataFrame from expanded formula specs.
+
+    Each spec carries an expanded composition, an optional spacegroup, and an optional condition vector. Nested condition vectors (the continuous-XRD profiles) are passed through untouched rather than parsed from a string, because round-tripping them through `str()` would lose precision. Specs pair 1:1 with prompts. The caller owns the combinatorics, not this function.
+
+    Returns the prompt frame with the per-row metadata from `attach_prompt_metadata` already on it.
+    """
     compositions = [s["composition_expanded"] for s in specs]
     sgs = [s.get("spacegroup") for s in specs]
     if all(sg is None for sg in sgs):
@@ -107,8 +119,13 @@ def generate_prompts_from_specs(specs: list, args) -> pd.DataFrame:
     return attach_prompt_metadata(df, specs)
 
 
-def generate_cifs_with_hf_model(df_prompts: pd.DataFrame, hf_model_path: str, args, worker_count: int = 1) -> pd.DataFrame:
-    """Generate CIFs using HF model, optionally across multiple GPUs."""
+def generate_cifs_with_hf_model(df_prompts: pd.DataFrame, hf_model_path: str, args: argparse.Namespace, worker_count: int = 1) -> pd.DataFrame:
+    """Generate CIFs for a prompt frame with one Hub model.
+
+    Looks the model up in the registry, pins the generation length to that model's context window, and hands the work to `run_generation_pool`. `worker_count` above 1 fans generation across that many GPU workers. The seed is fixed at 1, since the CLI exposes no seed flag and every run keeps the historical default.
+
+    Returns a DataFrame of generated rows, one per returned sequence.
+    """
     tokenizer = _tokenizer()
     info = MODEL_INFO[hf_model_path]
     max_length = get_hf_model_max_length(hf_model_path, info["model_type"])  # lru_cached in utils
@@ -138,7 +155,7 @@ def generate_cifs_with_hf_model(df_prompts: pd.DataFrame, hf_model_path: str, ar
     return pd.DataFrame(generated_rows)
 
 
-def _generate_and_score(df_prompts: pd.DataFrame, args, scoring_mode: str) -> pd.DataFrame:
+def _generate_and_score(df_prompts: pd.DataFrame, args: argparse.Namespace, scoring_mode: str) -> pd.DataFrame:
     """Resolve GPU workers, run one generation pass, and score rows when an XRD-fit mode is active."""
     worker_count = resolve_multi_gpu_workers(args, len(df_prompts))
     df_gen = generate_cifs_with_hf_model(df_prompts, args.hf_model_path, args, worker_count)
@@ -150,8 +167,11 @@ def _generate_and_score(df_prompts: pd.DataFrame, args, scoring_mode: str) -> pd
     return df_gen
 
 
-def run_parquet_mode(args, scoring_mode: str) -> pd.DataFrame:
-    """Generate directly from a parquet of prebuilt prompts."""
+def run_parquet_mode(args: argparse.Namespace, scoring_mode: str) -> pd.DataFrame:
+    """Generate from a parquet of prebuilt prompts.
+
+    The simpler of the two input paths. Prompts are already built, so this only reads them, applies `--max_samples` if given, and generates. Z search belongs to formula mode and does not apply here.
+    """
     print(f"\nLoading Prompts\nSource: {args.input_parquet}")
     df_prompts = pd.read_parquet(args.input_parquet)
     if args.max_samples:
@@ -161,7 +181,7 @@ def run_parquet_mode(args, scoring_mode: str) -> pd.DataFrame:
     return _generate_and_score(df_prompts, args, scoring_mode)
 
 
-def _run_early_stop_search(args, canonical_formulas: list, row_properties: list, xrd_format) -> pd.DataFrame:
+def _run_early_stop_search(args: argparse.Namespace, canonical_formulas: list, row_properties: list, xrd_format: str | None) -> pd.DataFrame:
     """Iterate DEFAULT_Z_LIST, dropping each formula after its first valid structure."""
     print(f"\nExecuting Early-Stopping Z_search ({DEFAULT_Z_LIST[0]} to {DEFAULT_Z_LIST[-1]})")
     active_rows = list(zip(canonical_formulas, row_properties))
@@ -194,7 +214,7 @@ def _run_early_stop_search(args, canonical_formulas: list, row_properties: list,
     return pd.concat(completed_dfs, ignore_index=True) if completed_dfs else pd.DataFrame()
 
 
-def _run_batch_generation(args, canonical_formulas: list, row_properties: list, z_list, xrd_format, scoring_mode: str) -> pd.DataFrame:
+def _run_batch_generation(args: argparse.Namespace, canonical_formulas: list, row_properties: list, z_list: list[int] | None, xrd_format: str | None, scoring_mode: str) -> pd.DataFrame:
     """Single generation pass: explicit Z values, or the full formula x DEFAULT_Z_LIST grid."""
     print("\nExecuting Batch Generation")
     if args.search_zs:
@@ -215,8 +235,13 @@ def _run_batch_generation(args, canonical_formulas: list, row_properties: list, 
     return df_gen
 
 
-def run_formula_mode(args, parser: argparse.ArgumentParser, scoring_mode: str, xrd_format) -> pd.DataFrame:
-    """Reduced-formula pipeline: validate CLI lists, build per-formula properties, run Z search or batch."""
+def run_formula_mode(args: argparse.Namespace, parser: argparse.ArgumentParser, scoring_mode: str, xrd_format: str | None) -> pd.DataFrame:
+    """Generate from a list of reduced formulas, expanding each over Z.
+
+    Validates the per-formula CLI lists, which each accept either one value broadcast to every formula or exactly one value per formula, then assembles the per-row conditioning and dispatches to one of two strategies. An unscored `--search_zs` run walks Z values and drops each formula once it yields a valid structure. Everything else generates the full formula-by-Z grid, because ranking needs every candidate present before it can choose.
+
+    Rejects duplicate formulas under `--search_zs`, where completion is tracked by formula name, and rejects a continuous-XRD model with no `--xrd_files`, since that family has no missing-condition mask and would otherwise generate unconditioned.
+    """
     raw_formulas = parse_reduced_formula_list_arg(args.reduced_formula_list)
     canonical_formulas = canonicalize_reduced_formulas(raw_formulas)
     n_formulas = len(canonical_formulas)
@@ -277,8 +302,11 @@ def run_formula_mode(args, parser: argparse.ArgumentParser, scoring_mode: str, x
     return _run_batch_generation(args, canonical_formulas, row_properties, z_list, xrd_format, scoring_mode)
 
 
-def write_outputs(df_final: pd.DataFrame, args) -> None:
-    """Write individual CIF files or a single parquet, matching the chosen output flag."""
+def write_outputs(df_final: pd.DataFrame, args: argparse.Namespace) -> None:
+    """Write the finished frame as CIF files or as a single parquet.
+
+    `--output_cif_dir` writes one file per structure, named by full non-reduced formula plus Material ID so runs stay distinguishable, skipping rows whose generation came back empty. `--output_parquet` writes everything to one file instead, creating the parent directory if needed.
+    """
     if args.output_cif_dir:
         os.makedirs(args.output_cif_dir, exist_ok=True)
         for idx, row in df_final.iterrows():
@@ -304,6 +332,7 @@ def write_outputs(df_final: pd.DataFrame, args) -> None:
 
 
 def main() -> None:
+    """Parse arguments and run the generation pipeline."""
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--hf_model_path", required=True, help="HuggingFace model path")

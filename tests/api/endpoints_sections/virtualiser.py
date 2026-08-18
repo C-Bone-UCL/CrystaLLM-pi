@@ -39,7 +39,7 @@ class VirtualiserEndpointTests(IntegrationMixin):
             "angle_tolerance": 0.5,
         })
         data = self._wait_and_assert(response, job_name="virtualise_inline_pairs")
-        assert "_virtualiser.crystal_virtualiser" in data["command"]
+        assert "_virtualiser.virtualiser" in data["command"]
         assert "--in" in data["command"]
         assert "--out" in data["command"]
 
@@ -52,7 +52,7 @@ class VirtualiserEndpointTests(IntegrationMixin):
             "config_file": "/app/data/config.yaml",
         })
         data = self._wait_and_assert(response, job_name="virtualise_config_file")
-        assert "_virtualiser.crystal_virtualiser" in data["command"]
+        assert "_virtualiser.virtualiser" in data["command"]
         assert "--config" in data["command"]
 
     def test_virtualise_missing_pairs_and_config(self):

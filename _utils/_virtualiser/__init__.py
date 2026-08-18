@@ -1,6 +1,6 @@
 """Virtual crystal generator: converts ordered structures to disordered high-symmetry parents."""
 
-from .crystal_virtualiser import (
+from .virtualiser import (
     load_config,
     compute_pair_fractions,
     virtualise_structure,

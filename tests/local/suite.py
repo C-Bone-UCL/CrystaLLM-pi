@@ -1,4 +1,10 @@
-"""Entry point for local test suites."""
+"""Entry point that runs the local suite with default settings.
+
+Delegates to `tests.local.runner`. Use the runner directly to select a tier or device.
+
+Usage:
+    python -m tests.local.suite
+"""
 
 import sys
 from pathlib import Path

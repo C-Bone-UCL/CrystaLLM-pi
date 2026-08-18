@@ -26,7 +26,7 @@ from transformers.models.gpt2.modeling_gpt2 import (
 from transformers import GPT2Config, GPT2PreTrainedModel, GenerationMixin
 from torch.nn import CrossEntropyLoss
 import math
-from typing import Optional, Tuple, Union, Callable
+from typing import Callable
 import warnings
 from transformers.utils import logging
 from transformers.modeling_outputs import CausalLMOutputWithPast, BaseModelOutputWithPast
@@ -38,17 +38,20 @@ logger = logging.get_logger(__name__)
 MISSING_CONDITION_VALUE = -100.0
 
 class ResidualGPT2Config(GPT2Config):
-    """GPT-2 configuration extended with residual slider options."""
+    """GPT-2 configuration extended with residual conditioning options.
+
+    `slider_on` enables the conditioning path at all. `slider_n_variables` is how many scalar properties a row carries, `slider_n_hidden` the encoder MLP width, and `slider_n_heads_sharing_slider` how many attention heads share one conditioning projection, which must divide the head count.
+    """
 
     def __init__(
         self,
-        slider_on=False,
-        slider_n_variables=1,
-        slider_n_hidden=768,
-        slider_n_heads_sharing_slider=1,
-        slider_dropout=0.1,
+        slider_on: bool=False,
+        slider_n_variables: int=1,
+        slider_n_hidden: int=768,
+        slider_n_heads_sharing_slider: int=1,
+        slider_dropout: float=0.1,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.slider_on = slider_on
         self.slider_n_variables = slider_n_variables
@@ -57,9 +60,14 @@ class ResidualGPT2Config(GPT2Config):
         self.slider_dropout = slider_dropout
 
 class ResidualEncoder(nn.Module):
-    """Encode scalar conditioning values into slider key-value tensors."""
+    """Encode scalar conditioning values into per-head key-value tensors.
 
-    def __init__(self, config: ResidualGPT2Config):
+    Each variable gets its own encode, upscale and downscale projection, applied through batched einsums rather than separate modules. One projection is shared across a bundle of `slider_n_heads_sharing_slider` attention heads, which spreads the conditioning signal without needing a projection per head.
+
+    The learned mixing weight is `attention_factor`, an `nn.Parameter` here. The legacy `Slider_model` stores the same quantity as an `nn.Linear(1, 1)` and returns `weight[0, 0]`, which is why a Slider checkpoint loaded into this class silently produces no conditioning.
+    """
+
+    def __init__(self, config: ResidualGPT2Config) -> None:
         super().__init__()
 
         self.n_variables = config.slider_n_variables
@@ -92,9 +100,15 @@ class ResidualEncoder(nn.Module):
         self.tanh = nn.Tanh()
         self.dropout = nn.Dropout(config.slider_dropout)
 
-    def forward(self, prefix: torch.Tensor, hidden_states: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Forward pass for generating key-value pairs from slider variables.
+    def forward(self, prefix: torch.Tensor, hidden_states: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Encode conditioning values into per-head key-values and a mixing weight.
+
+        Args:
+            prefix: [B, n_variables] - scalar conditioning, MISSING_CONDITION_VALUE or values outside (-100.1, 100.1) count as absent
+            hidden_states: optional, only used to pick device and dtype
+
+        Returns:
+            slider_keys [B, n_base_heads, n_variables, head_dim], slider_values same shape, attention_factor scalar Parameter, condition_mask [B, n_variables] True where present
         """
         device = hidden_states.device if hidden_states is not None else self.dummy.device
         dtype = hidden_states.dtype if hidden_states is not None else self.dummy.dtype
@@ -159,14 +173,14 @@ class ResidualAttention(GPT2Attention):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        layer_past: Optional[Tuple[torch.Tensor]] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        head_mask: Optional[torch.Tensor] = None,
+        layer_past: tuple[torch.Tensor] | None = None,
+        attention_mask: torch.Tensor | None = None,
+        head_mask: torch.Tensor | None = None,
         use_cache: bool = False,
         output_attentions: bool = False,
-        slider_key_value_factor_mask: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = None,
+        slider_key_value_factor_mask: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor] | None = None,
         **kwargs,
-    ) -> Tuple[torch.Tensor, ...]:
+    ) -> tuple[torch.Tensor, ...]:
 
         # Standard GPT2 Self-Attention
         query_states, key_states, value_states = self.c_attn(hidden_states).split(self.split_size, dim=2)
@@ -295,16 +309,16 @@ class ResidualGPT2Block(HFGPT2Block):
 
     def forward(
         self,
-        hidden_states: Optional[Tuple[torch.FloatTensor]],
-        layer_past: Optional[Tuple[torch.Tensor]] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        use_cache: Optional[bool] = False,
-        output_attentions: Optional[bool] = False,
-        condition_values: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, ...]:
+        hidden_states: tuple[torch.FloatTensor] | None,
+        layer_past: tuple[torch.Tensor] | None = None,
+        attention_mask: torch.FloatTensor | None = None,
+        head_mask: torch.FloatTensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_attention_mask: torch.FloatTensor | None = None,
+        use_cache: bool | None = False,
+        output_attentions: bool | None = False,
+        condition_values: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, ...]:
 
         residual = hidden_states
         hidden_states = self.ln_1(hidden_states)
@@ -447,21 +461,21 @@ class ResidualGPT2Model(ResidualGPT2PreTrainedModel):
     )
     def forward(
         self,
-        input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        token_type_ids: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        condition_values: Optional[torch.Tensor] = None,
-    ) -> Union[Tuple, BaseModelOutputWithPast]:
+        input_ids: torch.LongTensor | None = None,
+        past_key_values: tuple[tuple[torch.Tensor]] | None = None,
+        attention_mask: torch.FloatTensor | None = None,
+        token_type_ids: torch.LongTensor | None = None,
+        position_ids: torch.LongTensor | None = None,
+        head_mask: torch.FloatTensor | None = None,
+        inputs_embeds: torch.FloatTensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_attention_mask: torch.FloatTensor | None = None,
+        use_cache: bool | None = None,
+        output_attentions: bool | None = None,
+        output_hidden_states: bool | None = None,
+        return_dict: bool | None = None,
+        condition_values: torch.Tensor | None = None,
+    ) -> tuple | BaseModelOutputWithPast:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -643,7 +657,10 @@ class ResidualGPT2Model(ResidualGPT2PreTrainedModel):
     GPT2_START_DOCSTRING,
 )
 class ResidualGPT(ResidualGPT2PreTrainedModel, GenerationMixin):
-    """GPT-2 language model with residual slider conditioning."""
+    """GPT-2 with scalar conditioning injected inside each attention block.
+
+    Conditioning is mixed into attention per layer rather than prepended as cached tokens, so unlike the Prefix families the text length is unaffected. Handles rows with missing properties through the encoder's condition mask, which is what lets it train on heterogeneous datasets where not every row carries every property.
+    """
 
     _tied_weights_keys = ["lm_head.weight"]
 
@@ -719,22 +736,36 @@ class ResidualGPT(ResidualGPT2PreTrainedModel, GenerationMixin):
 
     def forward(
         self,
-        input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        token_type_ids: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        condition_values: Optional[torch.Tensor] = None,
-    ) -> Union[Tuple, CausalLMOutputWithPast]:
+        input_ids: torch.LongTensor | None = None,
+        past_key_values: tuple[tuple[torch.Tensor]] | None = None,
+        attention_mask: torch.FloatTensor | None = None,
+        token_type_ids: torch.LongTensor | None = None,
+        position_ids: torch.LongTensor | None = None,
+        head_mask: torch.FloatTensor | None = None,
+        inputs_embeds: torch.FloatTensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_attention_mask: torch.FloatTensor | None = None,
+        labels: torch.LongTensor | None = None,
+        use_cache: bool | None = None,
+        output_attentions: bool | None = None,
+        output_hidden_states: bool | None = None,
+        return_dict: bool | None = None,
+        condition_values: torch.Tensor | None = None,
+    ) -> tuple | CausalLMOutputWithPast:
+        """Forward pass with conditioning mixed into each attention block.
+
+        Conditioning never occupies a cached position, so unlike the Prefix families past_key_values holds text only and the text length is unaffected.
+
+        Args:
+            input_ids: [B, T] - token ids
+            attention_mask: [B, T]
+            condition_values: [B, slider_n_variables] - MISSING_CONDITION_VALUE masked per row and variable
+            labels: [B, T] - optional targets
+            past_key_values: standard GPT-2 cache, text positions only
+
+        Returns:
+            CausalLMOutputWithPast, logits [B, T, vocab_size]
+        """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         transformer_outputs = self.transformer(
@@ -789,8 +820,8 @@ class ResidualGPT(ResidualGPT2PreTrainedModel, GenerationMixin):
 
     @staticmethod
     def _reorder_cache(
-        past_key_values: Tuple[Tuple[torch.Tensor]], beam_idx: torch.Tensor
-    ) -> Tuple[Tuple[torch.Tensor]]:
+        past_key_values: tuple[tuple[torch.Tensor]], beam_idx: torch.Tensor
+    ) -> tuple[tuple[torch.Tensor]]:
         return tuple(
             tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past)
             for layer_past in past_key_values

@@ -3,7 +3,6 @@
 Inspired by: https://github.com/FrederikLizakJohansen/deCIFer/tree/main
 """
 
-from typing import Optional, Tuple
 
 import torch
 
@@ -20,12 +19,15 @@ ETA_RANGE = (0.5, 0.5)
 
 
 def condition_vector_to_continuous_xrd(
-    condition_vector,
+    condition_vector: object,
     seed: int = 1,
     fwhm: float = 0.05,
     eta: float = 0.5,
 ) -> list[list[float]]:
-    """Convert discrete XRD peaks into PrefixXRD-ready 1000x2 [Q, I] points."""
+    """Convert a condition vector into the 1000x2 `[Q, I]` form PrefixXRD consumes.
+
+    Accepts either discrete `[Q, I]` peaks, which are broadened, or an already-continuous 1000x2 profile, which is passed through once its Q column is confirmed to match the canonical grid. Broadening here is deterministic: noise, rescaling and masking are all disabled and `fwhm` and `eta` are fixed.
+    """
     values = condition_vector.tolist() if hasattr(condition_vector, "tolist") else condition_vector
     if not values:
         return []
@@ -59,22 +61,39 @@ def discrete_to_continuous_xrd(
     qmin: float = QMIN,
     qmax: float = QMAX,
     qstep: float = QSTEP,
-    fwhm_range: Tuple[float, float] = FWHM_RANGE,
-    eta_range: Tuple[float, float] = ETA_RANGE,
-    noise_range: Optional[Tuple[float, float]] = (0.001, 0.05),
-    intensity_scale_range: Optional[Tuple[float, float]] = (0.95, 1.0),
-    mask_prob: Optional[float] = None,
-    seed: Optional[int] = None,
+    fwhm_range: tuple[float, float] = FWHM_RANGE,
+    eta_range: tuple[float, float] = ETA_RANGE,
+    noise_range: tuple[float, float] | None = (0.001, 0.05),
+    intensity_scale_range: tuple[float, float] | None = (0.95, 1.0),
+    mask_prob: float | None = None,
+    seed: int | None = None,
     **kwargs,
 ) -> dict:
-    """Broaden discrete XRD peaks into a 1000-point pseudo-Voigt spectrum."""
+    """Broaden discrete XRD peaks into a continuous 1000-point profile.
+
+    The augmentation args exist for training. Inference disables noise, scaling and masking and pins fwhm and eta, so the same peaks always give the same profile.
+
+    Args:
+        batch_q: [B, N_peaks] - peak positions in A^-1, Q == 0 treated as padding
+        batch_iq: [B, N_peaks] - peak intensities
+        qmin, qmax, qstep: grid bounds and spacing in A^-1, default 0.0 to 10.0 by 0.01
+        fwhm_range: peak width sampled per batch item, in A^-1
+        eta_range: pseudo-Voigt mixing, 0 Gaussian to 1 Lorentzian
+        noise_range: noise amplitude, None disables
+        intensity_scale_range: random rescaling, None disables
+        mask_prob: per-peak drop probability, None disables
+        seed: seed for the augmentation draws
+
+    Returns:
+        dict with q [1000] shared grid and iq [B, 1000] max-normalized to [0, 1]
+    """
     device = batch_q.device
     generator = None
     if seed is not None:
         generator = torch.Generator(device=device.type)
         generator.manual_seed(int(seed))
 
-    def sample(shape: Tuple[int, ...], value_range: Tuple[float, float]) -> torch.Tensor:
+    def sample(shape: tuple[int, ...], value_range: tuple[float, float]) -> torch.Tensor:
         return torch.empty(shape, device=device).uniform_(*value_range, generator=generator)
 
     q_cont = torch.arange(qmin, qmax, qstep, device=device)
@@ -121,8 +140,8 @@ def discrete_to_continuous_xrd(
 
 
 def save_xrd_pipeline_plots(
-    batch_q: Optional[torch.Tensor],
-    batch_iq: Optional[torch.Tensor],
+    batch_q: torch.Tensor | None,
+    batch_iq: torch.Tensor | None,
     q_cont: torch.Tensor,
     iq_cont: torch.Tensor,
     save_dir: str,
@@ -235,12 +254,12 @@ def save_xrd_pipeline_plots(
 
 
 def xrd_debug_check(
-    batch_q: Optional[torch.Tensor],
-    batch_iq: Optional[torch.Tensor],
+    batch_q: torch.Tensor | None,
+    batch_iq: torch.Tensor | None,
     q_cont: torch.Tensor,
     iq_cont: torch.Tensor,
     past_key_values: tuple,
-    config,
+    config: object,
     step: int = 0,
     save_dir: str = "debug_xrd",
 ) -> None:

@@ -6,7 +6,7 @@ import pandas as pd
 
 
 class NotebookUtilsTests:
-    """Test notebook utility helpers from the _utils/_notebook_utils package."""
+    """Test notebook utility helpers from the _utils/_notebooks package."""
 
     def __init__(self, temp_dir, test_data):
         self.temp_dir = temp_dir
@@ -27,7 +27,7 @@ class NotebookUtilsTests:
         })
 
     def test_build_and_parse_novelty_round_trip(self):
-        from _utils._notebook_utils import build_novelty_tag, parse_novelty_from_tag
+        from _utils._notebooks import build_novelty_tag, parse_novelty_from_tag
 
         row = pd.Series({
             "is_novel": True,
@@ -44,7 +44,7 @@ class NotebookUtilsTests:
         assert comp_nov == "pt"
 
     def test_select_top_materials_returns_summary(self):
-        from _utils._notebook_utils import select_top_materials
+        from _utils._notebooks import select_top_materials
 
         materials, summary_df = select_top_materials(
             self._toy_selection_df(),
@@ -58,7 +58,7 @@ class NotebookUtilsTests:
         assert set(summary_df["Metric"]) == {"SLME", "HHI-SLME"}
 
     def test_export_and_run_material_selection_write_files(self):
-        from _utils._notebook_utils import run_material_selection
+        from _utils._notebooks import run_material_selection
 
         input_path = os.path.join(self.temp_dir, "toy_materials.parquet")
         output_dir = os.path.join(self.temp_dir, "selected_cifs")
@@ -71,12 +71,12 @@ class NotebookUtilsTests:
         assert any(name.endswith(".cif") for name in os.listdir(output_dir))
 
     def test_extract_formula_fallback(self):
-        from _utils._notebook_utils import extract_formula
+        from _utils._notebooks import extract_formula
 
         assert extract_formula("not a cif") == "UnknownFormula"
 
     def test_run_material_selection_preserves_summary_columns(self):
-        from _utils._notebook_utils import run_material_selection
+        from _utils._notebooks import run_material_selection
 
         input_path = os.path.join(self.temp_dir, "summary_cols_input.parquet")
         output_dir = os.path.join(self.temp_dir, "summary_cols_cifs")

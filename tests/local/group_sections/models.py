@@ -297,7 +297,7 @@ class ModelTests:
     def test_positional_embedding_resize_shift_right(self):
         """Test positional embedding resize shifts pretrained rows right for Prefix-style loads."""
         from transformers import GPT2Config, GPT2LMHeadModel
-        from _utils._model_utils import resize_positional_embeddings
+        from _utils.model import resize_positional_embeddings
 
         config = GPT2Config(
             vocab_size=32,
@@ -326,7 +326,7 @@ class ModelTests:
     def test_positional_embedding_resize_marks_context_extension(self):
         """True long-context growth records the copied rows to protect."""
         from transformers import GPT2Config, GPT2LMHeadModel
-        from _utils._model_utils import resize_positional_embeddings
+        from _utils.model import resize_positional_embeddings
 
         config = GPT2Config(
             vocab_size=32,
@@ -348,7 +348,7 @@ class ModelTests:
     def test_positional_embedding_resize_marks_prefix_conversion_only(self):
         """Prefix slots alone should not activate context-extension warmup."""
         from transformers import GPT2Config, GPT2LMHeadModel
-        from _utils._model_utils import resize_positional_embeddings
+        from _utils.model import resize_positional_embeddings
 
         config = GPT2Config(
             vocab_size=32,
@@ -368,7 +368,7 @@ class ModelTests:
     def _run_prefix_load_shift_probe(self, source_config_dict):
         """Drive load_pretrained_model with dummy classes; return the recorded resize call."""
         from types import SimpleNamespace
-        import _utils._model_utils as model_utils
+        import _utils.model as model_utils
 
         calls = {}
 
@@ -407,7 +407,7 @@ class ModelTests:
             calls["shift_right_by"] = shift_right_by
             return model
 
-        # Restore by mutating the entry in place: generate_CIFs imports MODEL_REGISTRY by
+        # Restore by mutating the entry in place: generate_cifs imports MODEL_REGISTRY by
         # name, so rebinding the module attribute would leak the dummy entry to it.
         original_entry = model_utils.MODEL_REGISTRY["Prefix"]
         original_loader = model_utils._load_with_sdpa_fallback
@@ -462,7 +462,7 @@ class ModelTests:
         import os
         from types import SimpleNamespace
         from _models.PrefixXRD_model import PrefixXRDGPT
-        from _utils._model_utils import load_pretrained_model
+        from _utils.model import load_pretrained_model
 
         ckpt_dir = os.path.join(self.temp_dir, "tiny_prefixxrd_ckpt")
         model = PrefixXRDGPT(self._xrd_config())  # n_hidden_cond=64 (2 heads x 32)
@@ -500,8 +500,8 @@ class ModelTests:
         """Copied wpe rows stay frozen during warmup steps and train afterwards."""
         from types import SimpleNamespace
         from transformers import GPT2Config, GPT2LMHeadModel
-        from _utils._model_utils import resize_positional_embeddings
-        from _utils._trainer_utils import ContextExtensionWarmupCallback, has_context_extension_wpe
+        from _utils.model import resize_positional_embeddings
+        from _utils.trainer import ContextExtensionWarmupCallback, has_context_extension_wpe
 
         model = GPT2LMHeadModel(GPT2Config(vocab_size=32, n_positions=8, n_embd=4, n_layer=1, n_head=1))
         # 8 -> 14 with shift 4: rows 4-12 are checkpoint-copied, rows beyond are true extension
@@ -536,7 +536,7 @@ class ModelTests:
     def test_context_extension_warmup_ignores_prefix_conversion_only(self):
         """A Prefix conversion shifts wpe without extending it, so no rows get protected."""
         from types import SimpleNamespace
-        from _utils._trainer_utils import ContextExtensionWarmupCallback
+        from _utils.trainer import ContextExtensionWarmupCallback
 
         class TinyModel(torch.nn.Module):
             def __init__(self):
@@ -575,10 +575,9 @@ class ModelTests:
     def test_muon_routes_wpe_to_adamw_for_context_extension(self):
         """Muon orthogonalizes whole matrices, so extended wpe must sit in the AdamW group.
 
-        Without this the zeroed gradient rows would still be moved by the Muon update,
-        defeating the warmup mask entirely.
+        Without this the zeroed gradient rows would still be moved by the Muon update, defeating the warmup mask entirely.
         """
-        from _utils._trainer_utils import setup_scheduler
+        from _utils.trainer import setup_scheduler
 
         class TinyModel(torch.nn.Module):
             def __init__(self):
@@ -602,7 +601,7 @@ class ModelTests:
 
     def test_muon_keeps_wpe_grouping_without_context_extension(self):
         """Ordinary runs keep wpe on Muon, which is how every released model was trained."""
-        from _utils._trainer_utils import setup_scheduler
+        from _utils.trainer import setup_scheduler
 
         class TinyModel(torch.nn.Module):
             def __init__(self):
@@ -622,7 +621,7 @@ class ModelTests:
     def test_legacy_training_rail(self):
         """build_model refuses the legacy PKV/Slider families with a pointer to the successors."""
         from types import SimpleNamespace
-        from _utils._model_utils import build_model
+        from _utils.model import build_model
 
         class DummyTokenizer:
             bos_token_id = None
@@ -641,7 +640,7 @@ class ModelTests:
 
     def test_train_data_mode_covers_every_registry_family(self):
         """_train.py's data dispatch must stay in step with MODEL_REGISTRY."""
-        from _utils._model_utils import (
+        from _utils.model import (
             LEGACY_FAMILIES,
             MODEL_REGISTRY,
             TRAINABLE_CONDITIONAL_FAMILIES,

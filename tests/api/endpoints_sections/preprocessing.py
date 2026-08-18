@@ -134,7 +134,7 @@ class PreprocessingEndpointTests(IntegrationMixin):
             "save_local": True
         })
         data = self._wait_and_assert(response, job_name="save_dataset")
-        assert "_save_dataset_to_HF" in data["command"]
+        assert "save_dataset_to_hf" in data["command"]
         
     def test_save_dataset_with_splits(self):
         """Test save-dataset with custom splits."""
@@ -169,7 +169,7 @@ class PreprocessingEndpointTests(IntegrationMixin):
             "output_csv": output_csv
         })
         data = self._wait_and_assert(response, job_name="xrd_preprocessing")
-        assert "_process_exp_XRD_inputs" in data["command"]
+        assert "process_exp_xrd_inputs" in data["command"]
         assert "--input_data" in data["command"]
         assert "--output_csv" in data["command"]
 
@@ -194,7 +194,7 @@ class PreprocessingEndpointTests(IntegrationMixin):
             "column_name": "CIF"
         })
         data = self._wait_and_assert(response, job_name="calc_theor_xrd")
-        assert "_calculate_theor_XRD" in data["command"]
+        assert "calculate_theor_xrd" in data["command"]
         assert "--input_parquet" in data["command"]
         assert "--output_parquet" in data["command"]
 
@@ -212,7 +212,7 @@ class PreprocessingEndpointTests(IntegrationMixin):
         })
         assert response.status_code == 200
         data = response.json()
-        assert "_cifs_zip_to_parquet" in data["command"]
+        assert "cifs_zip_to_parquet" in data["command"]
         assert "--input_tarballs" in data["command"]
         assert "--output_parquet" in data["command"]
         assert "--database_name" in data["command"]

@@ -12,13 +12,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **New conditional families**: `Prefix`, `PrefixXRD` and `Residual` are ported over from CrystaLLM-graph. They succeed PKV and Slider respectively (some minor upgrades). New dependency `einops`.
 - **PKV and Slider are now generation only**: training them raises and points at the successors. All released legacy checkpoints still generate identically. T1 and T6 finetune `Prefix` now, and new `T5_XRD_continuous` (XRD training lives in CrystaLLM-graph).
 - **Three new models on the Hub**: `Chili100K-cXRD` and `alex_mp_20-cXRD` (continuous-XRD, KD students from the graph teacher) and `ft_alex_mp_20-text` (text-only alex mp 20 model, the recommended base for new finetunes).
-- **Generate from raw XRD scans**: `--xrd_files` now takes a raw diffractometer scan for the cXRD models, no peak picking needed. New `_process_exp_XRD_continuous.py` does the conversion (2theta to Q, background removal, resampling) and can plot the stages to check it. New dependency `pybaselines`, dropped the unused `powerxrd`.
+- **Generate from raw XRD scans**: `--xrd_files` now takes a raw diffractometer scan for the cXRD models, no peak picking needed. New `process_exp_xrd_continuous.py` does the conversion (2theta to Q, background removal, resampling) and can plot the stages to check it. New dependency `pybaselines`, dropped the unused `powerxrd`.
 - **XRD-fit ranked Z search**: new scoring mode `PEARSON` ranks Z-search candidates by agreement fitting each generated candidate's simulated diffraction pattern and input scan 1000 point grid, to allow for another method for candidate matching. Initial internal tests seem to show that perplexity (`LOGP`) improves RMSD but `PEARSON` improves match rate.
 
 ### Repository Split
 - **Paper content moved out**: The paper notebooks and the Prepend/Raw baseline families now live in the standalone reproduction repo [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper). This repo keeps the PKV, Slider, and unconditional models plus new tutorial notebooks (finetuning pipeline, load-and-generate, API, SLME). All configs for the paper are in that reproducibility repo now.
 - **Branch cleanup**: Branches `paper_v2` and `reproduce_paper` were deleted, their tips are preserved as tags `archive/paper_v2` and `archive/paper_v1`. Tag `v1.3.0` remains the exact state cited by the paper.
 - **ALIGNN removed**: The separate `alignn_env` environment is gone which was used for bandgap predictions in some of the paper studies, the repo now only needs the single environment. We can still generate with bandgap model, and evaluate the density property if wanted.
+- **Breaking: packages and files renamed**: `_utils/` follows one naming rule now, lowercase filenames with no leading underscore and no `_utils` suffix, and `_utils/_metrics/` is `_utils/_scoring/`. Import paths and `python -m` commands change, the HTTP API does not.
+
+### Documentation
+- **Docstrings standardized**: every module, and every public function on the docs surface, follows one house format. Registered tests enforce it.
 
 ## [v1.3.2] - 2026-07-20
 

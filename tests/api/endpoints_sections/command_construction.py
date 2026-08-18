@@ -28,7 +28,7 @@ class CommandConstructionTests:
         cmd = self._command_from_response(response)
         
         # check command structure
-        assert cmd.startswith("python -m _utils._preprocessing._deduplicate")
+        assert cmd.startswith("python -m _utils._preprocessing.deduplicate")
         assert "--input_parquet /data/in.parquet" in cmd
         assert "--output_parquet /data/out.parquet" in cmd
         assert '--property_columns ["Bandgap"]' in cmd or "--property_columns [\"Bandgap\"]" in cmd

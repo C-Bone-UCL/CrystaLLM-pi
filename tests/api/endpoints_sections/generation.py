@@ -199,10 +199,7 @@ class GenerationEndpointTests(IntegrationMixin):
     def _assert_recovers_rutile(self, output_parquet: str):
         """Fail unless the generated structure is rutile TiO2.
 
-        This is the point of the continuous-XRD path: the model must reconstruct the
-        phase that produced the scan, not merely emit a valid TiO2 cell. Matching is
-        done with StructureMatcher against a reference built from published rutile
-        parameters, so an equivalent cell setting or origin choice still passes.
+        This is the point of the continuous-XRD path: the model must reconstruct the phase that produced the scan, not merely emit a valid TiO2 cell. Matching is done with StructureMatcher against a reference built from published rutile parameters, so an equivalent cell setting or origin choice still passes.
         """
         from pymatgen.analysis.structure_matcher import StructureMatcher
         from pymatgen.core import Lattice, Structure
@@ -242,9 +239,7 @@ class GenerationEndpointTests(IntegrationMixin):
     def test_direct_generation_continuous_xrd(self):
         """Continuous-XRD models take a raw scan, sweep Z, and must recover the scanned phase.
 
-        scoring_mode stays unset on purpose: this is the webapp's default request shape,
-        and the CLI must pick PEARSON XRD-fit ranking on its own. LOGP here ranks by
-        fluency and reliably prefers a wrong simple cell over rutile.
+        scoring_mode stays unset on purpose: this is the webapp's default request shape, and the CLI must pick PEARSON XRD-fit ranking on its own. LOGP here ranks by fluency and reliably prefers a wrong simple cell over rutile.
         """
         if self._should_skip_integration():
             return
@@ -396,7 +391,7 @@ class GenerationEndpointTests(IntegrationMixin):
             "config_file": container_config_path
         })
         data = self._wait_and_assert(response, job_name="generate_cifs", timeout=600)
-        assert "generate_CIFs" in data["command"]
+        assert "generate_cifs" in data["command"]
 
     def test_direct_generation_search_zs_all_rows_mode(self):
         """search_zs with target_valid_cifs=0 should pass through all generated rows mode."""
@@ -435,7 +430,7 @@ class GenerationEndpointTests(IntegrationMixin):
             "save_valid_parquet": save_valid_parquet
         })
         data = self._wait_and_assert(response, job_name="evaluate_cifs")
-        assert "evaluate_CIFs" in data["command"]
+        assert "evaluate_cifs" in data["command"]
         assert "--save_valid_parquet" in data["command"]
         
     def test_postprocess(self):

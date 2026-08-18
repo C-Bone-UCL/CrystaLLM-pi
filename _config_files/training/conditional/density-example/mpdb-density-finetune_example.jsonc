@@ -1,0 +1,58 @@
+{
+  // Data Arguments
+  //################
+  "dataset_HF": "c-bone/mp-20-1k_final",
+  "context_length": 1024,
+
+  // Conditional Arguments
+  //#######################
+  "condition_columns": "['norm_Density (g/cm^3)']" ,
+  "n_prefix_tokens": 2,
+  "n_hidden_cond": 256,
+  "cond_dropout": 0.01,
+  "cond_lr": 5e-4,
+  "cond_wd": 0.01,
+  "activate_conditionality": "Prefix",
+
+  // Model Arguments
+  //#################
+  // Model Depth
+  "n_embd": 512,
+  "n_layer": 8,
+  "n_head": 8,
+  "residual_dropout": 0.1,
+  "embedding_dropout": 0.1,
+  "attention_dropout": 0.1,
+
+  // Trainer Arguments
+  //###################
+  "train_batch_size": 32,
+  "eval_batch_size": 32,
+  "gradient_accumulation_steps": 1,
+  "learning_rate": 5e-6,
+  "lr_scheduler_type": "cosine_with_min_lr",
+  "lr_scheduler_kwargs": {
+    "min_lr_rate": 0.01
+  },
+  "warmup_ratio": 0.02,
+  "adam_beta1": 0.9,
+  "adam_beta2": 0.999,
+  "grad_clip": 1.0,
+  "weight_decay": 0.01,
+  "output_dir": "data/MP-20-Density/",
+  "save_total_limit": 2,
+  "pretrained_model_dir": "model_ckpts/mpdb-small-base-lematerial/checkpoint-1250000",
+  "eval_strategy": "steps",
+  "eval_steps": 100,
+  "logging_steps": 50,
+  "save_strategy": "steps",
+  "max_steps": 500,
+  "early_stopping_patience": 2,
+  "early_stopping_threshold": 1e-5,
+  "seed": 2,
+  "data_seed": 1,
+  "load_best_model_at_end": true,
+  "metric_for_best_model": "eval_loss",
+  "torch_compile": true,
+  "fp16": true
+}

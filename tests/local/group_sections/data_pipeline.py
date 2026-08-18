@@ -12,7 +12,7 @@ class DataPipelineTests:
     
     def test_deduplicate_script(self):
         """Test deduplication functionality with actual data."""
-        from _utils._preprocessing._deduplicate import process_cif_entry, deduplicate_table
+        from _utils._preprocessing.deduplicate import process_cif_entry, deduplicate_table
         
         # Test CIF entry processing - returns (key, idx, vpfu) tuple
         result = process_cif_entry(0, self.test_data['test_cif'])
@@ -39,8 +39,8 @@ class DataPipelineTests:
     def test_cleaning_script(self):
         """Test CIF cleaning and normalization with actual processing."""
         try:
-            from _utils._preprocessing._cleaning import add_atomic_props_block
-            from _utils._processing_utils import add_atomic_props_block as process_add_props
+            from _utils._preprocessing.cleaning import add_atomic_props_block
+            from _utils.processing import add_atomic_props_block as process_add_props
             
             # Test atomic properties addition
             result = process_add_props(self.test_data['test_cif'])
@@ -72,7 +72,7 @@ class DataPipelineTests:
     def test_hf_dataset_save(self):
         """Test Hugging Face dataset formatting."""
         try:
-            import _utils._preprocessing._save_dataset_to_HF
+            import _utils._preprocessing.save_dataset_to_hf
             print("HF dataset save script imported successfully")
             
         except Exception as e:
@@ -82,7 +82,7 @@ class DataPipelineTests:
         """Test XRD input processing script functions on fixture data."""
         try:
             import pandas as pd
-            from _utils._preprocessing._process_exp_XRD_inputs import process_and_convert, save_to_crystallm_csv
+            from _utils._preprocessing.process_exp_xrd_inputs import process_and_convert, save_to_crystallm_csv
 
             output_csv = os.path.join(self.temp_dir, "xrd_peaks_processed.csv")
             peaks = process_and_convert(

@@ -10,8 +10,8 @@ class EvaluationPipelineTests:
     def test_vun_metrics_script(self):
         """Test VUN metrics calculation script."""
         try:
-            from _utils._metrics.VUN_metrics import compute_vun_metrics, save_vun_metrics
-            from _utils._metrics_utils import get_valid, get_unique, get_novelty
+            from _utils._scoring.vun_metrics import compute_vun_metrics, save_vun_metrics
+            from _utils.metrics import get_valid, get_unique, get_novelty
             
             # Test that VUN functions exist
             assert get_valid is not None, "Validity function exists"
@@ -26,7 +26,7 @@ class EvaluationPipelineTests:
         """Test stability metrics calculation."""
         try:
             # Test that we can import the MACE script
-            import _utils._metrics.mace_ehull
+            import _utils._scoring.mace_ehull
             print("MACE E-hull script imported successfully")
             
         except Exception as e:
@@ -35,7 +35,7 @@ class EvaluationPipelineTests:
     
     def test_xrd_metrics(self):
         """Test XRD metrics calculation functions."""
-        from _utils._metrics.XRD_metrics import (
+        from _utils._scoring.xrd_metrics import (
             smact_validity, structure_validity, is_valid_bench,
             _symmetrize_cif, _find_best_lattice_match, _calculate_metrics,
             _parallel_convert_generated_cif
@@ -105,5 +105,5 @@ class EvaluationPipelineTests:
     
     def test_property_metrics(self):
         """Test property prediction metrics."""
-        import _utils._metrics.property_metrics
+        import _utils._scoring.property_metrics
         print("Property metrics script imported successfully")

@@ -9,12 +9,14 @@ class GenerationPipelineTests:
     
     def test_generation_script_imports(self):
         """Test generation script components - comprehensive import check."""
-        from _utils._generating.generate_CIFs import (
-            init_tokenizer, setup_device, check_cif, get_model_class,
+        from _utils._generating.generate_cifs import (
+            init_tokenizer, check_cif, get_model_class,
             build_generation_kwargs, parse_condition_vector,
-            get_material_id, build_output_df, score_output_logp, score_outputs_logp,
+            get_material_id, build_output_df,
             DEFAULT_MAX_LENGTH, TOKENIZER_PAD_TOKEN, DEFAULT_TOKENIZER_DIR
         )
+        from _utils._generating.workers import setup_device
+        from _utils._generating.scoring_methods import score_output_logp, score_outputs_logp
         
         # Test constants
         assert DEFAULT_MAX_LENGTH == 1024, "Default max length should be 1024"
@@ -33,7 +35,7 @@ class GenerationPipelineTests:
     
     def test_score_output_logp(self):
         """Test perplexity scoring function."""
-        from _utils._generating.generate_CIFs import score_output_logp, score_outputs_logp
+        from _utils._generating.scoring_methods import score_output_logp, score_outputs_logp
         import torch
 
         class MockModel:
@@ -84,7 +86,7 @@ class GenerationPipelineTests:
     
     def test_generation_kwargs_edge_cases(self):
         """Test generation kwargs with edge cases."""
-        from _utils._generating.generate_CIFs import init_tokenizer, build_generation_kwargs
+        from _utils._generating.generate_cifs import init_tokenizer, build_generation_kwargs
         
         tokenizer = init_tokenizer("HF-cif-tokenizer")
         
@@ -112,7 +114,7 @@ class GenerationPipelineTests:
     
     def test_check_cif_comprehensive(self):
         """Comprehensive CIF validation tests."""
-        from _utils._generating.generate_CIFs import check_cif
+        from _utils._generating.generate_cifs import check_cif
         
         # Test valid CIF structure
         valid_cif = self.test_data['test_cif']
@@ -143,7 +145,7 @@ class GenerationPipelineTests:
     
     def test_condition_vector_parsing_comprehensive(self):
         """Comprehensive condition vector parsing tests."""
-        from _utils._generating.generate_CIFs import parse_condition_vector
+        from _utils._generating.generate_cifs import parse_condition_vector
         
         # Test various input formats
         test_cases = [
@@ -167,7 +169,7 @@ class GenerationPipelineTests:
 
     def test_generation_mode_resolution(self):
         """None scoring should validate when target_valid_cifs is positive, but return all rows when it is zero."""
-        from _utils._generating.generate_CIFs import resolve_generation_plan
+        from _utils._generating.generate_cifs import resolve_generation_plan
 
         validate_only = resolve_generation_plan(
             scoring_mode="None",
@@ -211,7 +213,7 @@ class GenerationPipelineTests:
     def test_evaluation_script(self):
         """Test CIF evaluation script."""
         try:
-            import _utils._generating.evaluate_CIFs
+            import _utils._generating.evaluate_cifs
             print("Evaluation script imported successfully")
             
         except Exception as e:

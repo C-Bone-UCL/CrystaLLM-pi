@@ -1,6 +1,10 @@
-"""
-Post-processing tool for cleaning and validating CIF strings in parquet datasets.
-Outputs are fully standard-compliant CIF strings
+r"""Clean and validate CIF strings in a parquet dataset.
+
+Rewrites each generated CIF into a fully standard-compliant form. The metrics scripts expect that form as input.
+
+Usage:
+    python -m _utils._generating.postprocess --input_parquet gen.parquet \
+        --output_parquet gen_post.parquet
 """
 
 import pandas as pd
@@ -61,16 +65,13 @@ def postprocess(cif: str) -> str:
 
 
 def _process_generated(record: dict, column_name: str) -> str:
-    """
-    Top-level function for multiprocessing. 
-    It must be defined at module scope so it can be pickled.
+    """Top-level function for multiprocessing. It must be defined at module scope so it can be pickled.
     """
     return postprocess(record[column_name])
 
 
 def process_dataframe(df: pd.DataFrame, num_workers: int, column_name: str) -> pd.DataFrame:
-    """
-    Process CIF columns with validation, possibly in parallel, and display a progress bar.
+    """Process CIF columns with validation, possibly in parallel, and display a progress bar.
     """
     if df.empty:
         return df

@@ -3,7 +3,7 @@
 This document outlines the usage of Artificial Intelligence tools in the development and maintenance of this codebase. The integration of AI is strictly limited to augmenting productivity, with all core logic, testing, and final outputs subject to my personal oversight and validation.
 
 ## 1. Tools Utilized
-*   **GitHub Copilot:** Deployed as an advanced autocompletion and agent orchestration engine.
+*   **GitHub Copilot and Claude Code:** Deployed as an advanced autocompletion and agent orchestration engine.
 
 ## 2. Scope of Assistance
 AI assistance was restricted to accelerating routine tasks:

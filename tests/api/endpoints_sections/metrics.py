@@ -43,7 +43,7 @@ class MetricsEndpointTests(IntegrationMixin):
             "num_workers": 4
         })
         data = self._wait_and_assert(response, job_name="vun_metrics", timeout=600)
-        assert "VUN_metrics" in data["command"]
+        assert "vun_metrics" in data["command"]
         assert "--huggingface_dataset" in data["command"]
 
         if self.is_integration:

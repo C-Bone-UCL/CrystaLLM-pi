@@ -1,14 +1,12 @@
-"""
-Argument parsing for CrystaLLM_pi training and generation scripts.
+"""Argument parsing for CrystaLLM-pi training and generation scripts.
 
-Handles configs for the conditional architectures Prefix, PrefixXRD and Residual.
-The legacy PKV and Slider families load for generation but cant be trained.
+Reads a JSONC config and lets any flag override it, so one config file can be reused with a single setting changed on the command line. Handles the conditional architectures Prefix, PrefixXRD and Residual. The legacy PKV and Slider families load for generation but cannot be trained, and an unknown `activate_conditionality` raises.
 """
 
 import argparse
 import commentjson
 
-def str_to_bool(value):
+def str_to_bool(value: str | bool) -> bool:
     """Parse booleans from CLI flags or config-provided strings."""
     if isinstance(value, bool):
         return value
@@ -22,8 +20,11 @@ def str_to_bool(value):
         return False
     raise argparse.ArgumentTypeError(f"Invalid boolean value: {value}")
 
-def parse_args():
-    """Parse command-line arguments, supporting JSON config files with comments."""
+def parse_args() -> argparse.Namespace:
+    """Build the training and generation config from a JSONC file plus command-line overrides.
+
+    `--config` supplies the base values and any remaining flag overrides them. One config file can therefore be reused with a single setting changed on the command line. Normalizes `activate_conditionality` against `MODEL_REGISTRY` and raises on an unknown family rather than falling back to an unconditional model, which would otherwise train silently without conditioning.
+    """
 
     parser = argparse.ArgumentParser(description="CrystaLLM_pi Training Script")
     parser.add_argument("--config", type=str, default=None, help="Path to a JSON config file with comments (commentjson).")

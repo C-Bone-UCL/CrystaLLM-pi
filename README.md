@@ -198,7 +198,7 @@ Model metadata (class, conditions, normalization) lives in [`_utils/model_regist
 
 <br>
 
-> **Continuous-XRD model (`Chili100K-cXRD`, recommended):** pass the **raw diffractometer scan** directly via `--xrd_files` (`.csv`, `.xy`, `.txt`, `.dat`; arbitrary header lines are skipped automatically). The pipeline converts 2theta to Q using your `--xrd_wavelength` (CuKa1 assumed with a warning when omitted), removes the background with SNIP, resamples onto the model's 1000-point Q grid and max-normalizes intensity. Inspect the transform with [`_process_exp_XRD_continuous.py`](_utils/_preprocessing/_process_exp_XRD_continuous.py) `--save_plot` before generating. `--xrd_files` is required for this model, it has no missing-conditioning fallback.
+> **Continuous-XRD model (`Chili100K-cXRD`, recommended):** pass the **raw diffractometer scan** directly via `--xrd_files` (`.csv`, `.xy`, `.txt`, `.dat`; arbitrary header lines are skipped automatically). The pipeline converts 2theta to Q using your `--xrd_wavelength` (CuKa1 assumed with a warning when omitted), removes the background with SNIP, resamples onto the model's 1000-point Q grid and max-normalizes intensity. Inspect the transform with [`process_exp_xrd_continuous.py`](_utils/_preprocessing/process_exp_xrd_continuous.py) `--save_plot` before generating. `--xrd_files` is required for this model, it has no missing-conditioning fallback.
 >
 > **Legacy Slider models (top-20 pipeline):** provide **pre-picked peak data** (not raw profiles) via `--xrd_files`. Many open-source programs do this (e.g., [fityk](https://fityk.nieto.pl/) for academic use). The preprocessing engine converts picked peaks to the expected CuKa wavelength (via `--xrd_wavelength`), filters valid ranges, normalizes intensities, and selects the top peaks. Redundant peaks from additional radiation sources need removing first (e.g. K-alpha2 peaks when irradiated with K-alpha1 and K-alpha2). If `--xrd_files` is omitted for a Slider model, generation still runs with missing conditioning values.
 
@@ -396,7 +396,7 @@ python _load_and_generate.py \
 
 # Virtual Crystal Generation (Post-processing)
 
-After generating ordered CIF structures, you can convert them to **disordered virtual crystals** using the [`crystal_virtualiser`](_utils/_virtualiser/crystal_virtualiser.py) utility. This replaces specified element pairs with fractional occupancies at shared sites and promotes the structure to its higher-symmetry parent with spglib. Useful for comparing against experimental diffraction data or estimating a disordered structure candidate.
+After generating ordered CIF structures, you can convert them to **disordered virtual crystals** using the [`virtualiser`](_utils/_virtualiser/virtualiser.py) utility. This replaces specified element pairs with fractional occupancies at shared sites and promotes the structure to its higher-symmetry parent with spglib. Useful for comparing against experimental diffraction data or estimating a disordered structure candidate.
 
 <details>
 <summary>Example Usage and Config</summary>
@@ -424,7 +424,7 @@ python _load_and_generate.py \
     --output_cif_dir outputs/
 
 # Virtualise the result
-python _utils/_virtualiser/crystal_virtualiser.py \
+python _utils/_virtualiser/virtualiser.py \
     --in outputs/Mg3ZnO4.cif \
     --config config.yaml \
     --out outputs/Mg3ZnO4_virtual.cif
@@ -463,13 +463,13 @@ Input data should be a pandas DataFrame saved as Parquet file. To train a model 
 
 ### Step 2: Deduplication and Filtering (Optional)
 
-**Script:** `_utils/_preprocessing/_deduplicate.py` - Removes duplicate structures and filters invalid entries based on chemical formula and space group, keeping the structure with lowest volume per formula unit.
+**Script:** `_utils/_preprocessing/deduplicate.py` - Removes duplicate structures and filters invalid entries based on chemical formula and space group, keeping the structure with lowest volume per formula unit.
 
 <details>
 <summary>Example Usage and Args</summary>
 
 ```bash
-python _utils/_preprocessing/_deduplicate.py \
+python _utils/_preprocessing/deduplicate.py \
   --input_parquet /path/to/raw_data.parquet \
   --output_parquet /path/to/deduplicated_data.parquet \
   --property_columns "['Bandgap (eV)', 'Density (g/cm^3)']" \
@@ -488,13 +488,13 @@ python _utils/_preprocessing/_deduplicate.py \
 
 ### Step 3: CIF Cleaning and Normalization (**Required**)
 
-**Script:** `_utils/_preprocessing/_cleaning.py` - Standardizes CIF format and normalizes properties for stable training. Adds atomic property blocks, rounds numerical values, and applies variable brackets.
+**Script:** `_utils/_preprocessing/cleaning.py` - Standardizes CIF format and normalizes properties for stable training. Adds atomic property blocks, rounds numerical values, and applies variable brackets.
 
 <details>
 <summary>Example Usage and Args</summary>
 
 ```bash
-python _utils/_preprocessing/_cleaning.py \
+python _utils/_preprocessing/cleaning.py \
   --input_parquet /path/to/deduplicated_data.parquet \
   --output_parquet /path/to/cleaned_data.parquet \
   --num_workers 8 \
@@ -523,7 +523,7 @@ python _utils/_preprocessing/_cleaning.py \
 
 ### Step 4: Dataset Upload to HuggingFace (**Required**)
 
-**Script:** `_utils/_preprocessing/_save_dataset_to_HF.py` - Converts to HuggingFace format with train/validation/test splits and uploads to HF Hub.
+**Script:** `_utils/_preprocessing/save_dataset_to_hf.py` - Converts to HuggingFace format with train/validation/test splits and uploads to HF Hub.
 
 > Important: You need to make sure that the data trained on has been passed through CIF cleaning, a quick way to make sure is check whether the CIFs in your dataframe contain brackets. If they do then text should be ready for training.
 
@@ -531,7 +531,7 @@ python _utils/_preprocessing/_cleaning.py \
 <summary>Example Usage and Args</summary>
 
 ```bash
-python _utils/_preprocessing/_save_dataset_to_HF.py \
+python _utils/_preprocessing/save_dataset_to_hf.py \
   --input_parquet /path/to/processed_data.parquet \
   --output_parquet "your-dataset-name" \
   --test_size 0.1 \
@@ -656,13 +656,13 @@ Each quoted string is a **complete condition vector** (comma-separated property 
 
 ### Step 2: Generate CIFs
 
-**Script:** `_utils/_generating/generate_CIFs.py` - Generate crystal structures from prompts using trained models.
+**Script:** `_utils/_generating/generate_cifs.py` - Generate crystal structures from prompts using trained models.
 
 <details>
 <summary>Examples of CIF generation and Args</summary>
 
 ```bash
-python _utils/_generating/generate_CIFs.py \
+python _utils/_generating/generate_cifs.py \
   --config _config_files/generation/conditional/slme/slme-PKV-opt_eval.jsonc
 ```
 
@@ -703,7 +703,7 @@ Convcerts LLM outputs to standard Pymatgen style CIF format.
 
 ### VUN Metrics (Validity, Uniqueness, Novelty)
 
-**Script:** `_utils/_metrics/VUN_metrics.py` - Essential metrics for assessing generation quality using structural analysis.
+**Script:** `_utils/_scoring/vun_metrics.py` - Essential metrics for assessing generation quality using structural analysis.
 
 **Required:** Structures must be post-processed with Reduced Formulas column included
 
@@ -718,7 +718,7 @@ Convcerts LLM outputs to standard Pymatgen style CIF format.
 <summary>Example Usage</summary>
 
 ```bash
-python _utils/_metrics/VUN_metrics.py \
+python _utils/_scoring/vun_metrics.py \
   --input_parquet generated_structures_processed.parquet \
   --huggingface_dataset "c-bone/mp_20" \
   --output_parquet vun_results.parquet \
@@ -731,7 +731,7 @@ We can optionally set the `--check_comp_novelty` flag, which adds an `is_comp_no
 
 ### Energy Above Hull (Stability)
 
-**Script:** `_utils/_metrics/mace_ehull.py` - Calculate thermodynamic stability using MACE energy predictions. See the [MACE paper](https://arxiv.org/abs/2206.07697) for details on the surrogate model.
+**Script:** `_utils/_scoring/mace_ehull.py` - Calculate thermodynamic stability using MACE energy predictions. See the [MACE paper](https://arxiv.org/abs/2206.07697) for details on the surrogate model.
 
 > To calculate E_hull First, total energies are computed using the MACE-MP default calculator, predicted energies are then processed using the *MaterialsProject2020Compatibility* scheme to ensure consistency between GGA and GGA+U calculations. The surrogate energy predictions are compared to formation energies of known materials from the MP dataset and used to construct a convex hull. The energy above the convex hull (E_hull) quantifies thermodynamic stability by comparing a material's formation energy to competing phases.
 
@@ -739,7 +739,7 @@ We can optionally set the `--check_comp_novelty` flag, which adds an `is_comp_no
 <summary>Example Usage and Args</summary>
 
 ```bash
-python _utils/_metrics/mace_ehull.py \
+python _utils/_scoring/mace_ehull.py \
   --post_parquet postprocessed_structures.parquet \
   --output_parquet stability_results.parquet \
   --num_workers 4
@@ -751,7 +751,7 @@ Lower E_hull values indicate higher thermodynamic stability. Structures with E_h
 
 ### Additional Metrics
 
-XRD or density property metrics, VUN, and stability metrics are available in `_utils/_metrics/`.
+XRD or density property metrics, VUN, and stability metrics are available in `_utils/_scoring/`.
 
 # API
 
@@ -1078,9 +1078,9 @@ The paper studies are not here, they live in [CrystaLLM-pi-paper](https://github
 # Tokenizer
 
 The `HF-cif-tokenizer` already contains everything you need to train/run models out of the box. However if for some reason a user wishes to add more tokens this can be done by:
-- **Create the new vocab**: Edit the [`_create_vocab.py`](_utils/_tokenizer_utils/_create_vocab.py) file to include all the new tokens you want (if augmenting CIF with new tokens for example). Save a new `vocabulary.json` with the updated dictionary.
-- **Optional: Add Spacegroups**: If new spacegroups are required for a particular study, these should be added to the [`spacegroups.txt`](_utils/_tokenizer_utils/spacegroups.txt) file.
-- **Build New Tokenizer**: Once the new vocabulary is ready, just run the [`_save_tokenizer_to_HF.py`](_utils/_preprocessing/_save_tokenizer_to_HF.py) script, to save it locally or to HF. Then you can update the `pretrained_tokenizer_dir` argument in the train config to point to your new tokenizer!
+- **Create the new vocab**: Edit the [`create_vocab.py`](_utils/_tokenizer/create_vocab.py) file to include all the new tokens you want (if augmenting CIF with new tokens for example). Save a new `vocabulary.json` with the updated dictionary.
+- **Optional: Add Spacegroups**: If new spacegroups are required for a particular study, these should be added to the [`spacegroups.txt`](_utils/_tokenizer/spacegroups.txt) file.
+- **Build New Tokenizer**: Once the new vocabulary is ready, just run the [`save_tokenizer_to_hf.py`](_utils/_preprocessing/save_tokenizer_to_hf.py) script, to save it locally or to HF. Then you can update the `pretrained_tokenizer_dir` argument in the train config to point to your new tokenizer!
 
 
 # Citation

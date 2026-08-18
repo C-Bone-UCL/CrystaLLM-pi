@@ -3,7 +3,7 @@
 from datasets import Dataset, DatasetDict
 
 class DataUtilsTests:
-    """Test data utility functions from _utils/_data_utils.py."""
+    """Test data utility functions from _utils/data.py."""
     
     def __init__(self, temp_dir, test_data):
         self.temp_dir = temp_dir
@@ -11,7 +11,7 @@ class DataUtilsTests:
     
     def test_filter_long_cifs(self):
         """Test filtering CIFs that exceed context length."""
-        from _utils._data_utils import filter_long_CIFs
+        from _utils.data import filter_long_CIFs
         from _tokenizer import CustomCIFTokenizer
         
         tokenizer = CustomCIFTokenizer.from_pretrained("HF-cif-tokenizer")
@@ -35,7 +35,7 @@ class DataUtilsTests:
     
     def test_filter_cifs_with_unk(self):
         """Test filtering CIFs with unknown tokens."""
-        from _utils._data_utils import filter_CIFs_with_unk
+        from _utils.data import filter_CIFs_with_unk
         from _tokenizer import CustomCIFTokenizer
         
         tokenizer = CustomCIFTokenizer.from_pretrained("HF-cif-tokenizer")
@@ -59,7 +59,7 @@ class DataUtilsTests:
     
     def test_tokenize_function_unconditional(self):
         """Test tokenize_function in unconditional mode."""
-        from _utils._data_utils import tokenize_function
+        from _utils.data import tokenize_function
         from _tokenizer import CustomCIFTokenizer
         
         tokenizer = CustomCIFTokenizer.from_pretrained("HF-cif-tokenizer")
@@ -76,7 +76,7 @@ class DataUtilsTests:
     
     def test_tokenize_function_conditional(self):
         """Test tokenize_function in conditional mode."""
-        from _utils._data_utils import tokenize_function
+        from _utils.data import tokenize_function
         from _tokenizer import CustomCIFTokenizer
         
         tokenizer = CustomCIFTokenizer.from_pretrained("HF-cif-tokenizer")
@@ -101,7 +101,7 @@ class DataUtilsTests:
     
     def test_create_fixed_format_mask(self):
         """Test fixed format mask creation for variable tokens."""
-        from _utils._data_utils import create_fixed_format_mask
+        from _utils.data import create_fixed_format_mask
         from _tokenizer import CustomCIFTokenizer
         
         tokenizer = CustomCIFTokenizer.from_pretrained("HF-cif-tokenizer")
@@ -117,7 +117,7 @@ class DataUtilsTests:
     
     def test_parse_condition_value(self):
         """Test condition value parsing helper."""
-        from _utils._data_utils import _parse_condition_value
+        from _utils.data import _parse_condition_value
         
         # Test float
         assert _parse_condition_value(0.5) == [0.5]

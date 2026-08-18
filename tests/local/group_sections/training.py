@@ -10,8 +10,7 @@ class TrainingTests:
     def test_train_cli_help_runs(self):
         """_train.py must build its parser and exit cleanly.
 
-        The training entrypoint is otherwise untested end to end, so argparse or
-        import-level breakage would only show up on a real run.
+        The training entrypoint is otherwise untested end to end, so argparse or import-level breakage would only show up on a real run.
         """
         import os
         import subprocess
@@ -30,7 +29,7 @@ class TrainingTests:
         """Test training script imports and basic setup."""
         import sys
         from _args import parse_args
-        from _utils._model_utils import build_model
+        from _utils.model import build_model
         
         # Save original sys.argv and replace with empty args to avoid conflicts
         original_argv = sys.argv
@@ -49,7 +48,7 @@ class TrainingTests:
     
     def test_model_initialization(self):
         """Test model initialization for different architectures."""
-        from _utils._model_utils import build_model
+        from _utils.model import build_model
         from transformers import GPT2Config
         
         # Test that we can import model building function

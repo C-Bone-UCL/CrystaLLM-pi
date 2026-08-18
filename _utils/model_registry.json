@@ -82,7 +82,7 @@
   "c-bone/CrystaLLM-pi_Chili100K-cXRD": {
     "description": "Continuous-XRD conditioned generation (PrefixXRD, CHILI-100K KD student)",
     "conditions": 0,
-    "example_conditions": "Pass a raw powder pattern via --xrd_files (see _utils/_preprocessing/_process_exp_XRD_continuous.py)",
+    "example_conditions": "Pass a raw powder pattern via --xrd_files (see _utils/_preprocessing/process_exp_xrd_continuous.py)",
     "max": null,
     "min": null,
     "normalization": null,
@@ -92,7 +92,7 @@
   "c-bone/CrystaLLM-pi_alex_mp_20-cXRD": {
     "description": "Continuous-XRD conditioned generation (PrefixXRD, alex_mp_20 KD student)",
     "conditions": 0,
-    "example_conditions": "Pass a raw powder pattern via --xrd_files (see _utils/_preprocessing/_process_exp_XRD_continuous.py)",
+    "example_conditions": "Pass a raw powder pattern via --xrd_files (see _utils/_preprocessing/process_exp_xrd_continuous.py)",
     "max": null,
     "min": null,
     "normalization": null,

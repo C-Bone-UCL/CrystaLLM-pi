@@ -1,1 +1,1 @@
-"Test Suite For CrystaLLM-pi (API and local)"
+"""Test suites for CrystaLLM-pi, covering the local package and the containerized API."""

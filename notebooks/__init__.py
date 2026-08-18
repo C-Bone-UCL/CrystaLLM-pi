@@ -1,15 +1,13 @@
-"""
-Notebook utilities for CrystaLLMv2_PKV.
-Import this module at the start of any notebook to automatically navigate to package root.
+"""Notebook helpers for CrystaLLM-pi.
+
+Import `__init__` at the top of a notebook to move the working directory to the package root, so relative paths in the notebooks resolve the same way they do for the CLIs.
 """
 import os
 import sys
 from pathlib import Path
 
 def setup_notebook_environment():
-    """
-    Automatically navigate to package root and set up Python path.
-    Call this function at the start of any notebook in the notebooks/ folder.
+    """Automatically navigate to package root and set up Python path. Call this function at the start of any notebook in the notebooks/ folder.
     """
     current_dir = Path.cwd()
     

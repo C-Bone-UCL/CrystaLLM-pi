@@ -106,11 +106,7 @@ class VirtualiserTests:
     def test_promote_symmetry(self):
         """promote_symmetry rebuilds the virtualised cell in its conventional setting.
 
-        Asserting only that a Structure with sites comes back is satisfied by returning
-        the input untouched, which is the one failure worth catching in a function whose
-        whole job is to change the cell. The ordered Mg/Zn cell is Cm, virtualising the
-        pair raises it to R3m, and symmetrising then expands the primitive 6-site cell
-        into the 18-site conventional one.
+        Asserting only that a Structure with sites comes back is satisfied by returning the input untouched, which is the one failure worth catching in a function whose whole job is to change the cell. The ordered Mg/Zn cell is Cm, virtualising the pair raises it to R3m, and symmetrising then expands the primitive 6-site cell into the 18-site conventional one.
         """
         from pymatgen.core import Structure
         from pymatgen.symmetry.analyzer import SpacegroupAnalyzer

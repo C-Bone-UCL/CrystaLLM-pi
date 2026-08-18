@@ -1,4 +1,9 @@
-"""FastAPI wrapper for CrystaLLM-pi CLI utilities, endpoint groups are from `_utils._api_utils` modules.
+"""FastAPI service wrapping the CrystaLLM-pi command-line utilities.
+
+Endpoint groups are registered from the `_utils._api` modules, one module per group (generation, training, metrics, preprocessing, virtualiser, jobs). Long-running work is dispatched as background jobs and polled through the jobs endpoints rather than held open on the request.
+
+Usage:
+    uvicorn _api:app --host 0.0.0.0 --port 8000
 """
 
 import os
@@ -7,7 +12,7 @@ import subprocess
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, Optional, List
+from typing import Literal
 
 try:
     from fastapi import FastAPI
@@ -15,12 +20,12 @@ try:
 except ImportError:
     raise ImportError("This modules is meant to be run in the containerized API environment where FastAPI and Pydantic are available. If you want to run it locally, please install the required dependencies first.")
 
-from _utils._api_utils.preprocessing import register_preprocessing_routes
-from _utils._api_utils.training import register_training_routes
-from _utils._api_utils.generation import register_generation_routes
-from _utils._api_utils.metrics import register_metrics_routes
-from _utils._api_utils.jobs import register_jobs_routes
-from _utils._api_utils.virtualiser import register_virtualiser_routes
+from _utils._api.preprocessing import register_preprocessing_routes
+from _utils._api.training import register_training_routes
+from _utils._api.generation import register_generation_routes
+from _utils._api.metrics import register_metrics_routes
+from _utils._api.jobs import register_jobs_routes
+from _utils._api.virtualiser import register_virtualiser_routes
 
 
 app = FastAPI(
@@ -38,14 +43,18 @@ _ACTIVE_PROCESSES = {}
 
 
 class JobStatus(BaseModel):
+    """Status of a background job, returned by the job endpoints.
+
+    Jobs run in the background, so the generation and training endpoints return this immediately and the caller polls for completion.
+    """
     job_id: str
-    status: Literal["pending", "running", "completed", "failed"]
+    status: Literal['pending', 'running', 'completed', 'failed']
     command: str
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
-    error: Optional[str] = None
-    output_file: Optional[str] = None
-    log_file: Optional[str] = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    error: str | None = None
+    output_file: str | None = None
+    log_file: str | None = None
 
 
 class _JobsCompat(dict):
@@ -69,7 +78,7 @@ def _job_file_path(job_id: str) -> Path:
     return _JOB_STORE_DIR / f"{job_id}.json"
 
 
-def _save_job(job: JobStatus):
+def _save_job(job: JobStatus) -> None:
     payload = job.model_dump_json(indent=2)
     with _JOB_STORE_LOCK:
         tmp_path = _job_file_path(job.job_id).with_suffix(".json.tmp")
@@ -78,7 +87,7 @@ def _save_job(job: JobStatus):
     jobs[job.job_id] = job.model_dump()
 
 
-def _load_job(job_id: str) -> Optional[JobStatus]:
+def _load_job(job_id: str) -> JobStatus | None:
     job_path = _job_file_path(job_id)
     if not job_path.exists():
         return None
@@ -89,7 +98,7 @@ def _load_job(job_id: str) -> Optional[JobStatus]:
         return None
 
 
-def _update_job(job_id: str, **updates) -> Optional[JobStatus]:
+def _update_job(job_id: str, **updates) -> JobStatus | None:
     with _JOB_STORE_LOCK:
         job_path = _job_file_path(job_id)
         if not job_path.exists():
@@ -107,8 +116,8 @@ def _update_job(job_id: str, **updates) -> Optional[JobStatus]:
         return merged
 
 
-def _list_jobs() -> List[JobStatus]:
-    stored_jobs: List[JobStatus] = []
+def _list_jobs() -> list[JobStatus]:
+    stored_jobs: list[JobStatus] = []
     with _JOB_STORE_LOCK:
         for job_path in sorted(_JOB_STORE_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
             try:
@@ -122,7 +131,7 @@ def _list_jobs() -> List[JobStatus]:
     return stored_jobs
 
 
-def _create_pending_job(job_id: str, cmd: List[str]) -> JobStatus:
+def _create_pending_job(job_id: str, cmd: list[str]) -> JobStatus:
     job = JobStatus(
         job_id=job_id,
         status="pending",
@@ -133,7 +142,7 @@ def _create_pending_job(job_id: str, cmd: List[str]) -> JobStatus:
     return job
 
 
-def run_command(job_id: str, cmd: List[str], output_file: Optional[str]):
+def run_command(job_id: str, cmd: list[str], output_file: str | None) -> None:
     """Execute command and update job status."""
     current_job = _load_job(job_id)
     if current_job and current_job.status == "failed" and (current_job.error or "").startswith("Cancelled by user"):
@@ -258,7 +267,7 @@ def run_command(job_id: str, cmd: List[str], output_file: Optional[str]):
             _ACTIVE_PROCESSES.pop(job_id, None)
 
 
-def _cancel_job(job_id: str):
+def _cancel_job(job_id: str) -> bool:
     """Cancel a running or pending job by id."""
     job = _load_job(job_id)
     if job is None:
@@ -313,7 +322,7 @@ register_jobs_routes(app, _load_job, _list_jobs, _cancel_job)
 
 
 @app.get("/")
-async def root():
+async def root() -> dict:
     """API root endpoint."""
     return {
         "name": "CrystaLLM-pi API",
@@ -356,7 +365,7 @@ async def root():
 
 
 @app.get("/healthz")
-async def healthz():
+async def healthz() -> dict:
     """Lightweight health check endpoint."""
     return {
         "status": "ok",

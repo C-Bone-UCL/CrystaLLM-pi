@@ -1,5 +1,6 @@
-"""
-Data loading and collation for training/evaluation. Make batching in round robin fashion to fill context window. Data loader with optional checks and filters.
+"""Load, tokenize and collate CIF datasets for training and evaluation.
+
+Sequences are packed round-robin so batches fill the context window instead of padding it away. Optional filters drop CIFs longer than the context length and rows whose condition values are unusable. Both checks happen once, here, instead of per batch in the training loop.
 """
 
 import numpy as np
@@ -21,13 +22,10 @@ MISSING_CONDITION_VALUE = -100.0
 np.random.seed(1)
 
 
-def _pack_condition_values(values_list):
+def _pack_condition_values(values_list: list) -> torch.Tensor:
     """Tensorize per-sample conditions (ported from CrystaLLM-graph).
 
-    A scalar condition is one row per sample so a plain stack works. A continuous XRD
-    condition is a (1000, 2) table per sample, and uneven row counts make np.array build
-    an object array that torch cannot use. Pad short tables up to the tallest, at the
-    front with MISSING_CONDITION_VALUE where the models expect filler.
+    A scalar condition is one row per sample so a plain stack works. A continuous XRD condition is a (1000, 2) table per sample, and uneven row counts make np.array build an object array that torch cannot use. Pad short tables up to the tallest, at the front with MISSING_CONDITION_VALUE where the models expect filler.
     """
     first_cond = values_list[0]
 
@@ -57,16 +55,26 @@ def _pack_condition_values(values_list):
 
 
 class CustomCIFDataCollator:
-    def __init__(self, tokenizer, context_length):
+    """Collate tokenized CIF rows into fixed-length training batches.
+
+    Every sequence in a batch is exactly `context_length` tokens. A CIF longer than that is sliced from the beginning; a shorter one is packed with further CIFs taken round-robin from the rest of the batch until the window is full. Packing rather than padding is what keeps the context window carrying real tokens instead of filler.
+
+    Conditional mode is detected from the features themselves, by whether `condition_values` is present, so the same collator serves both training modes.
+    """
+    def __init__(self, tokenizer: "CustomCIFTokenizer", context_length: int) -> None:
         self.tokenizer = tokenizer
         self.context_length = context_length
 
-    def __call__(self, features):
-        """
-        Packs CIF sequences for training. conditional or unconditional mode.
-        For each feature, builds a sequence up to context_length tokens by:
-          1) If CIF is longer than context_length, slice from beginning
-          2) Otherwise, pack multiple CIFs in round-robin fashion until context_length is reached
+    def __call__(self, features: list[dict]) -> dict[str, torch.Tensor]:
+        """Pack a list of tokenized features into one batch.
+
+        Conditional mode is detected from the first feature carrying condition_values. Raises ValueError if a packed sequence misses context_length, which would mean the packing loop left the batch ragged.
+
+        Args:
+            features: tokenized rows with input_ids, fixed_mask, optionally attention_mask, special_tokens_mask, condition_values
+
+        Returns:
+            dict of [B, context_length] tensors: input_ids, labels, fixed_mask, attention_mask, special_tokens_mask, plus condition_values when conditional. Labels are input_ids with pad set to -100
         """
 
         # Auto-detect conditional mode based on presence of condition_values
@@ -198,26 +206,31 @@ class CustomCIFDataCollator:
         return batch
 
 def load_data(
-    tokenizer, 
-    dataset, 
-    context_length, 
-    mode="unconditional",
-    condition_columns=None,
-    remove_CIFs_above_context=False, 
-    remove_CIFs_with_unk=False,
-    show_token_stats=False,
-    validate_conditions=False
-):
-    """
-    Prepare dataset for training by tokenizing CIF texts and creating a data collator.
-    
+    tokenizer: "CustomCIFTokenizer", 
+    dataset: object, 
+    context_length: int, 
+    mode: str="unconditional",
+    condition_columns: list[str] | None=None,
+    remove_CIFs_above_context: bool=False, 
+    remove_CIFs_with_unk: bool=False,
+    show_token_stats: bool=False,
+    validate_conditions: bool=False
+) -> tuple:
+    """Tokenize a CIF dataset and build the collator that batches it.
+
     Args:
+        tokenizer: CIF tokenizer, used for encoding and the pad token id
+        dataset: HF dataset with a CIF text column, plus condition columns when conditional
+        context_length: tokens per training sequence, packed to exactly this
         mode: "unconditional" or "conditional"
-        condition_columns: Required for conditional mode
-        remove_CIFs_above_context: Whether to filter out CIFs longer than context_length
-        remove_CIFs_with_unk: Whether to filter out CIFs containing unknown tokens
-        show_token_stats: Whether to display token length statistics
-        validate_conditions: Whether to validate condition values for conditional mode
+        condition_columns: columns holding the conditioning values, required when conditional
+        remove_CIFs_above_context: drop over-length CIFs instead of slicing them
+        remove_CIFs_with_unk: drop CIFs with unknown tokens, usually a vocabulary gap
+        show_token_stats: print token length statistics
+        validate_conditions: check condition values before training
+
+    Returns:
+        (tokenized_dataset, data_collator) ready for the HF Trainer
     """
     
     # Validate inputs

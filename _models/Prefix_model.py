@@ -5,8 +5,20 @@ from transformers import GPT2Config, GPT2LMHeadModel
 from torch import nn
 
 
-def reshape_prefix_kv_to_past_key_values(kv_tensor: torch.Tensor, batch_size: int, n_tokens: int, config) -> tuple:
-    """Reshape per-token KV projections into GPT-2 past_key_values tuples."""
+def reshape_prefix_kv_to_past_key_values(kv_tensor: torch.Tensor, batch_size: int, n_tokens: int, config: "PrefixGPT2Config") -> tuple:
+    """Reshape a flat prefix projection into GPT-2 past_key_values tuples.
+
+    The layer axis is permuted ahead of the token axis so each block can take its own slice without extra indexing. Legacy `PKV_model` keeps this layer-major, which is half of why a PKV checkpoint loads into `PrefixGPT` without error and behaves differently.
+
+    Args:
+        kv_tensor: [B, n_tokens * n_layer * 2 * hidden_size] - flat encoder output
+        batch_size: rows in the batch
+        n_tokens: prefix tokens per layer
+        config: supplies n_layer, n_head, hidden_size
+
+    Returns:
+        n_layer tuples of (key, value), each [B, n_head, n_tokens, head_dim]
+    """
     head_dim = config.hidden_size // config.n_head
     kv_tensor = kv_tensor.view(batch_size, n_tokens, config.n_layer, -1)
 
@@ -23,7 +35,7 @@ def reshape_prefix_kv_to_past_key_values(kv_tensor: torch.Tensor, batch_size: in
     return tuple((k[:, i], v[:, i]) for i in range(config.n_layer))
 
 
-def prepend_prefix_attention_mask(attention_mask: torch.Tensor, batch_size: int, n_prefix_tokens: int):
+def prepend_prefix_attention_mask(attention_mask: torch.Tensor, batch_size: int, n_prefix_tokens: int) -> torch.Tensor | None:
     """Extend attention_mask to cover prefix tokens with ones."""
     if attention_mask is None:
         return None
@@ -36,7 +48,10 @@ def prepend_prefix_attention_mask(attention_mask: torch.Tensor, batch_size: int,
     return torch.cat([prefix_attention, attention_mask], dim=1)
 
 class PrefixGPT2Config(GPT2Config):
-    """Configuration for prefix-conditioned GPT-2."""
+    """Configuration for prefix-conditioned GPT-2.
+
+    Extends `GPT2Config` with the conditioning encoder's shape. `n_input_vector` is how many scalar properties a row carries, `n_prefix_tokens` how many virtual tokens the encoder emits per layer, and `n_hidden_cond` the encoder MLP width. Cross-attention is force-disabled, since conditioning enters through cached key-values, not a cross-attention stack.
+    """
 
     def __init__(
         self,
@@ -45,7 +60,7 @@ class PrefixGPT2Config(GPT2Config):
         n_hidden_cond: int = 128,
         dropout: float = 0.1,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
         self.add_cross_attention = False
 
@@ -55,9 +70,12 @@ class PrefixGPT2Config(GPT2Config):
         self.dropout = dropout
 
 class PrefixEncoder(nn.Module):
-    """Projects conditioning vector into per-layer PKV prefix tokens for GPT-2."""
+    """Project a scalar conditioning vector into per-layer prefix key-value tensors.
 
-    def __init__(self, config: PrefixGPT2Config):
+    The MLP stays token-agnostic and emits one flat blob per batch item; the split into layers, heads and tokens happens afterwards in `reshape_prefix_kv_to_past_key_values`. The activation is GELU here, where the legacy `PKV_model` uses ReLU, which is one half of why the two families' checkpoints are not interchangeable.
+    """
+
+    def __init__(self, config: PrefixGPT2Config) -> None:
         super().__init__()
         self.config = config
 
@@ -82,7 +100,15 @@ class PrefixEncoder(nn.Module):
         self.to_kv = nn.Linear(config.n_hidden_cond * 2, self.kv_size)
         self.dropout = nn.Dropout(config.dropout) # Use conditioning dropout
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> tuple:
+        """Encode conditioning values into GPT-2 past_key_values.
+
+        Args:
+            x: [B, n_input_vector] - scalar conditioning
+
+        Returns:
+            n_layer tuples of (key, value), each [B, n_head, n_prefix_tokens, head_dim]
+        """
         batch_size = x.shape[0]
 
         # The encoder emits one flat prefix blob per batch item. Reshape happens
@@ -95,22 +121,38 @@ class PrefixEncoder(nn.Module):
         )
 
 class PrefixGPT(GPT2LMHeadModel):
-    """GPT-2 with learned prefix key-value conditioning."""
+    """GPT-2 conditioned on scalar properties through learned prefix key-values.
+
+    The encoder output occupies `config.n_prefix_tokens` cached positions ahead of the text, which is why generation has to account for the prefix when computing the effective text length. A checkpoint loaded without that adjustment overruns the positional embeddings.
+    """
     config_class = PrefixGPT2Config
 
-    def __init__(self, config: PrefixGPT2Config):
+    def __init__(self, config: PrefixGPT2Config) -> None:
         super().__init__(config)
         self.conditioning = PrefixEncoder(config)
 
     def forward(
         self,
-        input_ids=None,
-        attention_mask=None,
-        condition_values=None,
-        labels=None,
-        **kwargs
-    ):
+        input_ids: torch.Tensor | None=None,
+        attention_mask: torch.Tensor | None=None,
+        condition_values: torch.Tensor | None=None,
+        labels: torch.Tensor | None=None,
+        **kwargs: object
+    ) -> "CausalLMOutputWithCrossAttentions":
         # Check if cached past_key_values exist in kwargs
+        """Forward pass with scalar conditioning prepended as prefix key-values.
+
+        Raises ValueError when neither condition_values nor a cached past_key_values arrives, since the prefix cannot be built from nothing.
+
+        Args:
+            input_ids: [B, T] - token ids
+            attention_mask: [B, T] - text mask only, prefix positions prepended internally
+            condition_values: [B, n_input_vector] - may carry MISSING_CONDITION_VALUE
+            labels: [B, T] - optional targets
+
+        Returns:
+            CausalLMOutputWithCrossAttentions, logits [B, T, vocab_size]
+        """
         if "past_key_values" in kwargs:
             past_key_values = kwargs.pop("past_key_values")
         else:

@@ -15,9 +15,8 @@ class APIGapTests:
         
     def test_missing_xrd_metrics_endpoint(self):
         """XRD metrics exist in CLI but not API.
-        
-        Script: _utils/_metrics/XRD_metrics.py
-        This should be exposed as /metrics/xrd
+
+        Script: _utils/_scoring/xrd_metrics.py This should be exposed as /metrics/xrd
         """
         response = self.client.get("/")
         endpoints = response.json()["endpoints"]["metrics"]
@@ -25,9 +24,8 @@ class APIGapTests:
         
     def test_missing_property_metrics_endpoint(self):
         """Property metrics exist in CLI but not API.
-        
-        Script: _utils/_metrics/property_metrics.py (density predictions)
-        This should be exposed as /metrics/property
+
+        Script: _utils/_scoring/property_metrics.py (density predictions) This should be exposed as /metrics/property
         """
         response = self.client.get("/")
         endpoints = response.json()["endpoints"]["metrics"]

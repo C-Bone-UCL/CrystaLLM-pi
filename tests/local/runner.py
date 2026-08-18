@@ -1,4 +1,10 @@
-"""Runner for local CrystaLLM test suites."""
+"""Run the local CrystaLLM-pi test suites.
+
+Tiers select what is run: `--offline` skips anything needing network or secrets and is what CI runs, `--secrets` adds the HF and W&B backed tests, `--full` is the default. Every test is registered by hand below, so a new `test_*` method that is not listed here never runs.
+
+Usage:
+    python -m tests.local.runner --cpu --offline
+"""
 
 import argparse
 import os
@@ -21,6 +27,7 @@ from tests.local.groups import (
     LoadAndGenerateTests,
     NotebookUtilsTests,
     VirtualiserTests,
+    SourceConventionTests,
 )
 
 DEVICE = None
@@ -104,6 +111,7 @@ def main():
         load_gen_tests = LoadAndGenerateTests(suite.temp_dir, test_data)
         integration_tests = IntegrationTests(suite.temp_dir, test_data)
         virtualiser_tests = VirtualiserTests(suite.temp_dir, test_data)
+        convention_tests = SourceConventionTests(suite.temp_dir, test_data)
         
         # Execute tests
         print("Running CrystaLLM-pi Comprehensive Test Suite...")
@@ -269,6 +277,13 @@ def main():
         suite.run_test("virtualiser_promote_symmetry", virtualiser_tests.test_promote_symmetry)
         suite.run_test("virtualiser_load_config", virtualiser_tests.test_load_config)
         suite.run_test("virtualiser_full_pipeline_to_cif", virtualiser_tests.test_full_pipeline_to_cif)
+
+        # Source convention tests
+        print("\n📝 Source Convention Tests:")
+        suite.run_test("module_docstring_format", convention_tests.test_module_docstrings_follow_the_house_format)
+        suite.run_test("no_legacy_typing_generics", convention_tests.test_no_legacy_typing_generics)
+        suite.run_test("annotations_resolve", convention_tests.test_annotations_do_not_break_imports)
+        suite.run_test("module_naming", convention_tests.test_module_names_follow_the_house_convention)
 
         # Report results
         success = suite.report_results()

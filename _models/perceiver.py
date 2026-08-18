@@ -1,33 +1,20 @@
-"""
-Perceiver Resampler module for variable-length to fixed-length sequence compression.
+"""Perceiver Resampler that compresses variable-length input into a fixed-length latent set.
 
-Implements the Flamingo-style Perceiver Resampler which compresses variable-length
-inputs (e.g., MACE atom embeddings/XRD) into fixed-size latent representations via
-learned queries and cross-attention.
+Provides `PerceiverFeedForward`, `PerceiverAttention` (cross-attention where latent queries attend to the input) and `PerceiverResampler`, which stacks them. `PrefixXRDGPT` uses it to turn an XRD pattern of arbitrary peak count into a fixed number of latents, so conditioning costs the same compute regardless of how many peaks the scan carries.
 
-Components:
-- PerceiverFeedForward: Standard FFN for Perceiver layers
-- PerceiverAttention: Cross-attention where latent queries attend to media
-- PerceiverResampler: Full resampler with multiple layers
-
-Used by graph-conditioned models (FlamGraphGPT, ResidualGraphGPT) to handle
-variable atom counts while maintaining fixed compute budget.
-
-Inspired by: https://github.com/lucidrains/flamingo-pytorch/blob/main/flamingo_pytorch/flamingo_pytorch.py
-
+Inspired by: https://github.com/lucidrains/flamingo-pytorch
 """
 
 import torch
 import torch.nn as nn
 from torch import einsum
 from einops import rearrange, repeat
-from typing import Optional
 
 
 class PerceiverFeedForward(nn.Module):
     """Feed-forward network for Perceiver layers."""
     
-    def __init__(self, dim: int, mult: int = 4):
+    def __init__(self, dim: int, mult: int = 4) -> None:
         super().__init__()
         inner_dim = int(dim * mult)
         self.norm = nn.LayerNorm(dim)
@@ -44,14 +31,12 @@ class PerceiverFeedForward(nn.Module):
 
 
 class PerceiverAttention(nn.Module):
-    """
-    Perceiver cross-attention: latent queries attend to media (e.g. MACE embeddings).
-    
-    Following Flamingo, latents are concatenated to key/value so they can also
-    attend to themselves during the cross-attention operation.
+    """Perceiver cross-attention: latent queries attend to media (e.g. MACE embeddings).
+
+    Following Flamingo, latents are concatenated to key/value so they can also attend to themselves during the cross-attention operation.
     """
     
-    def __init__(self, dim: int, dim_head: int = 64, heads: int = 8):
+    def __init__(self, dim: int, dim_head: int = 64, heads: int = 8) -> None:
         super().__init__()
         self.scale = dim_head ** -0.5
         self.heads = heads
@@ -68,14 +53,15 @@ class PerceiverAttention(nn.Module):
         self, 
         media: torch.Tensor, 
         latents: torch.Tensor,
-        media_mask: Optional[torch.Tensor] = None
+        media_mask: torch.Tensor | None = None
     ) -> torch.Tensor:
-        """
+        """Cross-attend the learnable latents over one media sequence.
+
         Args:
             media: [B, N_items, dim] - input embeddings (variable length)
             latents: [B, num_latents, dim] - learnable queries
             media_mask: [B, N_items] - True where item is valid, False for padding
-            
+
         Returns:
             Updated latents [B, num_latents, dim]
         """
@@ -124,12 +110,10 @@ class PerceiverAttention(nn.Module):
 
 
 class PerceiverResampler(nn.Module):
-    """
-    Perceiver Resampler: compresses variable-length inputs to fixed latents.
-    
-    Uses learnable latent queries that cross-attend to input embeddings,
-    producing a fixed-size representation regardless of input length.
-    
+    """Perceiver Resampler: compresses variable-length inputs to fixed latents.
+
+    Uses learnable latent queries that cross-attend to input embeddings, producing a fixed-size representation regardless of input length.
+
     Args:
         dim: Hidden dimension
         depth: Number of Perceiver attention layers
@@ -147,7 +131,7 @@ class PerceiverResampler(nn.Module):
         heads: int = 8,
         num_latents: int = 32,
         ff_mult: int = 4,
-    ):
+    ) -> None:
         super().__init__()
         self.num_latents = num_latents
         self.latents = nn.Parameter(torch.randn(num_latents, dim))
@@ -164,13 +148,14 @@ class PerceiverResampler(nn.Module):
     def forward(
         self, 
         media: torch.Tensor,
-        media_mask: Optional[torch.Tensor] = None
+        media_mask: torch.Tensor | None = None
     ) -> torch.Tensor:
-        """
+        """Compress a variable-length input into a fixed set of latents.
+
         Args:
             media: [B, N_items, dim] - input embeddings
             media_mask: [B, N_items] - True where item is valid
-            
+
         Returns:
             latents: [B, num_latents, dim] - compressed representation
         """

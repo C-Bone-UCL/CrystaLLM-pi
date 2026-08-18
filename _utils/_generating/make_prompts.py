@@ -1,33 +1,19 @@
-"""
-Flexible prompt construction for conditional or unconditional models, supporting automatic extraction 
-from existing CIF data and manual specification of compositions and target properties.
+r"""Build generation prompts for conditional and unconditional models.
 
-Features:
-- Automatic prompt generation with 4 conditioning levels (minimal unconditional to spacegroup info)
-- Manual prompt construction with custom compositions and property conditions
-- Three pairing modes: cartesian, paired, broadcast
-- Supports raw method for text-based conditioning
+Prompts come either from existing CIF data (automatic mode) or from compositions and target properties given on the command line (manual mode). Four conditioning levels run from a minimal unconditional prompt up to one carrying composition, atomic information and space group. Manual mode pairs compositions with conditions three ways: `cartesian` for every combination, `paired` for a 1:1 mapping, and `broadcast` to apply one condition to all.
 
-condition_lists format: Each quoted string is a COMPLETE condition vector (all properties for one sample).
-  e.g., --condition_lists "1.8,0.0" "2.0,0.0" gives two conditions: (prop1=1.8, prop2=0.0) and (prop1=2.0, prop2=0.0)
+Each `--condition_lists` string is one complete condition vector, holding every property for a single sample. `--condition_lists "1.8,0.0" "2.0,0.0"` therefore gives two conditions, (prop1=1.8, prop2=0.0) and (prop1=2.0, prop2=0.0), not four.
 
-Examples:
+Usage:
+    python -m _utils._generating.make_prompts --HF_dataset "c-bone/mpdb-2prop_clean" \
+        --split test --automatic --level level_3 --output_parquet prompts.parquet
 
-Automatic from HuggingFace:
-    python make_prompts.py --HF_dataset "c-bone/mpdb-2prop_clean" --split test \\
-        --automatic --level level_3 --output_parquet prompts.parquet
-
-Manual with cartesian mode (default - all combos):
-    python make_prompts.py --manual --compositions "Ti2O4,Ti4O8" \\
+    python -m _utils._generating.make_prompts --manual --compositions "Ti2O4,Ti4O8" \
         --condition_lists "1.8,0.0" --level level_2 --output_parquet prompts.parquet
 
-Manual with paired mode (1:1 mapping):
-    python make_prompts.py --manual --compositions "Ti2O4,Ti4O8" \\
-        --condition_lists "1.8,0.0" "2.0,0.0" --mode paired --level level_2 --output_parquet prompts.parquet
-
-Manual with broadcast mode (one condition for all):
-    python make_prompts.py --manual --compositions "Ti2O4,Ti4O8,Ti8O16" \\
-        --condition_lists "1.8,0.0" --mode broadcast --level level_2 --output_parquet prompts.parquet
+    python -m _utils._generating.make_prompts --manual --compositions "Ti2O4,Ti4O8" \
+        --condition_lists "1.8,0.0" "2.0,0.0" --mode paired --level level_2 \
+        --output_parquet prompts.parquet
 """
 
 import argparse
@@ -50,7 +36,7 @@ from _utils import (
     remove_comments,
     add_variable_brackets_to_cif
 )
-from _utils._processing_utils import get_atomic_props_block_for_formula
+from _utils.processing import get_atomic_props_block_for_formula
 from _utils._generating.postprocess import process_dataframe, postprocess
 
 # Configuration
@@ -58,13 +44,13 @@ API_KEY_PATH = 'API_keys.jsonc'
 DECIMAL_PLACES = 4
 OXI_DEFAULT = False
 
-def is_already_bracketed(cif_str):
+def is_already_bracketed(cif_str: str) -> bool:
     """Check if CIF is already in cleaned bracket format (has data_[...] pattern)."""
     if cif_str is None or pd.isna(cif_str):
         return False
     return bool(re.search(r'data_\[[^\]]+\]', cif_str))
 
-def augment_cif_for_prompt(cif_str):
+def augment_cif_for_prompt(cif_str: str) -> str:
     """Apply augmentation for consistent formatting. Skips if already in bracket format."""
     try:
         if cif_str is None or pd.isna(cif_str):
@@ -89,7 +75,7 @@ def augment_cif_for_prompt(cif_str):
     except Exception:
         return None
 
-def load_hf_dataset(dataset_name, split):
+def load_hf_dataset(dataset_name: str, split: str) -> pd.DataFrame:
     """Load dataset from Hugging Face with authentication."""
 
     data = load_api_keys(API_KEY_PATH)
@@ -111,7 +97,7 @@ def load_hf_dataset(dataset_name, split):
             raise ValueError(f"Split '{split}' not found in the dataset.")
         return ds[split].to_pandas()
 
-def extract_composition_from_cif(cif_content):
+def extract_composition_from_cif(cif_content: str) -> str:
     """Extract composition from CIF data_ line."""
     if pd.isna(cif_content):
         return None
@@ -119,8 +105,11 @@ def extract_composition_from_cif(cif_content):
 
     return match.group(1) if match else None
 
-def create_automatic_prompts(df, cif_column, level, condition_columns=None):
-    """Generate prompts automatically from CIF data based on specified level."""
+def create_automatic_prompts(df: pd.DataFrame, cif_column: str, level: str, condition_columns: list[str] | None=None) -> pd.DataFrame:
+    """Build prompts by extracting them from existing CIF data.
+
+    Each row's CIF is truncated to whatever `level` should reveal, leaving the model to complete the rest. Condition values come from `condition_columns` on the same row, which keeps each prompt paired with the properties that structure actually has.
+    """
     df = df.copy()
     
     # Extract condition vector if specified
@@ -199,18 +188,20 @@ def create_automatic_prompts(df, cif_column, level, condition_columns=None):
     return df
 
 
-def _format_condition_vectors(condition_lists):
+def _format_condition_vectors(condition_lists: list) -> list[str]:
     """Format condition vectors as comma-separated strings.
-    
-    Each input list is already a complete condition vector (all properties for one sample).
-    E.g., [[1.8, 0.0], [2.0, 0.0]] -> ["1.8, 0.0", "2.0, 0.0"]
+
+    Each input list is already a complete condition vector (all properties for one sample). E.g., [[1.8, 0.0], [2.0, 0.0]] -> ["1.8, 0.0", "2.0, 0.0"]
     """
     if not condition_lists:
         return ["None"]
     return [", ".join(str(v) for v in cond) for cond in condition_lists]
 
-def create_manual_prompts(compositions, condition_lists, level="level_2", spacegroups=None, mode="cartesian"):
-    """Generate prompts manually from compositions and condition lists with different detail levels."""
+def create_manual_prompts(compositions: list[str], condition_lists: list, level: str="level_2", spacegroups: list[str] | None=None, mode: str="cartesian") -> pd.DataFrame:
+    """Build prompts from compositions and condition values given directly.
+
+    `mode` decides how the two lists pair up: "cartesian" takes every combination, "paired" maps them 1:1 and requires equal lengths, "broadcast" applies a single condition to every composition. `level` controls how much the prompt states, from level_1 (nothing, fully unconditional) through level_2 (composition), level_3 (composition plus atomic information) to level_4 (adding the space group). Spacegroups are only used at level_3 and above.
+    """
     # Handle compositions
     if not compositions or compositions == [None]:
         compositions = [None]

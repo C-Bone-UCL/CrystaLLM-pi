@@ -1,4 +1,10 @@
-"""Runner for API test suites."""
+"""Run the API test suites against a running CrystaLLM-pi container.
+
+Needs the docker stack up, since every test issues real HTTP requests to the service.
+
+Usage:
+    make api-test
+"""
 
 import argparse
 import traceback
