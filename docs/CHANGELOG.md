@@ -22,7 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Breaking: packages and files renamed**: `_utils/` follows one naming rule now, lowercase filenames with no leading underscore and no `_utils` suffix, and `_utils/_metrics/` is `_utils/_scoring/`. Import paths and `python -m` commands change, the HTTP API does not.
 
 ### Documentation
-- **Docstrings standardized**: every module, and every public function on the docs surface, follows one house format. Registered tests enforce it.
+- **Docstrings standardized**: every module, and every public function on the docs surface, follows a standradized format. Registered tests enforce it.
 
 ## [v1.3.2] - 2026-07-20
 

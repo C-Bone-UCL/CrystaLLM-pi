@@ -76,7 +76,9 @@ def discrete_to_continuous_xrd(
     Args:
         batch_q: [B, N_peaks] - peak positions in A^-1, Q == 0 treated as padding
         batch_iq: [B, N_peaks] - peak intensities
-        qmin, qmax, qstep: grid bounds and spacing in A^-1, default 0.0 to 10.0 by 0.01
+        qmin: grid lower bound in A^-1, default 0.0
+        qmax: grid upper bound in A^-1, default 10.0
+        qstep: grid spacing in A^-1, default 0.01
         fwhm_range: peak width sampled per batch item, in A^-1
         eta_range: pseudo-Voigt mixing, 0 Gaussian to 1 Lorentzian
         noise_range: noise amplitude, None disables

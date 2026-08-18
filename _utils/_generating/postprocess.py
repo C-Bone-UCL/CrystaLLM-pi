@@ -108,7 +108,8 @@ def process_dataframe(df: pd.DataFrame, num_workers: int, column_name: str) -> p
         return df
 
 
-def main():
+def main() -> None:
+    """Parse arguments and post-process a parquet of generated CIFs."""
     parser = argparse.ArgumentParser(
         description="Post-process CIFs in parquet DataFrame",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter

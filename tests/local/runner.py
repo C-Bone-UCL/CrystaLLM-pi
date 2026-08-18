@@ -284,6 +284,7 @@ def main():
         suite.run_test("no_legacy_typing_generics", convention_tests.test_no_legacy_typing_generics)
         suite.run_test("annotations_resolve", convention_tests.test_annotations_do_not_break_imports)
         suite.run_test("module_naming", convention_tests.test_module_names_follow_the_house_convention)
+        suite.run_test("api_manifest", convention_tests.test_api_pages_list_documented_symbols)
 
         # Report results
         success = suite.report_results()

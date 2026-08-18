@@ -1,0 +1,38 @@
+/* Palette sampled from images/Logo.png: #40a0c0 mid blue-cyan, #a0e0e0 pale cyan.
+   Material writes its own values into these variables, so the names have to match exactly
+   and the scheme is selected with `primary: custom` / `accent: custom` in mkdocs.yml. */
+
+[data-md-color-primary=custom] {
+  --md-primary-fg-color:        #40a0c0;
+  --md-primary-fg-color--light: #6cbdd6;
+  --md-primary-fg-color--dark:  #2d7a96;
+  --md-primary-bg-color:        #fff;
+  --md-primary-bg-color--light: hsla(0, 0%, 100%, 0.7);
+}
+
+/* Light mode links use the darker tone. #a0e0e0 on white fails contrast for body text. */
+[data-md-color-accent=custom] {
+  --md-accent-fg-color:             #2d7a96;
+  --md-accent-fg-color--transparent: rgba(45, 122, 150, 0.1);
+  --md-accent-bg-color:             #fff;
+  --md-accent-bg-color--light:      hsla(0, 0%, 100%, 0.7);
+}
+
+/* Dark mode can carry the pale cyan, which is where it reads best. */
+[data-md-color-scheme=slate][data-md-color-accent=custom] {
+  --md-accent-fg-color:             #a0e0e0;
+  --md-accent-fg-color--transparent: rgba(160, 224, 224, 0.1);
+}
+
+[data-md-color-scheme=slate][data-md-color-primary=custom] {
+  --md-primary-fg-color:        #2d7a96;
+  --md-primary-fg-color--light: #40a0c0;
+  --md-primary-fg-color--dark:  #1f5a70;
+}
+
+/* The logo is a dark line drawing, so it disappears against the coloured header bar. */
+.md-header__button.md-logo img {
+  background: #fff;
+  border-radius: 3px;
+  padding: 1px;
+}

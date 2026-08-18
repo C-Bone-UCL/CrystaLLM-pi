@@ -25,6 +25,20 @@ To set up the project locally for development:
 3. Add your Credentials for Hugging-Face and WandB (may need to create accounts).
 4. Run the local tests to ensure your environment is configured correctly.
 
+## Code and docstring conventions
+
+Before writing a docstring, read [API reference conventions](api/conventions.md). It covers when a
+symbol gets a parameter table versus a paragraph, how command-line scripts are documented, and the
+module naming rules inside `_utils/`. Three registered tests enforce all of it, so a pull request
+that drifts will fail the offline tier rather than wait for review.
+
+Building the docs site locally:
+
+```bash
+pip install -r docs/requirements.txt
+mkdocs serve
+```
+
 ## Testing and Continuous Integration (CI)
 To ensure stability and reproducibility, this project relies on a three-tier testing strategy. All code contributions must pass the relevant CI checks before being merged.
 

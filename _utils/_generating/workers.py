@@ -282,6 +282,7 @@ def generate_on_gpu(
 
 
 def progress_listener(queue: object, total: int) -> None:
+    """Drive a tqdm bar from worker messages until a "kill" sentinel arrives."""
     pbar = tqdm(total=total, desc="Generating CIFs...")
     while True:
         message = queue.get()

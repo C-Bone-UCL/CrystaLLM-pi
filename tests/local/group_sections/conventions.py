@@ -167,3 +167,46 @@ class SourceConventionTests:
                 problems.append(f"{directory.relative_to(REPO_ROOT)}: no __init__.py, find_packages() skips it")
 
         assert not problems, "module naming violations:\n  " + "\n  ".join(problems)
+
+    def test_api_pages_list_documented_symbols(self):
+        """Every `:::` directive on the docs API pages resolves to a symbol with a docstring.
+
+        These pages double as the manifest of what counts as public, since Python has no export list to check against. A directive that names a moved or renamed symbol would build a page with a hole in it, and mkdocs only catches that when the docs toolchain is installed, which the offline tier does not have.
+        """
+        api_dir = REPO_ROOT / "docs" / "api"
+        assert api_dir.is_dir(), "docs/api is missing, the API reference pages are the manifest"
+
+        seen, problems = {}, []
+        for page in sorted(api_dir.glob("*.md")):
+            for dotted in re.findall(r"^::: ([A-Za-z_][A-Za-z0-9_.]*)", page.read_text(), re.M):
+                if dotted in seen:
+                    problems.append(f"{dotted}: listed on both {seen[dotted]} and {page.name}")
+                    continue
+                seen[dotted] = page.name
+
+                # longest dotted prefix that is a real module, remainder is the symbol chain
+                parts = dotted.split(".")
+                module = chain = None
+                for cut in range(len(parts), 0, -1):
+                    candidate = REPO_ROOT.joinpath(*parts[:cut]).with_suffix(".py")
+                    if candidate.is_file():
+                        module, chain = candidate, parts[cut:]
+                        break
+                if module is None:
+                    problems.append(f"{dotted}: no module on disk ({page.name})")
+                    continue
+
+                node = ast.parse(module.read_text())
+                for name in chain:
+                    node = next((c for c in ast.iter_child_nodes(node)
+                                 if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                                 and c.name == name), None)
+                    if node is None:
+                        problems.append(f"{dotted}: `{name}` not found in {module.relative_to(REPO_ROOT)}")
+                        break
+                else:
+                    if not ast.get_docstring(node):
+                        problems.append(f"{dotted}: listed on {page.name} but has no docstring")
+
+        assert seen, "no ::: directives found, the API pages are empty"
+        assert not problems, "API reference manifest problems:\n  " + "\n  ".join(problems)
