@@ -14,7 +14,7 @@ def _split_csv_values(value: str | None) -> list[str]:
 
 
 class DirectGenerationRequest(BaseModel):
-    """Request model for direct HuggingFace model generation."""
+    """Request model for direct Hugging Face model generation."""
 
     hf_model_path: str = Field(..., description="HuggingFace model path (e.g., c-bone/CrystaLLM-pi_bandgap)")
     model_registry: str | None = Field(None, description="Custom model registry JSON file")
@@ -22,7 +22,7 @@ class DirectGenerationRequest(BaseModel):
     output_cif_dir: str | None = Field(None, description="Output directory for generated CIF files")
     input_parquet: str | None = Field(None, description="Input prompts parquet (alternative to manual)")
     reduced_formula_list: str | None = Field(None, description="Comma-separated reduced formulas")
-    search_zs: bool = Field(False, description="Search through Z=1 to Z=4 to find valid structures")
+    search_zs: bool = Field(False, description="Search through Z=1,2,3,4,6 to find valid structures")
     z_list: str | None = Field(None, description="Comma-separated explicit Z integers mapping 1:1 to formulas")
     condition_lists: list[str] | None = Field(None, description="Condition vectors")
     xrd_files: list[str] | None = Field(None, description="Files with XRD peaks (.csv, .xy, .txt, .dat) for XRD models")
@@ -42,9 +42,9 @@ class DirectGenerationRequest(BaseModel):
 
 
 class MakePromptsRequest(BaseModel):
-    """Request body for POST /generate/make-prompts.
+    """Request body for `POST /generate/make-prompts`.
 
-    Manual mode pairs `compositions` with `condition_lists` using `mode`; automatic mode extracts prompts from a dataset instead. Exactly one of the two applies.
+    Manual mode constructs prompts from `compositions` and `condition_lists` according to `mode`. Automatic mode extracts prompts from a dataset. Exactly one mode is used per request.
     """
     output_parquet: str = Field(..., description="Output parquet file")
     manual: bool | None = Field(None, description="Manual mode")
@@ -66,7 +66,9 @@ class MakePromptsRequest(BaseModel):
 
 
 class GenerateCIFsRequest(BaseModel):
-    """Request body for POST /generate/cifs, which runs a config-driven generation job.
+    """Request body for `POST /generate/cifs`.
+
+    The endpoint uses the supplied configuration to run a CIF generation job.
     """
     config_file: str = Field(..., description="Path to generation config JSONC file")
 

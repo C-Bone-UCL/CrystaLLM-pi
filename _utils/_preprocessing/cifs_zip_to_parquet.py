@@ -1,12 +1,14 @@
-r"""Extract and symmetrize CIFs from tarballs into a parquet dataset in parallel.
+r"""Extract and symmetrise CIFs from tarballs into a parquet dataset.
 
-Takes the CIF tarballs published with the original CrystaLLM and converts them into the parquet layout this package expects. Split labels come from the tarball filenames minus their extensions. The names on disk therefore decide the split names.
+The CIF tarballs are converted to the parquet layout expected by the package. Split labels are derived from the tarball filenames after removing their extensions, so filenames determine the resulting split names.
 
 From original repo: https://github.com/lantunes/CrystaLLM/blob/main/ARTIFACTS.md
 
 Usage:
-    python -m _utils._preprocessing.cifs_zip_to_parquet --input_tarballs train.tar.gz val.tar.gz \
+    ```bash
+    python _utils/_preprocessing/cifs_zip_to_parquet.py --input_tarballs train.tar.gz val.tar.gz \
         --output_parquet cifs.parquet --num_workers 8
+    ```
 """
 
 import argparse
@@ -25,9 +27,11 @@ from tqdm import tqdm
 
 
 def _process_single_cif(payload):
-    """Parse and attempt to symmetrize a single CIF.
+    """Parse and attempt to symmetrise one CIF.
 
-    Packaged as a single-argument function to easily map across a ProcessPool. Returns a dictionary with the processed data or an error string if it fails entirely.
+    The single-argument interface allows the function to be mapped across a
+    ``ProcessPool``. It returns processed data or an error string when processing
+    fails completely.
     """
     cif_string, material_id, current_split = payload
     

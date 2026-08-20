@@ -1,9 +1,11 @@
-"""FastAPI service wrapping the CrystaLLM-pi command-line utilities.
+"""FastAPI service for the CrystaLLM-pi command-line utilities.
 
-Endpoint groups are registered from the `_utils._api` modules, one module per group (generation, training, metrics, preprocessing, virtualiser, jobs). Long-running work is dispatched as background jobs and polled through the jobs endpoints rather than held open on the request.
+Endpoint groups are registered from the `_utils._api` modules. Long-running generation and training work runs as background jobs and is polled through the jobs endpoints.
 
 Usage:
+    ```bash
     uvicorn _api:app --host 0.0.0.0 --port 8000
+    ```
 """
 
 import os
@@ -43,9 +45,9 @@ _ACTIVE_PROCESSES = {}
 
 
 class JobStatus(BaseModel):
-    """Status of a background job, returned by the job endpoints.
+    """Status of a background job.
 
-    Jobs run in the background, so the generation and training endpoints return this immediately and the caller polls for completion.
+    Generation and training endpoints return a job status while the work runs in the background. Callers poll the jobs endpoints for completion.
     """
     job_id: str
     status: Literal['pending', 'running', 'completed', 'failed']
@@ -323,7 +325,7 @@ register_jobs_routes(app, _load_job, _list_jobs, _cancel_job)
 
 @app.get("/")
 async def root() -> dict:
-    """API root endpoint."""
+    """Return the API root response."""
     return {
         "name": "CrystaLLM-pi API",
         "version": "1.0.0",
@@ -366,7 +368,7 @@ async def root() -> dict:
 
 @app.get("/healthz")
 async def healthz() -> dict:
-    """Lightweight health check endpoint."""
+    """Return the API health status."""
     return {
         "status": "ok",
         "service": "CrystaLLM-pi API",

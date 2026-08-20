@@ -1,6 +1,7 @@
-"""Helpers for direct generation entrypoints.
+"""Provide helpers for direct generation entry points.
 
-Includes model metadata, normalization helpers, XRD parsing, reduced-formula search utilities and final row selection logic.
+The module contains model metadata, normalisation and XRD parsing utilities,
+reduced-formula search helpers, and final row-selection logic.
 """
 
 from __future__ import annotations

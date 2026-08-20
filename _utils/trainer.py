@@ -33,9 +33,10 @@ FACTOR_1 = 1.0  # Weight for the sequence loss
 FACTOR_2 = 1.0  # Weight for the formatting loss
 
 class CIFFormattingTrainer(Trainer):
-    """Trainer class that adds a fixed formatting loss to the regular model loss.
+    """Trainer that adds a fixed-formatting penalty to the model loss.
 
-    Basically penalizes the model extra if it gets invariant parts of the CIF wrong, such as 'data_' or 'loop_' or 'cell_length_a' etc.
+    The penalty discourages errors in invariant CIF formatting tokens such as
+    ``data_``, ``loop_``, and ``cell_length_a``.
     """
 
     def compute_loss(
@@ -45,16 +46,17 @@ class CIFFormattingTrainer(Trainer):
         return_outputs=False,
         num_items_in_batch=None
     ):
-        """Compute loss combining standard language model loss with formatting penalty.
+        """Compute language-model loss with an optional CIF formatting penalty.
 
         Args:
-            model: The model to compute loss for
-            inputs: Input tensors including optional fixed_mask for formatting loss
-            return_outputs: Whether to return model outputs along with loss
-            num_items_in_batch: Number of items in batch (unused)
+            model: Model used to compute the language-model loss.
+            inputs: Input tensors, optionally including ``fixed_mask`` for the
+                formatting penalty.
+            return_outputs: Whether to return model outputs together with the loss.
+            num_items_in_batch: Number of items in the batch. Unused.
 
         Returns:
-            Loss tensor, or tuple of (loss, outputs) if return_outputs=True
+            The loss tensor, or ``(loss, outputs)`` when ``return_outputs=True``.
         """
         # Keep only what the model expects for the CE loss
         model_inputs = {
@@ -245,10 +247,7 @@ class LossTrack_EarlyStop_Callback(TrainerCallback):
 
 
 class DualLRLogger(TrainerCallback):
-    """Logs learning rates for both base and conditioning parameter groups.
-    
-    Useful when you have multiple LRs (e.g. 'base' + 'conditioning').
-    """
+    """Log learning rates for the base and conditioning parameter groups."""
     
     def on_log(self, args, state, control, logs=None, **kwargs):
         if logs is None:
@@ -296,9 +295,10 @@ def _context_extension_wpe_weight(model: object) -> torch.nn.Parameter | None:
 
 
 class ContextExtensionWarmupCallback(TrainerCallback):
-    """Mask copied positional embedding row gradients during context-extension warmup.
+    """Mask gradients for copied positional-embedding rows during context-extension warmup.
 
-    We do a gradient hook instead of freezing bc freezing is per tensor, wed have to split the params into two groups which breaks stuff.
+    A gradient hook is used instead of freezing the rows because freezing would
+    require splitting the parameters into separate optimiser groups.
     """
 
     def __init__(self, context_extension_warmup_steps: int) -> None:
@@ -418,9 +418,11 @@ def params_stats_check(model):
     print(f"Percentage of conditioning parameters: {percentage_condition:.2f}%\n")
 
 def setup_scheduler(args, model):
-    """Setup the optimizer and scheduler for training.
+    """Set up the optimiser and learning-rate scheduler for training.
 
-    If we finetune, we use different learning rates for conditioning vs base params. This is because backbone is already trained, we dont want to edit them too much. But we want to train the conditioning params more.
+    During fine-tuning, conditioning and base parameters use separate learning
+    rates. The base model is updated more conservatively while conditioning
+    parameters use the higher learning rate.
     """
     extra_sched_kwargs = args.lr_scheduler_kwargs or {}
     num_training_steps = args.max_steps

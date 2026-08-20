@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-r"""Load a released CrystaLLM-pi model from the Hugging Face Hub and generate CIF structures.
+r"""Load a released CrystaLLM-pi model and generate CIF structures.
 
-Takes either a parquet of prebuilt prompts or a list of reduced formulas, attaches the conditioning values the chosen model family expects, generates across every visible GPU, and optionally ranks the candidates before writing them out. Formula mode can search Z values instead of taking them as given, stopping at the first that yields a valid structure, or returning the one that scores the highest on the given scoring method if specified.
+Prompts can come from a parquet dataset or reduced formulas. Formula mode can search over Z values and either stop at the first valid structure or select the highest-scoring candidate. Generation uses every visible GPU.
 
-Prompts come from `--input_parquet` or `--reduced_formula_list`. Level 1 needs neither and substitutes a placeholder formula, since it generates unconditionally. `--model_registry` overlays extra Hub models onto the packaged registry, which is how the unregistered checkpoints are reached.
-
-`--scoring_mode` chooses between `LOGP` perplexity ranking, `PEARSON` fit against the conditioning XRD profile, and `None`. Left unset, a continuous-XRD Z search defaults to `PEARSON`, because perplexity ranking favours fluent simple cells over the phase that actually produced the scan. `PEARSON` requires a continuous-XRD model, and both scoring modes require `--target_valid_cifs` above 0.
+`--scoring_mode` supports `LOGP`, `PEARSON`, and `None`. Continuous-XRD Z searches default to `PEARSON`, while `PEARSON` requires a continuous-XRD model. Both scoring modes require `--target_valid_cifs` to be greater than zero.
 
 Usage:
+    ```bash
     python _load_and_generate.py --hf_model_path c-bone/CrystaLLM-pi_ft_alex_mp_20-text \
         --reduced_formula_list "TiO2,SiO2" --z_list "2,4" --output_cif_dir outputs/cifs
+    ```
 """
 
 import argparse
@@ -183,7 +183,7 @@ def run_parquet_mode(args: argparse.Namespace, scoring_mode: str) -> pd.DataFram
 
 def _run_early_stop_search(args: argparse.Namespace, canonical_formulas: list, row_properties: list, xrd_format: str | None) -> pd.DataFrame:
     """Iterate DEFAULT_Z_LIST, dropping each formula after its first valid structure."""
-    print(f"\nExecuting Early-Stopping Z_search ({DEFAULT_Z_LIST[0]} to {DEFAULT_Z_LIST[-1]})")
+    print(f"\nExecuting Early-Stopping Z_search over Z={DEFAULT_Z_LIST}")
     active_rows = list(zip(canonical_formulas, row_properties))
     completed_dfs = []
 
@@ -349,7 +349,7 @@ def main() -> None:
     parser.add_argument("--max_samples", type=int, default=None, help="Max prompts to process from input parquet (for testing)")
 
     z_group = parser.add_mutually_exclusive_group()
-    z_group.add_argument("--search_zs", action="store_true", help="Search through Z=1 to Z=4 to find valid structures")
+    z_group.add_argument("--search_zs", action="store_true", help="Search through Z=1,2,3,4,6 to find valid structures")
     z_group.add_argument("--z_list", type=str, help="Comma-separated explicit Z integers mapping 1:1 to formulas")
 
     parser.add_argument("--condition_lists", nargs='+', help="One string per formula, or a single string broadcast to all. Each string holds that formula's comma-separated condition values, e.g. --condition_lists \"2.16, 0.0\"")

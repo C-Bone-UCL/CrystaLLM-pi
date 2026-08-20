@@ -1,10 +1,12 @@
-r"""Save a custom CIF tokenizer locally and optionally push it to the Hugging Face Hub.
+r"""Save a custom CIF tokenizer locally and optionally upload it to the Hugging Face Hub.
 
-Writes the vocabulary and space-group files into the layout `CustomCIFTokenizer` expects, so the result can be loaded straight back with `from_pretrained`.
+The vocabulary and space-group files are written in the layout expected by `CustomCIFTokenizer.from_pretrained`.
 
 Usage:
-    python -m _utils._preprocessing.save_tokenizer_to_hf --vocab_file vocabulary.json \
+    ```bash
+    python _utils/_preprocessing/save_tokenizer_to_hf.py --vocab_file vocabulary.json \
         --spacegroups_file spacegroups.txt --path HF-cif-tokenizer
+    ```
 """
 
 import logging
@@ -12,7 +14,7 @@ from huggingface_hub import login
 import os
 import sys
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import load_api_keys
 from _tokenizer import CustomCIFTokenizer
 

@@ -1,12 +1,14 @@
-r"""Evaluate generated CIFs for validity, consistency and crystallographic sanity.
+r"""Evaluate generated CIFs for validity, consistency, and crystallographic sanity.
 
-Takes generated CIFs directly, with no postprocessing step needed first, and can write the valid subset to a new parquet.
+Generated CIFs can be evaluated directly without postprocessing. The valid subset can optionally be written to a new parquet.
 
 From original repo: https://github.com/lantunes/CrystaLLM/blob/main/bin/evaluate_cifs.py
 
 Usage:
-    python -m _utils._generating.evaluate_cifs --input_parquet gen.parquet \
+    ```bash
+    python _utils/_generating/evaluate_cifs.py --input_parquet gen.parquet \
         --output_parquet valid.parquet
+    ```
 """
 
 import argparse
@@ -28,7 +30,7 @@ ANGLE_LO = 10.0      # Smallest cell angle for sensibility check
 ANGLE_HI = 170.0     # Largest cell angle for sensibility check
 DEFAULT_TOKENIZER_DIR = "HF-cif-tokenizer"  # Default tokenizer directory
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _tokenizer import CustomCIFTokenizer
 from _utils import (
     is_sensible,

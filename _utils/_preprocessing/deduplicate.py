@@ -1,10 +1,12 @@
-r"""Deduplicate CIF tables down to one entry per formula and space group.
+r"""Deduplicate CIF data to one entry per formula and space group.
 
-For each unique (formula, space group) pair the entry with the smallest volume per formula unit is kept, which prefers the primitive setting over redundant supercells. Rows carrying "N/A", zero or negative values in the named columns can be dropped first, so unusable property labels never reach training.
+For each `(formula, space group)` pair, the entry with the smallest volume per formula unit is retained. Rows with `"N/A"`, zero, or negative values in the selected property columns can be removed before deduplication.
 
 Usage:
-    python -m _utils._preprocessing.deduplicate --input_parquet raw.parquet \
+    ```bash
+    python _utils/_preprocessing/deduplicate.py --input_parquet raw.parquet \
         --output_parquet dedup.parquet --property_columns density bandgap
+    ```
 """
 
 import argparse
@@ -20,7 +22,7 @@ from tqdm import tqdm
 warnings.filterwarnings("ignore")
 
 # import from one level above
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from _utils import extract_formula_nonreduced, extract_space_group_symbol, extract_volume, extract_formula_units
 

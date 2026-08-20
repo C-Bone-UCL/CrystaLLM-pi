@@ -1,6 +1,9 @@
-"""Argument parsing for CrystaLLM-pi training and generation scripts.
+"""Parse training and generation arguments from JSONC configuration and CLI flags.
 
-Reads a JSONC config and lets any flag override it, so one config file can be reused with a single setting changed on the command line. Handles the conditional architectures Prefix, PrefixXRD and Residual. The legacy PKV and Slider families load for generation but cannot be trained, and an unknown `activate_conditionality` raises.
+CLI flags override values from the configuration file. Supports the Prefix,
+PrefixXRD, and Residual architectures. The legacy PKV and Slider families can
+be loaded for generation but are not trainable. Unsupported values of
+``activate_conditionality`` raise an error.
 """
 
 import argparse

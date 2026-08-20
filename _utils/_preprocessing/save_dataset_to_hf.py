@@ -1,10 +1,12 @@
-r"""Convert a processed DataFrame into a Hugging Face dataset with train, val and test splits.
+r"""Convert a DataFrame into a Hugging Face dataset with train, validation, and test splits.
 
-Splitting is material-based rather than row-based, so every row for one material lands in a single split and no structure leaks between train and test. Sizes compose as fractions of the whole: `--test_size 0.2 --valid_size 0.2` gives 60/20/20, and setting both to 0 puts everything in train.
+Splitting is material-based, so all rows for one material remain in the same split. `--test_size 0.2 --valid_size 0.2` therefore produces 60/20/20 proportions, while setting both values to zero places all rows in the training split.
 
 Usage:
-    python -m _utils._preprocessing.save_dataset_to_hf --input_parquet clean.parquet \
+    ```bash
+    python _utils/_preprocessing/save_dataset_to_hf.py --input_parquet clean.parquet \
         --test_size 0.2 --valid_size 0.2 --save_hub c-bone/my-dataset
+    ```
 """
 
 import argparse
@@ -16,7 +18,7 @@ import numpy as np
 from datasets import Dataset, DatasetDict
 from huggingface_hub import login
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import load_api_keys
 
 # Default configuration

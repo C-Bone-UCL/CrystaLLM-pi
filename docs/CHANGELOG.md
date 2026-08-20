@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### New Model Generation
 - **New conditional families**: `Prefix`, `PrefixXRD` and `Residual` are ported over from CrystaLLM-graph. They succeed PKV and Slider respectively (some minor upgrades). New dependency `einops`.
-- **PKV and Slider are now generation only**: training them raises and points at the successors. All released legacy checkpoints still generate identically. T1 and T6 finetune `Prefix` now, and new `T5_XRD_continuous` (XRD training lives in CrystaLLM-graph).
+- **PKV and Slider are now generation only**: training them raises and points at the successors. All released legacy checkpoints still generate identically. T1 and T5 finetune `Prefix` now, and new `T4_XRD_continuous` (XRD training lives in CrystaLLM-graph).
 - **Three new models on the Hub**: `Chili100K-cXRD` and `alex_mp_20-cXRD` (continuous-XRD, KD students from the graph teacher) and `ft_alex_mp_20-text` (text-only alex mp 20 model, the recommended base for new finetunes).
 - **Generate from raw XRD scans**: `--xrd_files` now takes a raw diffractometer scan for the cXRD models, no peak picking needed. New `process_exp_xrd_continuous.py` does the conversion (2theta to Q, background removal, resampling) and can plot the stages to check it. New dependency `pybaselines`, dropped the unused `powerxrd`.
 - **XRD-fit ranked Z search**: new scoring mode `PEARSON` ranks Z-search candidates by agreement fitting each generated candidate's simulated diffraction pattern and input scan 1000 point grid, to allow for another method for candidate matching. Initial internal tests seem to show that perplexity (`LOGP`) improves RMSD but `PEARSON` improves match rate.

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 r"""Compute energy above hull and formation energy from DFT energies.
 
-Rescales input energies against Materials Project reference data. Hull distances are then comparable with MP entries. Optionally reports novelty and density alongside the stability numbers.
+Input energies are rescaled against Materials Project reference data so hull distances are comparable with Materials Project entries. Novelty and density can also be reported.
 
 Usage:
-    python -m _utils._scoring.dft_ehull --input_csv dft_energies.csv \
+    ```bash
+    python _utils/_scoring/dft_ehull.py --input_csv dft_energies.csv \
         --output_parquet ehull.parquet --num_workers 8
+    ```
 """
 
 import argparse
@@ -22,7 +24,7 @@ from pymatgen.core import Structure
 
 warnings.filterwarnings("ignore")
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import (
     get_novelty, 
     extract_generated_formulas, 
@@ -50,9 +52,15 @@ ANGLE_TOL = 5.0
 MP_DATA_FILE = "mp_computed_structure_entries.json.gz" 
 
 def process_energy_rescaling(row):
-    """Rescale DFT energy when optimized structure was reduced to primitive cell.
+    """Rescale DFT energy when an optimised structure has been reduced to a primitive cell.
 
-    The energy is always from the optimized structure, but sometimes the opt structure gets reduced to a primitive cell with fewer atoms. In those cases, we need to rescale the energy based on the original (raw) cell size to get the correct total energy. Returns parsed structure, rescaled energy, and atom count or None values if parsing fails.
+    The energy comes from the optimised structure, while the primitive cell can
+    contain fewer atoms than the original raw cell. The energy is rescaled using
+    the original cell size in that case.
+
+    Returns:
+        The parsed structure, rescaled energy, and atom count. Parsing failures
+        return ``None`` values.
     """
     energy_val = row[ENERGY_COLUMN]
     cif_str = row[CIF_COLUMN]

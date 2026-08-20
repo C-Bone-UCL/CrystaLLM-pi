@@ -32,9 +32,7 @@ logger = logging.getLogger(__name__)
 # Adapted from original CrystaLLM repo: https://github.com/lantunes/CrystaLLM
 
 
-# --------------------------------------------------------------------------
 # Extraction: pull fields out of CIF text
-# --------------------------------------------------------------------------
 
 def extract_space_group_symbol(cif_str):
     match = re.search(r"_symmetry_space_group_name_H-M\s+('([^']+)'|(\S+))", cif_str)
@@ -92,9 +90,7 @@ def get_unit_cell_volume(a, b, c, alpha_deg, beta_deg, gamma_deg):
     return volume
 
 
-# --------------------------------------------------------------------------
 # Transformation: rewrite CIF text
-# --------------------------------------------------------------------------
 
 def replace_symmetry_operators(cif_str, space_group_symbol):
     space_group = SpaceGroup(space_group_symbol)
@@ -342,9 +338,7 @@ def remove_comments(cif_str: str) -> str:
     return cif_str
 
 
-# --------------------------------------------------------------------------
 # Normalization: property column scaling
-# --------------------------------------------------------------------------
 
 def normalize_property_column(dataframe, prop_name, norm_method):
     """Apply normalization to a single property column."""
@@ -500,9 +494,7 @@ def normalize_values_signed_log_auto(values: list[float]) -> list[float]:
     return norm_vals
 
 
-# --------------------------------------------------------------------------
 # Token counting and context filtering
-# --------------------------------------------------------------------------
 
 _worker_tokenizer = None
 
@@ -587,9 +579,7 @@ def count_tokens_df(
     return df
 
 
-# --------------------------------------------------------------------------
 # Misc helpers
-# --------------------------------------------------------------------------
 
 def safe_filename(name: str) -> str:
     """Convert string to safe filename by replacing invalid characters."""

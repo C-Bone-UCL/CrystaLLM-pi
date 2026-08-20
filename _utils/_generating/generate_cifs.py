@@ -1,12 +1,12 @@
-r"""Generate CIF structures across GPU workers, with validation and ranking.
+r"""Generate CIF structures across GPU workers with validation and optional ranking.
 
-Fans generation out over every visible GPU, validates each candidate, and optionally can rank survivors by model perplexity or by XRD fit before selecting per prompt. This is the engine `_load_and_generate.py` calls. Use it directly when prompts are already built, either from a config file or with the equivalent flags.
-
-Requires `model_ckpt_dir`, `input_parquet` and `output_parquet`. A `model_ckpt_dir` that is not already a checkpoint path resolves to the newest checkpoint inside it, which lets a run directory be passed directly.
+Candidates are validated and surviving structures can be ranked by model perplexity or XRD fit before selection. The workflow accepts already-built prompts and can resolve a run directory to its newest checkpoint.
 
 Usage:
-    python -m _utils._generating.generate_cifs \
+    ```bash
+    python _utils/_generating/generate_cifs.py \
         --config _config_files/generation/conditional/slme/slme-PKV-opt_eval.jsonc
+    ```
 """
 
 import argparse
@@ -42,7 +42,7 @@ if torch.cuda.is_available():
     torch.backends.cudnn.allow_tf32 = True
     torch.backends.cudnn.benchmark = True
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _tokenizer import CustomCIFTokenizer
 from _models import PKVGPT, SliderGPT
 from _utils.model import MODEL_REGISTRY
@@ -81,9 +81,10 @@ def check_cif(cif_str: str) -> bool:
 
 
 def init_tokenizer(pretrained_tokenizer_dir: str) -> CustomCIFTokenizer:
-    """Load the CIF tokenizer with the padding configuration generation expects.
+    """Load the CIF tokenizer with the padding configuration required for generation.
 
-    Falls back to the EOS token when the tokenizer defines no pad token, which batched generation requires.
+    If the tokenizer has no pad token, the EOS token is used as the pad token for
+    batched generation.
     """
     tokenizer = CustomCIFTokenizer.from_pretrained(
         pretrained_dir=pretrained_tokenizer_dir,

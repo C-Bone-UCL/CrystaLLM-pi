@@ -1,6 +1,8 @@
-"""Helpers and visualizers for the SLME discovery pipeline notebook.
+"""Provide helpers and visualisation functions for the SLME discovery pipeline.
 
-Handles dataset preparation, HHI sustainability metrics, novelty tagging, candidate selection, and distribution plotting for generated vs training materials.
+The module prepares datasets, computes HHI sustainability metrics, tags novel
+candidates, selects candidates, and plots distributions for generated and
+training materials.
 """
 
 import json
@@ -45,10 +47,7 @@ def extract_formula(struct):
 
 
 def build_finetuning_dataset(structure_path: str, slme_path: str, output_parquet: str):
-    """Constructs the fine-tuning dataset from raw JSON dictionaries.
-    
-    Replaces the notebook's iterative concatenation with a faster list accumulation.
-    """
+    """Build the fine-tuning dataset from raw JSON dictionaries."""
     with open(structure_path, 'r') as f:
         structure_dict = json.load(f)
     with open(slme_path, 'r') as f:

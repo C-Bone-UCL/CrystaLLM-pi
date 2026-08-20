@@ -1,6 +1,10 @@
-"""Model utilities for loading and building CrystaLLM conditional and standard GPT models.
+"""Provide utilities for loading and building CrystaLLM GPT models.
 
-PKV and Slider are legacy load-and-generate-only families kept for released checkpoints. Training builds them nowhere, new work uses Prefix (PKV successor), PrefixXRD or Residual (Slider successor), ported from CrystaLLM-graph.
+PKV and Slider are legacy load-and-generate-only families retained for released
+checkpoints. New training uses Prefix, PrefixXRD, or Residual, with Prefix and
+Residual serving as successors to PKV and Slider respectively.
+
+The Prefix, PrefixXRD, and Residual families are ported from CrystaLLM-graph.
 """
 
 import argparse
@@ -44,9 +48,10 @@ TRAINABLE_CONDITIONAL_FAMILIES = tuple(
 
 
 def resolve_data_mode(conditionality: str | None) -> str:
-    """Map an `activate_conditionality` value to the dataloader mode.
+    """Map ``activate_conditionality`` to the corresponding dataloader mode.
 
-    Returns "conditional" for any conditioning family and "unconditional" for None, which is the distinction `load_data` needs.
+    Conditioning families return ``"conditional"``. ``None`` returns
+    ``"unconditional"``.
     """
     if conditionality in TRAINABLE_CONDITIONAL_FAMILIES:
         return "conditional"
@@ -72,9 +77,10 @@ def _resolve_model_entry(conditionality: str | None) -> dict:
 
 
 def configure_runtime_model_flags(model: torch.nn.Module, args: argparse.Namespace) -> None:
-    """Apply debug-only flags to a model after it is built or loaded.
+    """Apply debug-only runtime flags to a built or loaded model.
 
-    These are runtime switches such as XRD debug plotting, never saved into the checkpoint config, so a debug run and a normal run load the same weights.
+    These switches, such as XRD debug plotting, are not saved in the checkpoint
+    configuration, so debug and normal runs use the same model weights.
     """
     if getattr(args, 'activate_conditionality', None) == "PrefixXRD" and hasattr(model, "set_debug"):
         model.set_debug(getattr(args, 'xrd_debug', False))
@@ -251,13 +257,11 @@ def _match_weight_stats(reference_weights: torch.Tensor, num_rows: int, device: 
 
 
 def load_pretrained_model(args: argparse.Namespace, tokenizer: "CustomCIFTokenizer") -> torch.nn.Module:
-    """Load a checkpoint into the model class its conditionality selects.
+    """Load a checkpoint into the model class selected by `activate_conditionality`.
 
-    The class comes from `MODEL_REGISTRY` via `args.activate_conditionality`, and an unknown family raises rather than falling back to a plain GPT-2, which would train without conditioning and look fine.
+    The model class is resolved through `MODEL_REGISTRY`. Unknown conditionality values raise rather than falling back to an unconditional GPT-2. Only the intended resize surface, consisting of position embeddings, token embeddings, and the tied head, may have checkpoint shape mismatches. Other mismatches raise.
 
-    Loading passes `ignore_mismatched_sizes=True`, which silently re-initializes any weight whose shape disagrees with the checkpoint. That is wanted for the legitimate resize surface (position embeddings, token embeddings, the tied head) and nowhere else, so anything outside those three prefixes is treated as the checkpoint not belonging to this architecture and raises. Without that guard a Slider checkpoint loaded as Residual would finetune from partially random conditioning weights.
-
-    Positions are resized when the target context differs. Converting a non-prefix checkpoint into a Prefix family shifts the pretrained position rows right by `n_prefix_tokens`, so text tokens keep the embeddings they were trained with instead of inheriting rows now owned by the prefix.
+    When the target context differs, positions are resized. Converting a non-prefix checkpoint to a Prefix family shifts pretrained position rows by `n_prefix_tokens` so text tokens retain their original positional embeddings.
     """
     print(f"Loading model weights from {args.pretrained_model_dir}")
 
@@ -341,9 +345,9 @@ def load_pretrained_model(args: argparse.Namespace, tokenizer: "CustomCIFTokeniz
 
 
 def build_model(args: argparse.Namespace, tokenizer: "CustomCIFTokenizer") -> torch.nn.Module:
-    """Build a fresh model of the class its conditionality selects.
+    """Build a fresh model using the class selected by `activate_conditionality`.
 
-    Same registry-driven selection as `load_pretrained_model`, with the same strict behaviour on an unknown `activate_conditionality`, but starting from random weights instead of a checkpoint.
+    Model selection follows `MODEL_REGISTRY`, and unknown conditionality values raise rather than falling back to an unconditional GPT-2.
     """
     vocab_size = len(tokenizer)
     conditionality = getattr(args, 'activate_conditionality', None)

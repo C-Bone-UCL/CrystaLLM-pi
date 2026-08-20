@@ -1,12 +1,6 @@
-"""Ranking strategies for generated CIF candidates.
+"""Provide ranking strategies for generated CIF candidates.
 
-Two independent ways to score a batch. Log-probability ranking asks the model how fluent its own
-output was, and works for any family. XRD fit simulates each candidate's powder pattern and
-correlates it against the conditioning profile, so it only applies to the continuous-XRD models
-but scores against the measurement rather than the model's own opinion.
-
-Pearson was chosen for the XRD mode on a rutile recovery benchmark, where it separated correct
-from wrong phases most cleanly.
+Log-probability ranking measures model output likelihood and applies to all model families. XRD pearson ranking correlates a simulated powder pattern with the processed conditioning profile so it applies only to continuous-XRD models.
 """
 
 import numpy as np
@@ -19,10 +13,6 @@ from _models.xrd_utils import QMIN, QMAX, discrete_to_continuous_xrd
 from _utils import extract_space_group_symbol, replace_symmetry_operators
 from _utils._preprocessing.process_exp_xrd_continuous import DEFAULT_WAVELENGTH
 
-
-# ---------------------------------------------------------------------------
-# Log-probability ranking
-# ---------------------------------------------------------------------------
 
 def _score_transition_slice(generated_scores: tuple, original_sequence: torch.Tensor, input_length: int, eos_token_id: int | None=None) -> torch.Tensor:
     """Score one generated sequence from a precomputed transition-score row."""
@@ -92,10 +82,6 @@ def score_outputs_logp(model: torch.nn.Module, scores: tuple, full_sequences: to
     return scored_outputs
 
 
-# ---------------------------------------------------------------------------
-# XRD fit ranking
-# ---------------------------------------------------------------------------
-
 XRD_FIT_MODES = ("pearson",)
 
 # Same fixed broadening that condition_vector_to_continuous_xrd applies to
@@ -139,9 +125,11 @@ def simulate_profile(cif_str: str, wavelength: float = DEFAULT_WAVELENGTH) -> np
 
 
 def _measured_window(input_iq: np.ndarray) -> slice:
-    """Grid slice the scan actually covered.
+    """Return the portion of the scan that was actually measured.
 
-    The preprocessing pipeline zero-pads the profile outside the measured Q range, so comparing there would penalise correctly simulated peaks the instrument never saw.
+    The preprocessing pipeline zero-pads the profile outside the measured Q range.
+    Those padded regions are excluded so simulated peaks outside the measured
+    range do not affect the comparison.
     """
     nonzero = np.flatnonzero(input_iq)
     if nonzero.size == 0:

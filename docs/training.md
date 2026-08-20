@@ -1,11 +1,9 @@
 # Training, Generating & Evaluating from Scratch
 
 !!! tip "Run it in a notebook"
-    [`T1_finetune_density_example.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T1_finetune_density_example.ipynb) runs this pipeline end to end on a density dataset: prepare the data, finetune, push to the Hub, register, generate. [`T6_SLME.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T6_SLME.ipynb) does the same for a photovoltaic efficiency target and screens the output.
+    [`T1_finetune_density_example.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T1_finetune_density_example.ipynb) runs this pipeline end to end on a density dataset: prepare the data, finetune, push to the Hub, register, generate. [`T5_SLME.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T5_SLME.ipynb) does the same for a photovoltaic efficiency target and screens the output.
 
 Complete pipeline for training your own models from data preprocessing to evaluation. All training and generation parameters and options are defined in [`_args.py`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/_args.py). Training & generating should be done via configuration files (`.jsonc` format) which specify all necessary parameters.
-
-> Maintained notebook workflow: [`notebooks/T5_XRD_continuous.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T5_XRD_continuous.ipynb) covers raw-scan to continuous-profile conversion and conditioned generation with the cXRD model. XRD-model training (including the CHILI-100K KD pipeline) lives in [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph).
 
 ## Data Processing Pipeline
 
@@ -32,7 +30,7 @@ Input data should be a pandas DataFrame saved as Parquet file. To train a model 
 
 **Script:** `_utils/_preprocessing/deduplicate.py` - Removes duplicate structures and filters invalid entries based on chemical formula and space group, keeping the structure with lowest volume per formula unit.
 
-<details>
+<details markdown>
 <summary>Example Usage and Args</summary>
 
 ```bash
@@ -57,7 +55,7 @@ python _utils/_preprocessing/deduplicate.py \
 
 **Script:** `_utils/_preprocessing/cleaning.py` - Standardizes CIF format and normalizes properties for stable training. Adds atomic property blocks, rounds numerical values, and applies variable brackets.
 
-<details>
+<details markdown>
 <summary>Example Usage and Args</summary>
 
 ```bash
@@ -94,7 +92,7 @@ python _utils/_preprocessing/cleaning.py \
 
 > Important: You need to make sure that the data trained on has been passed through CIF cleaning, a quick way to make sure is check whether the CIFs in your dataframe contain brackets. If they do then text should be ready for training.
 
-<details>
+<details markdown>
 <summary>Example Usage and Args</summary>
 
 ```bash
@@ -125,10 +123,10 @@ All training should be done via configuration files (`.jsonc` format). These fil
 
 > The `Muon` optimiser is now available for training, see [this blog post](https://kellerjordan.github.io/posts/muon/) for details. Importantly, you cannot use deepspeed when using muon. Simply do not feed a deepspeed configuration file and it will work fine (multi-GPU training still supported). Muon speeds up and stabilises training without any performance trade-offs (did some internal checks).
 
-<details>
+<details markdown>
 <summary>Base model training CLI example</summary>
 
-### Base Model Pretraining
+**Base Model Pretraining**
 
 Train the unconditional base models from scratch:
 
@@ -146,10 +144,10 @@ torchrun --nproc_per_node=2 _train.py --config your_config.jsonc
 
 <br>
 
-<details>
+<details markdown>
 <summary>Conditional finetuning CLI example</summary>
 
-### Conditional Fine-tuning
+**Conditional Fine-tuning**
 
 Fine-tune pretrained base models for property-guided generation:
 
@@ -178,7 +176,7 @@ Loads pretrained weights as starting point (or trains from scratch), adds condit
 
 **Script:** `_utils/_generating/make_prompts.py` - Generate input prompts for conditional generation with different levels of structural information.
 
-<details>
+<details markdown>
 <summary>Examples of Prompt Construction and Args</summary>
 
 **Manual Prompts:**
@@ -225,7 +223,7 @@ Each quoted string is a **complete condition vector** (comma-separated property 
 
 **Script:** `_utils/_generating/generate_cifs.py` - Generate crystal structures from prompts using trained models.
 
-<details>
+<details markdown>
 <summary>Examples of CIF generation and Args</summary>
 
 ```bash
@@ -249,7 +247,7 @@ python _utils/_generating/generate_cifs.py \
 
 **Script:** `_utils/_generating/postprocess.py` - Clean and validate generated CIF structures.
 
-<details>
+<details markdown>
 <summary>Examples of postprocessing and Args</summary>
 
 ```bash
@@ -281,7 +279,7 @@ Convcerts LLM outputs to standard Pymatgen style CIF format.
 * **Novelty**: Structures not present in the reference dataset
 * **Compositional Novelty**: Reduced Formula not present in reference dataset
 
-<details>
+<details markdown>
 <summary>Example Usage</summary>
 
 ```bash
@@ -302,7 +300,7 @@ We can optionally set the `--check_comp_novelty` flag, which adds an `is_comp_no
 
 > To calculate E_hull First, total energies are computed using the MACE-MP default calculator, predicted energies are then processed using the *MaterialsProject2020Compatibility* scheme to ensure consistency between GGA and GGA+U calculations. The surrogate energy predictions are compared to formation energies of known materials from the MP dataset and used to construct a convex hull. The energy above the convex hull (E_hull) quantifies thermodynamic stability by comparing a material's formation energy to competing phases.
 
-<details>
+<details markdown>
 <summary>Example Usage and Args</summary>
 
 ```bash

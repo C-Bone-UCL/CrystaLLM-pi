@@ -1,21 +1,26 @@
-r"""Convert raw experimental powder XRD scans into the continuous (1000, 2) condition format.
+r"""Convert raw experimental powder XRD scans into the continuous `(1000, 2)` condition format.
 
-Produces the `[Q, I]` profile the continuous-XRD models (PrefixXRD with `skip_xrd_convert_model=True`) consume. The pipeline auto-detects where numeric data starts so header lines are skipped rather than parsed, converts 2theta to `Q` with the supplied wavelength (conditioning is defined in `Q` because it is wavelength-independent), removes the background with pybaselines SNIP, resamples onto the canonical `Q` grid, and max-normalizes intensity to `I/I_max` in [0, 1].
+The pipeline converts 2theta to Q using the supplied wavelength, removes the background with pybaselines SNIP, resamples onto the canonical Q grid, and max-normalises intensity to `[0, 1]`. The resulting `[Q, I]` profile is consumed by `PrefixXRD` with `skip_xrd_convert_model=True`.
 
-Supersedes `process_exp_xrd_inputs.py`, which pre-picked the top 20 peaks in 2theta space for the legacy Slider models and discarded the rest of the pattern.
+This supersedes `process_exp_xrd_inputs.py`, which selected the top 20 peaks in 2theta space for the older XRD models.
 
 Usage:
-    python -m _utils._preprocessing.process_exp_xrd_continuous --input_data scan.xy \
+    ```bash
+    python _utils/_preprocessing/process_exp_xrd_continuous.py --input_data scan.xy \
         --output_csv profile.csv --xrd_wavelength 1.54056 --save_plot
+    ```
 """
 
 import argparse
 import math
+import os
 import re
+import sys
 from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _models.xrd_utils import NUM_Q_POINTS, QMAX, QMIN, QSTEP
 
 DEFAULT_WAVELENGTH = 1.54056 # CuKa1
@@ -57,7 +62,9 @@ def _excel_to_lines(path: Path) -> list[str]:
 def read_xrd_file(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
     """Parse a raw scan into 2theta and intensity arrays.
 
-    Accepts whitespace, comma or semicolon separated text, and Excel. Header lines are detected and skipped rather than parsed. A file with instrument metadata at the top works without hand-editing. Raises when two numeric columns cannot be found.
+    Whitespace-, comma-, and semicolon-separated text files and Excel files are
+    supported. Header and instrument-metadata lines are skipped. A ``ValueError``
+    is raised when two numeric columns cannot be identified.
     """
 
     path = Path(path)
@@ -160,9 +167,14 @@ def convert_to_continuous_profile(
     background_subtract: bool = True,
     snip_half_window: int = SNIP_HALF_WINDOW,
 ) -> list[list[float]]:
-    """Convert 2theta and intensity arrays onto the canonical Q grid.
+    """Convert 2theta and intensity arrays to the canonical continuous-XRD profile.
 
-    Converts with the supplied wavelength, removes the background with pybaselines SNIP unless disabled, resamples onto the 1000-point grid and max-normalizes intensity to [0, 1]. Returns the nested (1000, 2) `[Q, I]` list.
+    The supplied wavelength is used to convert 2theta to Q. Unless disabled,
+    background is removed with pybaselines SNIP. The intensity is then resampled
+    onto the 1000-point canonical grid and max-normalised to ``[0, 1]``.
+
+    Returns:
+        A nested ``(1000, 2)`` list containing ``[Q, I]`` pairs.
     """
     stages = _pipeline_stages(two_theta, intensity, wavelength, background_subtract, snip_half_window)
     return np.column_stack([stages["grid"], stages["iq_final"]]).tolist()
@@ -174,9 +186,9 @@ def save_pipeline_plot(
     wavelength: float | None = None,
     background_subtract: bool = True,
 ) -> str:
-    """Plot the four processing stages to one figure for checking a conversion.
+    """Plot the four stages of experimental XRD preprocessing.
 
-    Shows the raw scan, the Q-converted pattern, the background-subtracted signal and the final resampled profile, so a bad wavelength or a mis-detected header is visible at a glance rather than surfacing as poor generation. Used in the `T5_XRD_continuous` notebook.
+    The figure shows the raw scan, Q-converted pattern, background-subtracted signal, and final resampled profile.
     """
 
     import matplotlib
@@ -220,9 +232,13 @@ def process_exp_file_to_continuous(
     wavelength: float | None = None,
     background_subtract: bool = True,
 ) -> list[list[float]]:
-    """Convert one raw scan file into the nested (1000, 2) `[Q, I]` condition vector.
+    """Convert one raw XRD scan into the continuous condition representation.
 
-    Runs the whole pipeline: read, convert 2theta to Q, subtract background, resample onto the canonical grid, normalize. Returns the value that goes into a dataset's condition column.
+    The scan is read, converted from 2theta to Q, background-corrected, resampled
+    onto the canonical grid, and normalised.
+
+    Returns:
+        A nested ``(1000, 2)`` ``[Q, I]`` condition vector.
     """
 
     two_theta, intensity = read_xrd_file(input_data)

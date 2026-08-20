@@ -50,7 +50,7 @@ def prepend_prefix_attention_mask(attention_mask: torch.Tensor, batch_size: int,
 class PrefixGPT2Config(GPT2Config):
     """Configuration for prefix-conditioned GPT-2.
 
-    Extends `GPT2Config` with the conditioning encoder's shape. `n_input_vector` is how many scalar properties a row carries, `n_prefix_tokens` how many virtual tokens the encoder emits per layer, and `n_hidden_cond` the encoder MLP width. Cross-attention is force-disabled, since conditioning enters through cached key-values, not a cross-attention stack.
+    `n_input_vector` specifies the number of scalar properties, `n_prefix_tokens` the number of virtual tokens emitted per layer, and `n_hidden_cond` the conditioning encoder width. Cross-attention is disabled because conditioning enters through cached key-values.
     """
 
     def __init__(
@@ -72,7 +72,7 @@ class PrefixGPT2Config(GPT2Config):
 class PrefixEncoder(nn.Module):
     """Project a scalar conditioning vector into per-layer prefix key-value tensors.
 
-    The MLP stays token-agnostic and emits one flat blob per batch item; the split into layers, heads and tokens happens afterwards in `reshape_prefix_kv_to_past_key_values`. The activation is GELU here, where the legacy `PKV_model` uses ReLU, which is one half of why the two families' checkpoints are not interchangeable.
+    The MLP emits one flat tensor per batch item, which is later reshaped into layers, heads, and prefix tokens. This encoder uses GELU, whereas the legacy `PKV_model` uses ReLU, so the two checkpoint families are not interchangeable.
     """
 
     def __init__(self, config: PrefixGPT2Config) -> None:
@@ -101,13 +101,14 @@ class PrefixEncoder(nn.Module):
         self.dropout = nn.Dropout(config.dropout) # Use conditioning dropout
 
     def forward(self, x: torch.Tensor) -> tuple:
-        """Encode conditioning values into GPT-2 past_key_values.
+        """Encode scalar conditioning values into GPT-2 ``past_key_values``.
 
         Args:
-            x: [B, n_input_vector] - scalar conditioning
+            x: Scalar conditioning values with shape ``[B, n_input_vector]``.
 
         Returns:
-            n_layer tuples of (key, value), each [B, n_head, n_prefix_tokens, head_dim]
+            One ``(key, value)`` tuple per layer, each with shape
+            ``[B, n_head, n_prefix_tokens, head_dim]``.
         """
         batch_size = x.shape[0]
 
@@ -123,7 +124,7 @@ class PrefixEncoder(nn.Module):
 class PrefixGPT(GPT2LMHeadModel):
     """GPT-2 conditioned on scalar properties through learned prefix key-values.
 
-    The encoder output occupies `config.n_prefix_tokens` cached positions ahead of the text, which is why generation has to account for the prefix when computing the effective text length. A checkpoint loaded without that adjustment overruns the positional embeddings.
+    The encoder output occupies `config.n_prefix_tokens` cached positions before the text sequence. Generation must therefore account for the prefix when computing the effective text length and position embeddings.
     """
     config_class = PrefixGPT2Config
 
@@ -140,18 +141,22 @@ class PrefixGPT(GPT2LMHeadModel):
         **kwargs: object
     ) -> "CausalLMOutputWithCrossAttentions":
         # Check if cached past_key_values exist in kwargs
-        """Forward pass with scalar conditioning prepended as prefix key-values.
+        """Run GPT-2 with scalar conditioning represented as prefix key-values.
 
-        Raises ValueError when neither condition_values nor a cached past_key_values arrives, since the prefix cannot be built from nothing.
+        A ``ValueError`` is raised when neither ``condition_values`` nor cached
+        ``past_key_values`` is supplied, because no prefix can then be constructed.
 
         Args:
-            input_ids: [B, T] - token ids
-            attention_mask: [B, T] - text mask only, prefix positions prepended internally
-            condition_values: [B, n_input_vector] - may carry MISSING_CONDITION_VALUE
-            labels: [B, T] - optional targets
+            input_ids: Token IDs with shape ``[B, T]``.
+            attention_mask: Text attention mask with shape ``[B, T]``. Prefix positions
+                are added internally.
+            condition_values: Scalar conditioning with shape ``[B, n_input_vector]``.
+                Values may include ``MISSING_CONDITION_VALUE``.
+            labels: Optional targets with shape ``[B, T]``.
 
         Returns:
-            CausalLMOutputWithCrossAttentions, logits [B, T, vocab_size]
+            ``CausalLMOutputWithCrossAttentions`` containing logits with shape
+            ``[B, T, vocab_size]``.
         """
         if "past_key_values" in kwargs:
             past_key_values = kwargs.pop("past_key_values")

@@ -1,4 +1,4 @@
-"""Broaden XRD peaks and generate debug plots for prefix conditioning.
+"""Provide XRD peak broadening and debug-plot utilities for prefix conditioning.
 
 Inspired by: https://github.com/FrederikLizakJohansen/deCIFer/tree/main
 """
@@ -69,25 +69,25 @@ def discrete_to_continuous_xrd(
     seed: int | None = None,
     **kwargs,
 ) -> dict:
-    """Broaden discrete XRD peaks into a continuous 1000-point profile.
+    """Convert discrete XRD peaks into a continuous 1000-point profile.
 
-    The augmentation args exist for training. Inference disables noise, scaling and masking and pins fwhm and eta, so the same peaks always give the same profile.
+    During inference, noise, intensity scaling, and peak masking are disabled and the peak-width and pseudo-Voigt parameters are fixed, making the conversion deterministic for a given set of peaks.
 
     Args:
-        batch_q: [B, N_peaks] - peak positions in A^-1, Q == 0 treated as padding
-        batch_iq: [B, N_peaks] - peak intensities
-        qmin: grid lower bound in A^-1, default 0.0
-        qmax: grid upper bound in A^-1, default 10.0
-        qstep: grid spacing in A^-1, default 0.01
-        fwhm_range: peak width sampled per batch item, in A^-1
-        eta_range: pseudo-Voigt mixing, 0 Gaussian to 1 Lorentzian
-        noise_range: noise amplitude, None disables
-        intensity_scale_range: random rescaling, None disables
-        mask_prob: per-peak drop probability, None disables
-        seed: seed for the augmentation draws
+        batch_q: Peak positions with shape `[B, N_peaks]` in Å^-1. A value of zero denotes padding.
+        batch_iq: Peak intensities with shape `[B, N_peaks]`.
+        qmin: Lower bound of the Q grid in Å^-1.
+        qmax: Upper bound of the Q grid in Å^-1.
+        qstep: Q-grid spacing in Å^-1.
+        fwhm_range: Peak-width range in Å^-1 used for training augmentation.
+        eta_range: Pseudo-Voigt mixing range, from Gaussian (`0`) to Lorentzian (`1`).
+        noise_range: Noise amplitude range. `None` disables noise.
+        intensity_scale_range: Random intensity-rescaling range. `None` disables scaling.
+        mask_prob: Per-peak masking probability. `None` disables masking.
+        seed: Seed for augmentation draws.
 
     Returns:
-        dict with q [1000] shared grid and iq [B, 1000] max-normalized to [0, 1]
+        A dictionary containing the shared Q grid with shape `[1000]` and max-normalised intensities with shape `[B, 1000]`.
     """
     device = batch_q.device
     generator = None

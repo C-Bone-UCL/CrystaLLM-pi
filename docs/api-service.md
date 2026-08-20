@@ -1,15 +1,9 @@
 # API
 
 !!! tip "Run it in a notebook"
-    [`T3_API_density_example.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T3_API_density_example.ipynb) drives the containerised API from Python, no curl needed.
+    [`T3_API_density_example.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T3_API_density_example.ipynb) shows how we can use the `_load_and_generate.py` but using the API to predict structure densities using our models.
 
 Containerized API provides REST endpoints for preprocessing, training, generation, and metrics.
-
-Current API parity notes:
-
-- `/generate/direct` accepts exactly one output target: `output_parquet` or `output_cif_dir`.
-- `/preprocessing/clean` exposes `property3_normaliser`, `filter_to`, and `count_tokens`.
-- Metrics routes include `/metrics/vun`, `/metrics/ehull`, `/metrics/xrd`, and `/metrics/property`.
 
 First-time host setup (Linux + NVIDIA GPU required):
 
@@ -37,7 +31,7 @@ docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi
 sudo usermod -aG docker $USER
 ```
 
-Setup (first time bringing container up, if requirements.txt or dockerfile or system dependencies are changed):
+Setup (first time bringing container up, or if requirements.txt or dockerfile or system dependencies are changed):
 
 ```bash
 # Make the env file
@@ -116,10 +110,10 @@ See the examples below.
 
 For `/generate/direct`, provide exactly one of `output_parquet` or `output_cif_dir`.
 
-<details>
+<details markdown>
 <summary>Expand for comprehensive API generation examples (curl)</summary>
 
-### Direct generation (Explicit Z, Spacegroup targeting)
+**Direct generation (Explicit Z, Spacegroup targeting)**
 
 ```bash
 curl -X POST "http://localhost:8000/generate/direct" \
@@ -136,7 +130,7 @@ curl -X POST "http://localhost:8000/generate/direct" \
   }'
 ```
 
-### Direct generation (SLME, level_1 so no composition provided)
+**Direct generation (SLME, level_1 so no composition provided)**
 
 ```bash
 curl -X POST "http://localhost:8000/generate/direct" \
@@ -150,64 +144,7 @@ curl -X POST "http://localhost:8000/generate/direct" \
   }'
 ```
 
-### Direct generation (Mattergen-XRD, Early-Stopping Z-Search with Spacegroup)
-
-```bash
-curl -X POST "http://localhost:8000/generate/direct" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "hf_model_path": "c-bone/CrystaLLM-pi_Mattergen-XRD",
-    "reduced_formula_list": "TiO2",
-    "spacegroups": "P4_2/mnm",
-    "level": "level_4",
-    "search_zs": true,
-    "xrd_files": ["/app/tests/fixtures/test_rutile_processed.csv"],
-    "num_return_sequences": 5,
-    "max_return_attempts": 2,
-    "target_valid_cifs": 1,
-    "scoring_mode": "none",
-    "output_parquet": "/app/outputs/xrd_mattergen_early_stop.parquet"
-  }'
-```
-
-### Direct generation (Chili100K-XRD, LOGP Ranked Z-Search with Raw Wavelength Conversion)
-
-```bash
-curl -X POST "http://localhost:8000/generate/direct" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "hf_model_path": "c-bone/CrystaLLM-pi_Chili100K-XRD",
-    "reduced_formula_list": "TiO2",
-    "search_zs": true,
-    "xrd_files": ["/app/tests/fixtures/test_rutile_raw.xy"],
-    "xrd_wavelength": 0.71073,
-    "num_return_sequences": 10,
-    "max_return_attempts": 2,
-    "target_valid_cifs": 5,
-    "scoring_mode": "LOGP",
-    "temperature": 1.0,
-    "output_cif_dir": "/app/outputs/xrd_chili_logp"
-  }'
-```
-
-### Direct generation (Mattergen-XRD without xrd_files)
-
-```bash
-curl -X POST "http://localhost:8000/generate/direct" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "hf_model_path": "c-bone/CrystaLLM-pi_Mattergen-XRD",
-    "reduced_formula_list": "NaCl",
-    "search_zs": true,
-    "num_return_sequences": 5,
-    "max_return_attempts": 1,
-    "target_valid_cifs": 1,
-    "scoring_mode": "logp",
-    "output_parquet": "/app/outputs/mattergen_no_xrd.parquet"
-  }'
-```
-
-### Virtualise a generated CIF (inline element pairs)
+**Virtualise a generated CIF (inline element pairs)**
 
 Convert an ordered CIF to a disordered virtual crystal using inline matching pairs arrays:
 
@@ -223,7 +160,7 @@ curl -X POST "http://localhost:8000/virtualise" \
   }'
 ```
 
-### Virtualise a generated CIF (YAML config file)
+**Virtualise a generated CIF (YAML config file)**
 
 Alternatively, supply a YAML config file:
 
@@ -248,11 +185,10 @@ curl -X POST "http://localhost:8000/virtualise" \
 
 * For generate, all available GPUs are used
 
-### Troubleshooting
+### Troubleshooting (common issues I've seen)
 
 * **API Permission Denied**: Run `chmod 644 API_keys.jsonc` and `chmod -R 775 outputs data`.
 * **Cache Failures**: Ensure `outputs/` and `data/` are owned by the current user: `sudo chown -R $USER:$USER outputs data`.
-* **Logs**: Job and test logs are stored in `outputs/api_job_logs/` and `outputs/api_test_logs/`.
 * **Docs:** Visit `http://localhost:8000/docs` in browser to view the interactive API schema and execute endpoints directly. (needs to be on, or linked to machine where API is running)
 
 ### Cancel a job or check status

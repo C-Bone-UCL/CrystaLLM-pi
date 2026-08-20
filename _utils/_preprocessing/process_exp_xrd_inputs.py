@@ -5,8 +5,10 @@ Assumes the input already contains picked peaks rather than a raw diffraction pr
 Superseded for current models by `process_exp_xrd_continuous.py`, which keeps the full pattern instead of the top 20 peaks.
 
 Usage:
-    python -m _utils._preprocessing.process_exp_xrd_inputs --input_data peaks.csv \
+    ```bash
+    python _utils/_preprocessing/process_exp_xrd_inputs.py --input_data peaks.csv \
         --output_csv conditioned.csv --xrd_wavelength 1.54056
+    ```
 """
 
 import os

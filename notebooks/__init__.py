@@ -1,6 +1,7 @@
-"""Notebook helpers for CrystaLLM-pi.
+"""Provide notebook helpers for CrystaLLM-pi.
 
-Import `__init__` at the top of a notebook to move the working directory to the package root, so relative paths in the notebooks resolve the same way they do for the CLIs.
+Importing ``__init__`` at the start of a notebook changes the working directory
+to the package root so relative paths resolve consistently with the CLIs.
 """
 import os
 import sys

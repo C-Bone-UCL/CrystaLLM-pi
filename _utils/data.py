@@ -56,8 +56,7 @@ def validate_condition_values(tokenized_dataset, dataset_with_idx, parsed_condit
 
 
 def get_token_length_stats(tokenized_dataset, split="train"):
-    """Gathers the length (number of tokens) for each row in a given split 
-    and prints stats."""
+    """Calculate and print token-length statistics for each row in a dataset split."""
     dataset_split = tokenized_dataset[split]
     lengths = []
     for i in range(len(dataset_split)):

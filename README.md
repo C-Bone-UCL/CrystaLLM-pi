@@ -1,7 +1,7 @@
 <div align="center">
 
 <h1> CrystaLLM-<span style="font-size: 1.2em;">&pi; </span> (property injection) </h1>
-  <img src="images/Logo.png" alt="CrystaLLM-pi logo" width="150" />
+  <img src="docs/images/Logo.png" alt="CrystaLLM-pi logo" width="150" />
   <p>
     <strong>A Transformer-based model for property-guided crystal structure generation
     </strong>
@@ -34,7 +34,7 @@
 CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> is a Transformer-based system for generating crystalline structures as CIF files. It supports both unconditional generation and several conditional architectures that can generate structures based on target properties like bandgap, density, photovoltaic efficiency and XRD patterns, including raw experimental powder scans.
 
 <div align="center">
-<img src="images/Framework_github.png" width="75%" style="background-color:white;"/>
+<img src="docs/images/Framework_github.png" width="75%" style="background-color:white;"/>
 </div>
 
 ## Reproducing the paper
@@ -46,7 +46,7 @@ This repository stays the maintained package: it is an ongoing project and impro
 
 - **Unconditional Generation**: Generate crystal structures from structural/composition priors
 - **Property-Guided Generation**: Generate crystal structures conditioned on target properties + structural priors
-- **Multiple Architectures**: Three conditional families (Prefix, PrefixXRD, Residual) plus the unconditional base model. Legacy PKV and Slider checkpoints still generate.
+- **Multiple Architectures**: Two conditioning mechanisms, prefix and residual, plus the unconditional base model. Prefix conditioning also takes full XRD patterns through a Perceiver resampler.
 - **Flexible Conditioning**: You can use any set of numerical properties to condition, and one of the models handles heterogeneous datasets (some properties are missing in the dataset but not others...)
 - **Evaluation of output structures**: Scripts for validity, uniqueness, novelty and stability metrics
 - **HuggingFace Integration**: Pre-trained models available on HF Hub
@@ -124,36 +124,44 @@ Standard CrystaLLM/GPT-2 architecture for generative tasks. Learns underlying pa
 
 ### 2. Conditional Models
 
+Two mechanisms carry property information into the model: **prefix** conditioning, which places it ahead of the text as cached key-values, and **residual** conditioning, which mixes it into every attention block. Both are selected with `--activate_conditionality`.
+
 #### a. Prefix-GPT (Prefix Attention)
 
 `--activate_conditionality="Prefix"`
 
-Injects property information directly into the attention mechanism's past key-values. This allows the model to steer generation based on desired properties by concatenating conditional embeddings at each transformer layer. Provides strong conditioning while maintaining straightforward implementation. Based on ghost tokens from the [Prefix Tuning Paper](https://arxiv.org/abs/2101.00190). Successor of the paper-era PKV family (GELU activation and a revised KV layout), model code from [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph).
+Injects property information directly into the attention mechanism's past key-values. This allows the model to steer generation based on desired properties by concatenating conditional embeddings at each transformer layer. Provides strong conditioning while maintaining straightforward implementation. Based on ghost tokens from the [Prefix Tuning Paper](https://arxiv.org/abs/2101.00190). Model code from [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph).
 
 <div align="center">
-<img src="images/Prefix_github.png" width="75%" style="background-color:white;"/>
+<img src="docs/images/Prefix_github.png" width="75%" style="background-color:white;"/>
 </div>
 
 #### b. PrefixXRD-GPT (Perceiver Prefix Attention)
 
 `--activate_conditionality="PrefixXRD"`
 
-Prefix conditioning driven by a Perceiver Resampler that encodes full powder XRD patterns. 
+The same prefix conditioning as above, with a Perceiver Resampler placed in front of it. A scalar property is a couple of numbers; a diffraction pattern is a thousand. The resampler compresses a pattern of any length into a fixed set of latents, which then become the prefix key-values, so conditioning on a full scan costs the same as conditioning on a single property.
+
 During training, discrete `[Q, I]` peak lists are synthetically broadened and noised on the fly. During inference, we can use continuous unprocessed XRD profiles to condition generation on the full xrd signal (no need to pick peaks, no restrictions in incident angles etc.)
 
 #### c. Residual-GPT (Residual Attention)
 
 `--activate_conditionality="Residual"`
 
-Conditioning information is dynamically injected into each attention block via a 'slider' mechanism: two separate attention mechanisms at every token generation, one for main text and one for conditions, combined via weighted sum. Handles missing or unspecified conditions with softer conditioning. Successor of the paper-era Slider family. 
+Conditioning information is dynamically injected into each attention block via a 'slider' mechanism: two separate attention mechanisms at every token generation, one for main text and one for conditions, combined via weighted sum. Handles missing or unspecified conditions with softer conditioning.
 
 <div align="center">
-<img src="images/Residual_github.png" width="75%" style="background-color:white;"/>
+<img src="docs/images/Residual_github.png" width="75%" style="background-color:white;"/>
 </div>
 
-### Legacy families: PKV and Slider (generation only)
+<details markdown>
+<summary><b>Paper-era checkpoints</b></summary>
 
-`PKV` and `Slider` are the paper-era architectures (called `Prefix attention` and `Residual attention` in the paper). The released hub checkpoints keep generating exactly as before, but **training them is blocked**. `--activate_conditionality="PKV"`/`"Slider"` raises with a pointer to the successors.
+<br>
+
+Models released with the paper were trained on earlier implementations of these same two mechanisms, named `PKV` (prefix) and `Slider` (residual) in the code, and `Prefix attention` and `Residual attention` in the paper. They load and generate automatically from the model name, so this only matters if you are reading the source: the two generations are kept as separate classes because their weights are not interchangeable. Training them is blocked, and `--activate_conditionality="PKV"`/`"Slider"` raises with a pointer to the current classes.
+
+</details>
 
 > The paper additionally benchmarks two comparative baselines (Prepend-GPT and Raw-GPT). These live in the reproduction repo [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper).
 
@@ -174,7 +182,7 @@ The script automatically:
 4. **Generates structures** using the appropriate conditional model architecture (automatically inferred).
 5. **Validates & Ranks** outputs based on structural integrity and optional LogP perplexity scoring.
 
-Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). XRD-conditioned models take raw scan files via `--xrd_files`: the continuous-XRD model (`Chili100K-cXRD`) converts full diffractometer scans automatically, while the legacy Slider models (`Mattergen-XRD`, `Chili100K-XRD`) use the top-20 pre-picked-peak pipeline and can also run without `--xrd_files` using missing conditioning values. The maintained raw-scan workflow lives in [`notebooks/T5_XRD_continuous.ipynb`](notebooks/T5_XRD_continuous.ipynb); XRD-model *training* happens in [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph).
+Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). XRD-conditioned models take raw scan files via `--xrd_files`: the continuous-XRD model (`Chili100K-cXRD`) converts full diffractometer scans automatically, while the older `Mattergen-XRD` and `Chili100K-XRD` models use a top-20 pre-picked-peak pipeline and can also run without `--xrd_files` using missing conditioning values. The maintained raw-scan workflow lives in [`notebooks/T4_XRD_continuous.ipynb`](notebooks/T4_XRD_continuous.ipynb); XRD-model *training* happens in [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph).
 
 ## Available Pre-trained Models
 
@@ -188,19 +196,17 @@ Each released model exists because a paper study or tutorial produced it. The ta
 | `c-bone/CrystaLLM-pi_base` | GPT-2 | unconditional | LeMaterial base model from the first paper |
 | `c-bone/CrystaLLM-pi_mp_20_base` | GPT-2 | unconditional | mp-20 pretraining base from the paper's pretraining studies |
 | `c-bone/CrystaLLM-pi_alex_mp_20_base` | GPT-2 | unconditional | alex-mp-20 pretraining base from the paper's dataset-size study |
-| `c-bone/CrystaLLM-pi_SLME` | PKV (legacy) | solar efficiency (SLME), 0-33% | SLME discovery study, maintained here in [`T6_SLME`](notebooks/T6_SLME.ipynb) |
-| `c-bone/CrystaLLM-pi_bandgap` | PKV (legacy) | bandgap + stability, 0-18 eV / 0-5 eV/atom | Pretraining-benefits study ([B1a notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/B1a_Pretrain_benefits.ipynb) in the paper repo) |
-| `c-bone/CrystaLLM-pi_density` | PKV (legacy) | density + stability, 0-25 g/cm3 / 0-0.1 eV/atom | Dataset-size study ([B2 notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/B2_Dataset_size_study.ipynb) in the paper repo) |
-| `c-bone/CrystaLLM-pi_Mattergen-XRD` | Slider (legacy top-20 pipeline) | XRD peaks (theoretical patterns, fully ordered bias) | XRD recovery studies ([X_XRD notebooks](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/tree/main/notebooks) in the paper repo) |
-| `c-bone/CrystaLLM-pi_Chili100K-XRD` | Slider (legacy top-20 pipeline, superseded by the cXRD model + [`T5_XRD_continuous`](notebooks/T5_XRD_continuous.ipynb)) | XRD peaks (experimental patterns) | CHILI-100K recovery study from the first paper |
+| `c-bone/CrystaLLM-pi_SLME` | Prefix (legacy `PKV`) | solar efficiency (SLME), 0-33% | SLME discovery study, maintained here in [`T5_SLME`](notebooks/T5_SLME.ipynb) |
+| `c-bone/CrystaLLM-pi_bandgap` | Prefix (legacy `PKV`) | bandgap + stability, 0-18 eV / 0-5 eV/atom | Pretraining-benefits study ([B1a notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/B1a_Pretrain_benefits.ipynb) in the paper repo) |
+| `c-bone/CrystaLLM-pi_density` | Prefix (legacy `PKV`) | density + stability, 0-25 g/cm3 / 0-0.1 eV/atom | Dataset-size study ([B2 notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/B2_Dataset_size_study.ipynb) in the paper repo) |
+| `c-bone/CrystaLLM-pi_Mattergen-XRD` | Residual (legacy `Slider`, top-20 peaks) | XRD peaks (theoretical patterns, fully ordered bias) | XRD recovery studies ([X_XRD notebooks](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/tree/main/notebooks) in the paper repo) |
+| `c-bone/CrystaLLM-pi_Chili100K-XRD` | Residual (legacy `Slider`, top-20 peaks; superseded by the cXRD model + [`T4_XRD_continuous`](notebooks/T4_XRD_continuous.ipynb)) | XRD peaks (experimental patterns) | CHILI-100K recovery study from the first paper |
 
 Model metadata (class, conditions, normalization) lives in [`_utils/model_registry.json`](_utils/model_registry.json). To generate with a model that is not in the table, pass a JSON file with the same schema via `--model_registry`. [`notebooks/T1_finetune_density_example.ipynb`](notebooks/T1_finetune_density_example.ipynb) walks through that full loop (finetune a density model, upload it, register it, generate with it).
 
 <br>
 
 > **Continuous-XRD model (`Chili100K-cXRD`, recommended):** pass the **raw diffractometer scan** directly via `--xrd_files` (`.csv`, `.xy`, `.txt`, `.dat`; arbitrary header lines are skipped automatically). The pipeline converts 2theta to Q using your `--xrd_wavelength` (CuKa1 assumed with a warning when omitted), removes the background with SNIP, resamples onto the model's 1000-point Q grid and max-normalizes intensity. Inspect the transform with [`process_exp_xrd_continuous.py`](_utils/_preprocessing/process_exp_xrd_continuous.py) `--save_plot` before generating. `--xrd_files` is required for this model, it has no missing-conditioning fallback.
->
-> **Legacy Slider models (top-20 pipeline):** provide **pre-picked peak data** (not raw profiles) via `--xrd_files`. Many open-source programs do this (e.g., [fityk](https://fityk.nieto.pl/) for academic use). The preprocessing engine converts picked peaks to the expected CuKa wavelength (via `--xrd_wavelength`), filters valid ranges, normalizes intensities, and selects the top peaks. Redundant peaks from additional radiation sources need removing first (e.g. K-alpha2 peaks when irradiated with K-alpha1 and K-alpha2). If `--xrd_files` is omitted for a Slider model, generation still runs with missing conditioning values.
 
 ## Generation Examples
 
@@ -281,7 +287,7 @@ python _load_and_generate.py \
 
 **Early-Stopping Z-Search (Density Conditioning)**
 
-Automatically search from Z=1 to Z=4 to find valid structures. Because `scoring_mode` is None, the worker stops the search and return a structure once it satisfies the `--target_valid_cifs`.
+Automatically search over Z=1, 2, 3, 4 and 6 to find valid structures. Because `scoring_mode` is None, the worker stops the search and return a structure once it satisfies the `--target_valid_cifs`.
 
 ```bash
 python _load_and_generate.py \
@@ -297,7 +303,7 @@ python _load_and_generate.py \
 
 **Ranked Z-Search (LOGP)**
 
-Search across all Z values (1 through 4), generate batches for all of them, and then rank the valid outputs using LOGP perplexity to find the most theoretically stable structures.
+Search across all Z values (1, 2, 3, 4 and 6), generate batches for all of them, and then rank the valid outputs using LOGP perplexity to find the most theoretically stable structures.
 
 ```bash
 python _load_and_generate.py \
@@ -324,53 +330,6 @@ python _load_and_generate.py \
     --output_parquet solar_screening.parquet
 ```
 
-**XRD Conditioned Output (Pre-processed Peaks)**
-
-Generate from pre-processed XRD patterns. Mapped 1:1 with the requested formula.
-
-```bash
-python _load_and_generate.py \
-  --hf_model_path "c-bone/CrystaLLM-pi_Mattergen-XRD" \
-    --reduced_formula_list "TiO2" \
-    --z_list "2" \
-    --xrd_files "tests/fixtures/test_rutile_processed.csv" \
-    --num_return_sequences 5 \
-    --output_cif_dir xrd_2_struct/
-```
-
-**Raw XRD Conditioned Output (with Wavelength Conversion)**
-
-Provide peaks from a different radiation source (e.g., MoKa at 0.71073 A). The pipeline automatically converts patterns to expected format.
-
-```bash
-python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-pi_Chili100K-XRD" \
-    --reduced_formula_list "TiO2" \
-    --search_zs \
-    --xrd_files "tests/fixtures/test_rutile_raw.xy" \
-    --xrd_wavelength 0.71073 \
-    --scoring_mode "LOGP" \
-    --target_valid_cifs 3 \
-    --num_return_sequences 5 \
-    --output_cif_dir xrd_2_struct/
-```
-
-**Slider with No XRD Inputs**
-
-Run a Slider model without providing `--xrd_files`. This uses missing conditioning values and seems to work better than the base model for conditionless generation.
-
-```bash
-python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-pi_Mattergen-XRD" \
-    --reduced_formula_list "NaCl" \
-    --search_zs \
-    --num_return_sequences 5 \
-    --max_return_attempts 1 \
-    --target_valid_cifs 1 \
-    --scoring_mode "logp" \
-    --output_cif_dir xrd_2_struct/
-```
-
 ## Configuration Options
 
 **Prompt levels `--level`:**
@@ -383,7 +342,7 @@ python _load_and_generate.py \
 **Stoichiometry Control:**
 
 * `--z_list "X,Y"`: Provide a comma-separated list of exact stoichiometric multipliers mapping 1:1 to your reduced formulas.
-* `--search_zs`: Trigger an automated sweep from Z=1 to Z=4 for each formula.
+* `--search_zs`: Trigger an automated sweep over Z=1, 2, 3, 4 and 6 for each formula.
 * *Tip:* Combine `--search_zs` with `--target_valid_cifs X` and it will loop through Z until it finds a valid CIF. If on top of that you add the logp perplexity scoring, itll generate for each Z. For all the Zs with a valid CIFs, it will return the models single most confident prediction for the reduced formula.
 
 **Perplexity Scoring (LogP)**
@@ -438,7 +397,7 @@ python _utils/_virtualiser/virtualiser.py \
 
 Complete pipeline for training your own models from data preprocessing to evaluation. All training and generation parameters and options are defined in [`_args.py`](_args.py). Training & generating should be done via configuration files (`.jsonc` format) which specify all necessary parameters.
 
-> Maintained notebook workflow: [`notebooks/T5_XRD_continuous.ipynb`](notebooks/T5_XRD_continuous.ipynb) covers raw-scan to continuous-profile conversion and conditioned generation with the cXRD model. XRD-model training (including the CHILI-100K KD pipeline) lives in [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph).
+> Maintained notebook workflow: [`notebooks/T4_XRD_continuous.ipynb`](notebooks/T4_XRD_continuous.ipynb) covers raw-scan to continuous-profile conversion and conditioned generation with the cXRD model. XRD-model training (including the CHILI-100K KD pipeline) lives in [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph).
 
 ## Data Processing Pipeline
 
@@ -902,63 +861,6 @@ curl -X POST "http://localhost:8000/generate/direct" \
   }'
 ```
 
-### Direct generation (Mattergen-XRD, Early-Stopping Z-Search with Spacegroup)
-
-```bash
-curl -X POST "http://localhost:8000/generate/direct" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "hf_model_path": "c-bone/CrystaLLM-pi_Mattergen-XRD",
-    "reduced_formula_list": "TiO2",
-    "spacegroups": "P4_2/mnm",
-    "level": "level_4",
-    "search_zs": true,
-    "xrd_files": ["/app/tests/fixtures/test_rutile_processed.csv"],
-    "num_return_sequences": 5,
-    "max_return_attempts": 2,
-    "target_valid_cifs": 1,
-    "scoring_mode": "none",
-    "output_parquet": "/app/outputs/xrd_mattergen_early_stop.parquet"
-  }'
-```
-
-### Direct generation (Chili100K-XRD, LOGP Ranked Z-Search with Raw Wavelength Conversion)
-
-```bash
-curl -X POST "http://localhost:8000/generate/direct" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "hf_model_path": "c-bone/CrystaLLM-pi_Chili100K-XRD",
-    "reduced_formula_list": "TiO2",
-    "search_zs": true,
-    "xrd_files": ["/app/tests/fixtures/test_rutile_raw.xy"],
-    "xrd_wavelength": 0.71073,
-    "num_return_sequences": 10,
-    "max_return_attempts": 2,
-    "target_valid_cifs": 5,
-    "scoring_mode": "LOGP",
-    "temperature": 1.0,
-    "output_cif_dir": "/app/outputs/xrd_chili_logp"
-  }'
-```
-
-### Direct generation (Mattergen-XRD without xrd_files)
-
-```bash
-curl -X POST "http://localhost:8000/generate/direct" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "hf_model_path": "c-bone/CrystaLLM-pi_Mattergen-XRD",
-    "reduced_formula_list": "NaCl",
-    "search_zs": true,
-    "num_return_sequences": 5,
-    "max_return_attempts": 1,
-    "target_valid_cifs": 1,
-    "scoring_mode": "logp",
-    "output_parquet": "/app/outputs/mattergen_no_xrd.parquet"
-  }'
-```
-
 ### Virtualise a generated CIF (inline element pairs)
 
 Convert an ordered CIF to a disordered virtual crystal using inline matching pairs arrays:
@@ -1070,8 +972,8 @@ Five notebooks in [`notebooks/`](notebooks/) cover the maintained workflows end 
 * [`T1_finetune_density_example.ipynb`](notebooks/T1_finetune_density_example.ipynb): finetune a base model on your own property dataset, push it to the Hub, register it, and generate with it
 * [`T2_load_and_generate.ipynb`](notebooks/T2_load_and_generate.ipynb): generate structures with the released Hub models (courtesy of [Joley Lin](https://github.com/yhjollin/))
 * [`T3_API_density_example.ipynb`](notebooks/T3_API_density_example.ipynb): predict density for a composition through the containerised API
-* [`T5_XRD_continuous.ipynb`](notebooks/T5_XRD_continuous.ipynb): recover a structure from a raw experimental XRD scan with the continuous-XRD model
-* [`T6_SLME.ipynb`](notebooks/T6_SLME.ipynb): discover a material with a target photovoltaic efficiency
+* [`T4_XRD_continuous.ipynb`](notebooks/T4_XRD_continuous.ipynb): recover a structure from a raw experimental XRD scan with the continuous-XRD model
+* [`T5_SLME.ipynb`](notebooks/T5_SLME.ipynb): discover a material with a target photovoltaic efficiency
 
 The paper studies are not here, they live in [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper) (see [Reproducing the paper](#reproducing-the-paper)).
 

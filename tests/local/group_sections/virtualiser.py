@@ -11,9 +11,7 @@ class VirtualiserTests:
         self.temp_dir = temp_dir
         self.test_data = test_data
 
-    # ------------------------------------------------------------------
     # Helpers
-    # ------------------------------------------------------------------
 
     def _make_ordered_struct(self):
         """Build a minimal ordered Mg3ZnO4-like spinel structure programmatically."""
@@ -32,9 +30,7 @@ class VirtualiserTests:
         ]
         return Structure(lattice, species, coords)
 
-    # ------------------------------------------------------------------
     # Tests
-    # ------------------------------------------------------------------
 
     def test_import(self):
         """Virtualiser module imports cleanly."""

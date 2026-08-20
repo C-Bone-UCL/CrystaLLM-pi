@@ -1,10 +1,14 @@
-r"""Simulate XRD patterns from CIF structures and build condition vectors.
+r"""Simulate powder XRD patterns from CIF structures and build XRD condition vectors.
 
-Computes each structure's powder pattern and writes it in the condition format the XRD-conditioned models train on. This allows a structural dataset to be turned into one compatible with XRD conditioning.
+The output uses the condition representation consumed by the XRD-conditioned models, allowing a structural dataset to be prepared for XRD conditioning.
 
 Usage:
-    python -m _utils._preprocessing.calculate_theor_xrd --input_parquet clean.parquet \
-        --output_parquet with_xrd.parquet --num_workers 8
+    ```bash
+    python _utils/_preprocessing/calculate_theor_xrd.py \
+        --input_parquet clean.parquet \
+        --output_parquet with_xrd.parquet \
+        --num_workers 8
+    ```
 """
 
 import argparse

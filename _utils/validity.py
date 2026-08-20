@@ -1,10 +1,9 @@
-"""Structure validity checks for generated CIFs.
+"""Provide structure-validity checks for generated CIFs.
 
-Split out of `metrics.py` so the generation path can import these without dragging in the
-Materials Project and MACE machinery the hull metrics need.
-
-`is_valid` is the composite check. `is_sensible` is deliberately separate: it looks only at the
-cell parameters in the CIF text and is not part of `is_valid`.
+The module is separate from ``metrics.py`` so generation can import validity
+checks without loading Materials Project and MACE dependencies required by
+hull metrics. ``is_valid`` is the composite validity check. ``is_sensible``
+only examines cell parameters in the CIF text and is not part of ``is_valid``.
 """
 
 import re
@@ -51,7 +50,7 @@ def _configure_pymatgen_warning_filters() -> None:
 def bond_length_reasonableness_score(cif_str: str, tolerance: float=0.32, h_factor: float=2.5) -> float:
     """Score bond lengths against the sum of covalent radii.
 
-    Returns the fraction of bonds whose length falls within `tolerance` of the expected covalent-radii sum. 1.0 means every bond is reasonable. Neighbours come from pymatgen's `CrystalNN`. Bonds involving hydrogen get their tolerance widened by `h_factor`, since hydrogen positions from a generated CIF are the least reliable part of the structure.
+    The score is the fraction of bonds whose length lies within `tolerance` of the expected covalent-radii sum. A score of `1.0` means every counted bond passes. Neighbours are obtained with pymatgen's `CrystalNN`. Bonds involving hydrogen use a widened tolerance controlled by `h_factor`.
     """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=UserWarning)
@@ -113,9 +112,9 @@ def bond_length_reasonableness_score(cif_str: str, tolerance: float=0.32, h_fact
 
 
 def is_space_group_consistent(cif_str: str, allow_stated_p1_mismatch: bool=False) -> bool:
-    """Return True when the structure's symmetry matches the space group the CIF declares.
+    """Check whether a CIF's structure matches its declared space group.
 
-    `allow_stated_p1_mismatch` accepts a CIF that says P1 while the structure is actually more symmetric, which is common in generated output and not an error in itself.
+    `allow_stated_p1_mismatch` permits a CIF declaring P1 when the detected structure has higher symmetry.
     """
     structure = Structure.from_str(cif_str, fmt="cif")
     parser = CifParser.from_str(cif_str)
@@ -141,8 +140,7 @@ def is_space_group_consistent(cif_str: str, allow_stated_p1_mismatch: bool=False
 
 
 def is_formula_consistent(cif_str: str) -> bool:
-    """Return True when the CIF's stated chemical formula matches its atom sites.
-    """
+    """Check whether the chemical formula declared by the CIF matches its atom-site composition."""
     try:
         parser = CifParser.from_str(cif_str)
         cif_data = parser.as_dict()
@@ -178,8 +176,7 @@ def is_formula_consistent(cif_str: str) -> bool:
 
 def is_atom_site_multiplicity_consistent(cif_str: str) -> bool:
     # Parse the CIF string
-    """Return True when each atom site's stated multiplicity matches its symmetry orbit.
-    """
+    """Check whether each atom site's stated multiplicity matches its symmetry orbit."""
     parser = CifParser.from_str(cif_str)
     cif_data = parser.as_dict()
 
@@ -205,9 +202,9 @@ def is_atom_site_multiplicity_consistent(cif_str: str) -> bool:
 
 
 def is_sensible(cif_str: str, length_lo: float=0.5, length_hi: float=1000., angle_lo: float=10., angle_hi: float=170.) -> bool:
-    """Return True when the unit cell has physically plausible dimensions.
+    """Check whether the unit-cell dimensions fall within the supplied physical bounds.
 
-    Checks only the cell parameters parsed straight from the CIF text: every length must fall within `length_lo` to `length_hi` in Angstrom, and every angle within `angle_lo` to `angle_hi` in degrees. Catches degenerate cells a language model can emit, such as a near-zero axis, without needing to build the structure. Separate from `is_valid`, which never calls it.
+    The check uses only cell parameters parsed from the CIF text. All lengths must lie between `length_lo` and `length_hi` in Å, and all angles must lie between `angle_lo` and `angle_hi` in degrees. This check is separate from `is_valid`.
     """
     cell_length_pattern = re.compile(r"_cell_length_[abc]\s+([\d\.]+)")
     cell_angle_pattern = re.compile(r"_cell_angle_(alpha|beta|gamma)\s+([\d\.]+)")
@@ -228,9 +225,11 @@ def is_sensible(cif_str: str, length_lo: float=0.5, length_hi: float=1000., angl
 
 
 def is_valid(cif_str: str, bond_length_acceptability_cutoff: float=1.0, allow_stated_p1_mismatch: bool=False, debug: bool=False) -> bool:
-    """Return True when a generated CIF passes every validity check.
+    """Check whether a generated CIF passes the structural validity checks.
 
-    Runs four checks in order and fails on the first: the stated formula matches the atom sites, the atom-site multiplicities are self-consistent, the bond lengths score at least `bond_length_acceptability_cutoff`, and the structure matches its declared space group. `allow_stated_p1_mismatch` accepts a structure declaring P1 whose true symmetry is higher, which generation produces routinely. Note this does *not* include `is_sensible`, which is a separate cell-geometry check.
+    The checks are applied in order and stop at the first failure. The formula must match the atom sites, atom-site multiplicities must be self-consistent, the bond-length score must reach `bond_length_acceptability_cutoff`, and the detected symmetry must match the declared space group. `allow_stated_p1_mismatch` permits a declared P1 when the structure has higher symmetry.
+
+    `is_sensible` is not part of this composite check.
     """
     if not is_formula_consistent(cif_str):
         if debug:
@@ -272,7 +271,7 @@ def _validity_worker(cif_str: str, bond_length_acceptability_cutoff: float, allo
 def get_density(cif: str) -> float:
     """Compute the crystallographic density of a CIF in g/cm³.
 
-    Returns NaN rather than raising when the CIF cannot be parsed, or when pymatgen reports incorrect stoichiometry. A batch of generated structures can then be scored without one bad row stopping the run.
+    Returns `NaN` when the CIF cannot be parsed or pymatgen reports incorrect stoichiometry, allowing invalid rows to be retained in batch scoring without raising.
     """
     try:
         with warnings.catch_warnings(record=True) as w:

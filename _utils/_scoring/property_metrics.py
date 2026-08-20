@@ -1,10 +1,12 @@
-r"""Score how closely generated structures hit their conditioned property targets.
+r"""Score generated structures against their conditioned property targets.
 
-Loads generated structures, normalizes the property targets the same way training did, predicts the property back from each structure, and groups the resulting errors by condition vector so each target value is scored separately.
+Targets are normalised using the training convention, properties are predicted from the generated structures, and errors are grouped by condition vector so each target value is scored separately.
 
 Usage:
-    python -m _utils._scoring.property_metrics --post_parquet gen_post.parquet \
+    ```bash
+    python _utils/_scoring/property_metrics.py --post_parquet gen_post.parquet \
         --output_metrics density_metrics.csv --property_targets density
+    ```
 """
 
 import argparse
@@ -19,7 +21,7 @@ import pandas as pd
 # set CUDA visible to only gpu 1
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import (
     predict_properties,
 )

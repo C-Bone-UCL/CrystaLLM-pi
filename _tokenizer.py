@@ -8,11 +8,9 @@ import json
 from transformers import PreTrainedTokenizer
 
 class CustomCIFTokenizer(PreTrainedTokenizer):
-    """HuggingFace-compatible tokenizer for CIF text.
+    """Hugging Face-compatible tokenizer for CIF text.
 
-    Tokenizes on CIF structure rather than subwords, so element symbols, numbers and CIF keywords stay whole. Space-group tokens carry an internal `_sg` suffix to keep them distinct from identically spelled tokens elsewhere in the file; the suffix is added during tokenization and stripped again on decode, so it never appears in generated CIF text.
-
-    `from_pretrained` expects a directory holding `vocabulary.json`, `spacegroups.txt` and `tokenizer_config.json`, which is the layout `save_pretrained` writes.
+    Tokenisation follows CIF structure rather than subwords, keeping element symbols, numbers, and CIF keywords as whole tokens. Space-group tokens receive an internal `_sg` suffix during tokenisation and the suffix is removed during decoding. `from_pretrained` and `save_pretrained` use `vocabulary.json`, `spacegroups.txt`, and `tokenizer_config.json`.
     """
     def __init__(
         self,
@@ -187,9 +185,9 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
         }
 
     def decode(self, token_ids: list[int] | torch.Tensor, skip_special_tokens: bool=False, **kwargs) -> str:
-        """Decode token ids back into CIF text.
+        """Decode token ids into CIF text.
 
-        Strips the internal `_sg` suffix from space-group tokens, so the result is valid CIF rather than the tokenizer's internal spelling.
+        Internal `_sg` suffixes are removed from space-group tokens so the decoded text uses the external CIF spelling.
         """
         tokens = [self._convert_id_to_token(idx) for idx in token_ids]
         if skip_special_tokens:
@@ -209,7 +207,7 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
     def from_pretrained(cls, pretrained_dir: str, **kwargs) -> "CustomCIFTokenizer":
         """Load a tokenizer from a directory written by `save_pretrained`.
 
-        Expects `vocabulary.json`, `spacegroups.txt` and `tokenizer_config.json` in `pretrained_dir`. Any of the three missing means the directory was not produced by this tokenizer.
+        The directory must contain `vocabulary.json`, `spacegroups.txt`, and `tokenizer_config.json`.
         """
         vocab_file = os.path.join(pretrained_dir, "vocabulary.json")
         spacegroups_file = os.path.join(pretrained_dir, "spacegroups.txt")
@@ -239,9 +237,9 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
         return (vocab_file,)
 
     def save_pretrained(self, save_directory: str, **kwargs) -> None:
-        """Write the vocabulary, space groups and tokenizer config to a directory.
+        """Save the tokenizer vocabulary, space groups, and configuration.
 
-        Produces the three-file layout `from_pretrained` expects, so a saved tokenizer round-trips.
+        The files are written in the layout expected by `from_pretrained`.
         """
         super().save_pretrained(save_directory, **kwargs)
 
@@ -261,9 +259,9 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
             json.dump(tokenizer_config, f)
 
     def add_custom_tokens(self, tokens: list[str]) -> None:
-        """Add tokens to the vocabulary and refresh the tokenization regex.
+        """Add tokens to the vocabulary and refresh the tokenisation pattern.
 
-        New tokens are appended, so existing ids keep their meaning and an already-trained model stays compatible with the extended vocabulary.
+        New tokens are appended so existing token ids retain their meanings and remain compatible with models trained against the previous vocabulary.
         """
         for token in tokens:
             if token not in self.token_to_id:
@@ -283,7 +281,7 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
     def remove_custom_tokens(self, tokens: list[str]) -> None:
         """Remove tokens from the vocabulary.
 
-        Only safe on a fresh tokenizer before any training. Removing a token shifts every id above it, so a model trained against the old vocabulary will silently decode to the wrong tokens.
+        This is safe only before training. Removing a token shifts subsequent token ids, which makes models trained against the previous vocabulary incompatible with the tokenizer.
         """
         removed_any = False
         for token in tokens:

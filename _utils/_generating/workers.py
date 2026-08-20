@@ -1,11 +1,8 @@
-"""Worker-process side of multi-GPU generation.
+"""Provide worker-side operations for multi-GPU generation.
 
-Everything here runs inside a `multiprocessing` pool worker. `init_worker` loads the model and
-tokenizer into module globals that `generate_on_gpu` then reads, which is why the two live in the
-same module: a pool cannot pass a loaded model through the task queue, so the handoff has to go
-through module state.
-
-The driver side (`run_generation_pool`, the CLI) stays in `generate_cifs.py`.
+``init_worker`` loads the model and tokenizer into module-level state, which
+``generate_on_gpu`` reads inside each multiprocessing worker. The loaded
+objects cannot be passed through the pool task queue.
 """
 
 import os

@@ -1,8 +1,9 @@
 """Prefix-conditioned GPT-2 model for XRD spectra.
 
-Ported from CrystaLLM-graph `_models/Prefix_perceiver_model.py`; the MACE graph-conditioned classes in that module stay in CrystaLLM-graph.
+The XRD conditioning implementation is ported from
+CrystaLLM-graph's ``_models/Prefix_perceiver_model.py``.
 
-XRD Processing inspired by: Inspired by: https://github.com/FrederikLizakJohansen/deCIFer/tree/main
+XRD processing inspired by: https://github.com/FrederikLizakJohansen/deCIFer/tree/main
 """
 
 import torch
@@ -43,7 +44,7 @@ def _is_primary_rank() -> bool:
 class PrefixXRDGPT2Config(PrefixGPT2Config):
     """Configuration for XRD-conditioned prefix GPT-2.
 
-    Extends `PrefixGPT2Config` with the Perceiver resampler's shape. `perceiver_heads * perceiver_dim_head` must equal `n_hidden_cond`, and the constructor asserts it. `skip_xrd_convert_model` selects the condition input mode: False expects discrete peaks and broadens them internally, True expects a dense profile already on the canonical Q grid. `n_input_vector` is pinned to 2 and kept only for backwards compatibility with older checkpoints.
+    `perceiver_heads * perceiver_dim_head` must equal `n_hidden_cond`. `skip_xrd_convert_model=False` expects discrete peaks and performs the peak-to-profile conversion internally, while `True` expects a dense profile on the canonical Q grid. `n_input_vector` is fixed at 2 for compatibility with older checkpoints.
     """
 
     def __init__(
@@ -80,7 +81,7 @@ class PrefixXRDGPT2Config(PrefixGPT2Config):
 class XRDPerceiverEncoder(nn.Module):
     """Encode an XRD trace into per-layer prefix key-value tensors.
 
-    A point-wise MLP lifts each `[I, Q]` pair, then the Perceiver resampler cross-attends a fixed number of latents over the trace. That bottleneck is what makes conditioning cost the same compute whatever the trace length.
+    Each `[I, Q]` pair is projected before a Perceiver resampler cross-attends fixed latent vectors to the trace. The fixed latent count makes the conditioning representation independent of the input trace length.
     """
 
     def __init__(self, config: PrefixXRDGPT2Config) -> None:
@@ -116,15 +117,17 @@ class XRDPerceiverEncoder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> tuple:
         # x: (B, 1000, 2) with [intensity, Q] point pairs.
-        """Encode an XRD point cloud into GPT-2 past_key_values.
+        """Encode XRD points into GPT-2 ``past_key_values``.
 
-        Note the pair order is swapped relative to the model's condition_values, which are [Q, I]. `_build_continuous_points` does the swap.
+        The input points use ``[I, Q]`` order, while model condition values use
+        ``[Q, I]``. The conversion is handled by ``_build_continuous_points``.
 
         Args:
-            x: [B, 1000, 2] - XRD points ordered [I, Q]
+            x: XRD points with shape ``[B, 1000, 2]`` in ``[I, Q]`` order.
 
         Returns:
-            n_layer tuples of (key, value), each [B, n_head, n_prefix_tokens, head_dim]
+            One ``(key, value)`` tuple per layer, each with shape
+            ``[B, n_head, n_prefix_tokens, head_dim]``.
         """
         batch_size = x.shape[0]
         n = self.config.n_prefix_tokens
@@ -158,7 +161,7 @@ class XRDPerceiverEncoder(nn.Module):
 class PrefixXRDGPT(GPT2LMHeadModel):
     """GPT-2 conditioned on an XRD pattern through a Perceiver prefix encoder.
 
-    Takes conditioning in one of two shapes depending on `config.skip_xrd_convert_model`, and unlike the scalar families it has no missing-condition mask, so `condition_values` is required at every forward pass.
+    The condition representation is either discrete peaks or a dense profile, depending on `config.skip_xrd_convert_model`. Unlike the scalar-conditioned models, this model requires `condition_values` on every forward pass.
     """
 
     config_class = PrefixXRDGPT2Config
@@ -229,18 +232,26 @@ class PrefixXRDGPT(GPT2LMHeadModel):
         labels: torch.Tensor | None=None,
         **kwargs: object,
     ) -> "CausalLMOutputWithCrossAttentions":
-        """Forward pass with XRD conditioning prepended as prefix key-values.
+        """Run GPT-2 with XRD conditioning represented as prefix key-values.
 
-        condition_values takes one of two shapes, chosen by config.skip_xrd_convert_model. False expects discrete peaks and broadens them here; padded rows use a negative sentinel and are clamped to zero, which the broadening ignores. True expects a dense profile whose Q column must match the canonical 0.00-9.99 grid. Raises ValueError on a missing or mis-shaped condition, or an unexpected grid.
+        With ``skip_xrd_convert_model=False``, ``condition_values`` contains discrete
+        peaks that are broadened before conditioning. Padded rows use a negative
+        sentinel and are clamped to zero before broadening. With
+        ``skip_xrd_convert_model=True``, the input is a dense profile whose Q values
+        must match the canonical 0.00-9.99 grid. Missing, mis-shaped, or unexpected
+        condition grids raise ``ValueError``.
 
         Args:
-            input_ids: [B, T] - token ids
-            attention_mask: [B, T] - text mask only, prefix positions prepended internally
-            condition_values: [B, N_peaks, 2] discrete or [B, 1000, 2] continuous, both [Q, I]
-            labels: [B, T] - optional targets
+            input_ids: Token IDs with shape ``[B, T]``.
+            attention_mask: Text attention mask with shape ``[B, T]``. Prefix positions
+                are added internally.
+            condition_values: Discrete peaks with shape ``[B, N_peaks, 2]`` or a
+                continuous profile with shape ``[B, 1000, 2]``, both in ``[Q, I]`` order.
+            labels: Optional targets with shape ``[B, T]``.
 
         Returns:
-            CausalLMOutputWithCrossAttentions, logits [B, T, vocab_size]
+            ``CausalLMOutputWithCrossAttentions`` containing logits with shape
+            ``[B, T, vocab_size]``.
         """
         if "past_key_values" in kwargs:
             past_key_values = kwargs.pop("past_key_values")

@@ -1,10 +1,12 @@
-r"""Clean and validate CIF strings in a parquet dataset.
+r"""Clean and validate generated CIF strings in a parquet dataset.
 
-Rewrites each generated CIF into a fully standard-compliant form. The metrics scripts expect that form as input.
+Each CIF is rewritten into the standard-compliant representation expected by the metrics scripts.
 
 Usage:
-    python -m _utils._generating.postprocess --input_parquet gen.parquet \
+    ```bash
+    python _utils/_generating/postprocess.py --input_parquet gen.parquet \
         --output_parquet gen_post.parquet
+    ```
 """
 
 import pandas as pd
@@ -16,7 +18,7 @@ from tqdm import tqdm
 from multiprocessing import Pool
 from functools import partial 
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import (
     extract_space_group_symbol,
     replace_symmetry_operators,

@@ -1,6 +1,9 @@
-"""Perceiver Resampler that compresses variable-length input into a fixed-length latent set.
+"""Provide Perceiver components for compressing variable-length inputs.
 
-Provides `PerceiverFeedForward`, `PerceiverAttention` (cross-attention where latent queries attend to the input) and `PerceiverResampler`, which stacks them. `PrefixXRDGPT` uses it to turn an XRD pattern of arbitrary peak count into a fixed number of latents, so conditioning costs the same compute regardless of how many peaks the scan carries.
+``PerceiverAttention`` lets latent queries attend to input embeddings, and
+``PerceiverResampler`` stacks these operations to produce a fixed number of
+latent vectors. ``PrefixXRDGPT`` uses the resampler to represent XRD patterns
+with different numbers of peaks using the same number of conditioning latents.
 
 Inspired by: https://github.com/lucidrains/flamingo-pytorch
 """
@@ -31,9 +34,11 @@ class PerceiverFeedForward(nn.Module):
 
 
 class PerceiverAttention(nn.Module):
-    """Perceiver cross-attention: latent queries attend to media (e.g. MACE embeddings).
+    """Perceiver cross-attention in which latent queries attend to input media.
 
-    Following Flamingo, latents are concatenated to key/value so they can also attend to themselves during the cross-attention operation.
+    Following the Flamingo implementation, the latent vectors are concatenated
+    with the media keys and values so that the latents can also attend to one
+    another.
     """
     
     def __init__(self, dim: int, dim_head: int = 64, heads: int = 8) -> None:
@@ -55,15 +60,16 @@ class PerceiverAttention(nn.Module):
         latents: torch.Tensor,
         media_mask: torch.Tensor | None = None
     ) -> torch.Tensor:
-        """Cross-attend the learnable latents over one media sequence.
+        """Cross-attend learnable latents over a media sequence.
 
         Args:
-            media: [B, N_items, dim] - input embeddings (variable length)
-            latents: [B, num_latents, dim] - learnable queries
-            media_mask: [B, N_items] - True where item is valid, False for padding
+            media: Input embeddings with shape ``[B, N_items, dim]``.
+            latents: Learnable query embeddings with shape ``[B, num_latents, dim]``.
+            media_mask: Boolean mask with shape ``[B, N_items]``. True marks valid
+                media items and false marks padding.
 
         Returns:
-            Updated latents [B, num_latents, dim]
+            Updated latent embeddings with shape ``[B, num_latents, dim]``.
         """
         b, n_media, _ = media.shape
         h = self.heads
@@ -110,17 +116,17 @@ class PerceiverAttention(nn.Module):
 
 
 class PerceiverResampler(nn.Module):
-    """Perceiver Resampler: compresses variable-length inputs to fixed latents.
+    """Perceiver resampler that maps variable-length inputs to a fixed number of latent vectors.
 
-    Uses learnable latent queries that cross-attend to input embeddings, producing a fixed-size representation regardless of input length.
+    Learnable latent queries cross-attend to the input embeddings, producing a fixed-size representation regardless of input length.
 
     Args:
-        dim: Hidden dimension
-        depth: Number of Perceiver attention layers
-        dim_head: Dimension per attention head (should divide dim)
-        heads: Number of attention heads
-        num_latents: Number of output latent vectors
-        ff_mult: FFN expansion multiplier
+        dim: Hidden dimension of the resampler.
+        depth: Number of Perceiver attention layers.
+        dim_head: Dimension of each attention head.
+        heads: Number of attention heads.
+        num_latents: Number of output latent vectors.
+        ff_mult: Expansion multiplier for the feed-forward network.
     """
     
     def __init__(
@@ -150,14 +156,15 @@ class PerceiverResampler(nn.Module):
         media: torch.Tensor,
         media_mask: torch.Tensor | None = None
     ) -> torch.Tensor:
-        """Compress a variable-length input into a fixed set of latents.
+        """Compress a variable-length input sequence into a fixed set of latents.
 
         Args:
-            media: [B, N_items, dim] - input embeddings
-            media_mask: [B, N_items] - True where item is valid
+            media: Input embeddings with shape ``[B, N_items, dim]``.
+            media_mask: Boolean mask with shape ``[B, N_items]``. True marks valid
+                media items.
 
         Returns:
-            latents: [B, num_latents, dim] - compressed representation
+            Compressed latent representation with shape ``[B, num_latents, dim]``.
         """
         b = media.shape[0]
         latents = repeat(self.latents, 'n d -> b n d', b=b)

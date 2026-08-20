@@ -1,11 +1,11 @@
-r"""Train or finetune a CrystaLLM-pi model, conditional or unconditional.
+"""Train or finetune a CrystaLLM-pi model, conditionally or unconditionally.
 
-Reads a JSONC config through `_args.parse_args`, logs in to Hugging Face and W&B with the keys in `API_keys.jsonc`, builds or loads the model through the registry in `_utils.model`, prepares the dataset with `_dataloader.load_data`, and runs the HuggingFace Trainer. Conditional runs require `condition_columns` and an `activate_conditionality` family. Unconditional runs train a plain GPT-2. Under torchrun, rank 0 owns logging and checkpoint writes.
-
-Holds an unused port for the run's lifetime, which stops a second job on the same node from colliding on the distributed rendezvous address.
+Conditional runs require `condition_columns` and an `activate_conditionality` model family. Unconditional runs use plain GPT-2. Under `torchrun`, rank 0 handles logging and checkpoint writes.
 
 Usage:
+    ```bash
     python _train.py --config _config_files/training/conditional/density-example/mpdb-density-finetune_example.jsonc
+    ```
 """
 
 import os

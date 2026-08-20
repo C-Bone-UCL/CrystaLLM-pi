@@ -1,7 +1,7 @@
-"""Materials Project reference data for hull calculations.
+"""Provide Materials Project reference data for hull calculations.
 
-Split out of `metrics.py`. Downloading and caching the MP entries is slow and only the
-stability metrics need it, so keeping it here shortens the import chain for everything else.
+The module isolates Materials Project download and caching because these
+operations are slow and are only required by stability metrics.
 """
 
 import os
@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 
 class MPDataProvider:
-    """MP data provider with on-demand phase diagram building."""
+    """Provide Materials Project data with on-demand phase-diagram construction."""
     def __init__(self, mp_data_path: str) -> None:
         print("Loading MP entries...")
         df_mp = pd.read_json(mp_data_path)
@@ -51,7 +51,7 @@ class MPDataProvider:
         print(f"Organized {sum(len(v) for v in self.entries_by_chemsys.values())} entries across {len(self.entries_by_chemsys)} chemical systems")
     
     def get_phase_diagram(self, elements: frozenset) -> object:
-        """Get or build phase diagram for chemical system."""
+        """Return or construct the phase diagram for a chemical system."""
         chemsys = tuple(sorted(str(el) for el in elements))
         
         if chemsys in self.pd_cache:
@@ -80,7 +80,7 @@ class MPDataProvider:
         return pd_sys
 
     def compute_ehull_and_eform(self, structure: Structure, energy_eV: float) -> tuple:
-        """Compute e_above_hull and formation energy."""
+        """Compute energy above hull and formation energy."""
         elements = sorted({el.symbol for el in structure.composition.elements})
         pd_sys = self.get_phase_diagram(elements)
         

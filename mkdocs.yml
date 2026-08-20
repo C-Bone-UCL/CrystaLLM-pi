@@ -72,6 +72,9 @@ plugins:
             heading_level: 3
             members_order: source
             filters: ["!^_"]
+            # Curated surface: directives render the named symbol only. A page opts members
+            # back in per directive with an explicit `members:` list.
+            members: false
 
 markdown_extensions:
   - admonition
@@ -93,7 +96,6 @@ nav:
   - API service: api-service.md
   - Tutorials: tutorials.md
   - API reference:
-      - Conventions: api/conventions.md
       - CLI entry points: api/cli.md
       - Models: api/models.md
       - Data: api/data.md

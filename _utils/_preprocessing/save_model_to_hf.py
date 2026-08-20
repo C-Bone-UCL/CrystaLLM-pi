@@ -1,10 +1,12 @@
-r"""Upload a loadable CrystaLLM checkpoint to the Hugging Face Hub.
+r"""Upload a loadable CrystaLLM-pi checkpoint to the Hugging Face Hub.
 
-Pushes the checkpoint together with the config and tokenizer files that load-and-generate needs. The uploaded repo then works as a `--hf_model_path` with no further assembly.
+The upload includes the checkpoint, configuration, and tokenizer files required by load-and-generate, allowing the repository to be supplied directly as `--hf_model_path`.
 
 Usage:
-    python -m _utils._preprocessing.save_model_to_hf --checkpoint model_ckpts/run/checkpoint-1500 \
+    ```bash
+    python _utils/_preprocessing/save_model_to_hf.py --checkpoint model_ckpts/run/checkpoint-1500 \
         --repo c-bone/CrystaLLM-pi_my-model
+    ```
 """
 
 import argparse

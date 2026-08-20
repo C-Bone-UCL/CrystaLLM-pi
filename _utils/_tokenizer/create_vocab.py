@@ -1,9 +1,11 @@
-"""Generate the CIF-specific vocabulary file for the tokenizer.
+"""Generate the CIF-specific tokenizer vocabulary.
 
-New tokens go in the corresponding section of the source below, then rerunning this writes a fresh vocabulary file to plug into `_utils/_preprocessing/save_tokenizer_to_hf.py`.
+New tokens are added to the corresponding source section before regenerating the vocabulary file used by `save_tokenizer_to_hf`.
 
 Usage:
-    python -m _utils._tokenizer.create_vocab
+    ```bash
+    python _utils/_tokenizer/create_vocab.py
+    ```
 """
 
 import json

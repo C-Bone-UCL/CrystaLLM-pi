@@ -1,30 +1,15 @@
 #!/usr/bin/env python3
-"""Minimal crystal virtualiser.
+"""Virtualise selected element pairs in an ordered crystal structure.
 
-Usage:
-  python -m _utils._virtualiser.virtualiser --in Mg3ZnO4.cif --config config.yaml --out virtual.cif
-
-Config (YAML):
-  symprec: 0.003
-  angle_tolerance: 0.5
-  virtual_pairs:
-    - [Mg, Zn]
-
-This tool:
-  - Reads an ordered supercell CIF.
-  - Virtualises specified element pairs by replacing each such site with the
-     same fractional composition equal to the global fraction of those elements
-     in the structure (computed over sites that belong to the pair).
-  - Runs spglib via pymatgen to find a higher-symmetry refined parent.
-  - Writes the refined 'virtual crystal' as CIF.
-
-Limitations:
-  - No explicit handling of vacancies yet.
-  - We assume all sites containing either member of a pair are on the same
-    sublattice and are virtualised identically.
+The tool replaces each selected pair on a shared sublattice with fractional mixed occupancy, refines the resulting structure to higher symmetry, and writes the virtual crystal as a CIF. Vacancies are not handled explicitly, and all sites containing members of a pair are assumed to belong to the same sublattice.
 
 Contribution by Dr Ricardo Grau-Crespo:
     https://github.com/rgraucrespo
+
+Usage:
+    ```bash
+    python _utils/_virtualiser/virtualiser.py --in Mg3ZnO4.cif --config config.yaml --out virtual.cif
+    ```
 """
 import argparse
 from pathlib import Path
@@ -36,9 +21,11 @@ from pymatgen.io.cif import CifWriter
 
 
 def load_config(yaml_path: Path) -> dict:
-    """Read the virtualiser YAML config.
+    """Load the virtualiser YAML configuration.
 
-    Supplies `symprec`, `angle_tolerance` and the `virtual_pairs` list. Element pairs may also be given inline on the command line instead of through a file.
+    The configuration supplies ``symprec``, ``angle_tolerance``, and the
+    ``virtual_pairs`` list. Element pairs can also be supplied inline on the
+    command line.
     """
     with open(yaml_path, "r") as f:
         cfg = yaml.safe_load(f)
@@ -87,7 +74,7 @@ def virtualise_structure(struct: Structure, virtual_pairs: list[tuple[str, str]]
     # Build a mapping from elements that are in any pair to their partner-fractions
     """Merge paired elements onto shared sites with fractional occupancy.
 
-    Turns an ordered supercell into a smaller virtual-crystal cell: every site holding one member of a pair is replaced by a mixed site carrying both, weighted by the fractions from `compute_pair_fractions`. Pairs absent from the structure are skipped, and sites that are already disordered pass through untouched. Oxidation states are stripped from the result, because spglib needs clean species for the symmetry step that usually follows.
+    Each site containing a member of a selected pair is replaced by a mixed site weighted by the pair fractions. Absent pairs are skipped and existing disordered sites are preserved. Oxidation states are removed from the result before symmetry processing.
     """
     replace_map: dict[str, dict[str, float]] = {}
     for pair in virtual_pairs:
@@ -121,9 +108,9 @@ def virtualise_structure(struct: Structure, virtual_pairs: list[tuple[str, str]]
 
 
 def promote_symmetry(struct: Structure, symprec: float, angle_tol: float) -> Structure:
-    """Refine a structure to the highest symmetry consistent with the given tolerances.
+    """Refine a structure to the highest symmetry consistent with the supplied tolerances.
 
-    Virtualising an ordered supercell usually restores symmetry the ordering had broken, and this recovers it. Falls back to the conventional standard cell when refinement fails, which keeps the pipeline producing a usable structure rather than raising.
+    If refinement fails, the conventional standard cell is used instead.
     """
     sga = SpacegroupAnalyzer(struct, symprec=symprec, angle_tolerance=angle_tol)
     try:

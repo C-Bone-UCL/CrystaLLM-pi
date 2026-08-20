@@ -1,19 +1,14 @@
 r"""Build generation prompts for conditional and unconditional models.
 
-Prompts come either from existing CIF data (automatic mode) or from compositions and target properties given on the command line (manual mode). Four conditioning levels run from a minimal unconditional prompt up to one carrying composition, atomic information and space group. Manual mode pairs compositions with conditions three ways: `cartesian` for every combination, `paired` for a 1:1 mapping, and `broadcast` to apply one condition to all.
+Prompts can be extracted from CIF data or constructed from compositions and target properties. Conditioning levels range from an unconditional prompt to prompts containing composition, atomic information, and space group. Manual mode supports `cartesian`, `paired`, and `broadcast` composition-to-condition mappings.
 
-Each `--condition_lists` string is one complete condition vector, holding every property for a single sample. `--condition_lists "1.8,0.0" "2.0,0.0"` therefore gives two conditions, (prop1=1.8, prop2=0.0) and (prop1=2.0, prop2=0.0), not four.
+Each `--condition_lists` argument is one complete condition vector for a sample. For example, `"1.8,0.0" "2.0,0.0"` represents two condition vectors, not four.
 
 Usage:
-    python -m _utils._generating.make_prompts --HF_dataset "c-bone/mpdb-2prop_clean" \
+    ```bash
+    python _utils/_generating/make_prompts.py --HF_dataset "c-bone/mpdb-2prop_clean" \
         --split test --automatic --level level_3 --output_parquet prompts.parquet
-
-    python -m _utils._generating.make_prompts --manual --compositions "Ti2O4,Ti4O8" \
-        --condition_lists "1.8,0.0" --level level_2 --output_parquet prompts.parquet
-
-    python -m _utils._generating.make_prompts --manual --compositions "Ti2O4,Ti4O8" \
-        --condition_lists "1.8,0.0" "2.0,0.0" --mode paired --level level_2 \
-        --output_parquet prompts.parquet
+    ```
 """
 
 import argparse
@@ -25,7 +20,7 @@ import commentjson
 import os
 import sys
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import (
     load_api_keys,
     extract_formula_units,
@@ -189,9 +184,10 @@ def create_automatic_prompts(df: pd.DataFrame, cif_column: str, level: str, cond
 
 
 def _format_condition_vectors(condition_lists: list) -> list[str]:
-    """Format condition vectors as comma-separated strings.
+    """Format each complete condition vector as a comma-separated string.
 
-    Each input list is already a complete condition vector (all properties for one sample). E.g., [[1.8, 0.0], [2.0, 0.0]] -> ["1.8, 0.0", "2.0, 0.0"]
+    For example, ``[[1.8, 0.0], [2.0, 0.0]]`` becomes
+    ``["1.8, 0.0", "2.0, 0.0"]``.
     """
     if not condition_lists:
         return ["None"]

@@ -1,13 +1,12 @@
 # Metrics and analysis
 
-Validity predicates, the VUN pipeline, Materials Project reference data and the virtualiser.
+The evaluation layer defines structure validity, uniqueness, novelty, XRD agreement, property targets, and stability metrics for generated CIFs.
 
-The scoring CLIs that wrap these live in `_utils/_scoring/` and are documented by their module
-docstrings: `vun_metrics`, `xrd_metrics`, `property_metrics`, `mace_ehull`, `dft_ehull`.
+The validity predicates define the structural checks used by the evaluation workflows. The scoring CLIs operate on post-processed generation results stored in parquet files.
 
 ## Validity predicates
 
-Each returns a bool and is safe to call on model output that may not parse.
+These predicates return booleans and can be applied to model output that may fail to parse.
 
 ::: _utils.validity.is_valid
 ::: _utils.validity.is_sensible
@@ -15,34 +14,51 @@ Each returns a bool and is safe to call on model output that may not parse.
 ::: _utils.validity.is_space_group_consistent
 ::: _utils.validity.is_atom_site_multiplicity_consistent
 ::: _utils.validity.bond_length_reasonableness_score
+
+Density is calculated from the parsed structure.
+
 ::: _utils.validity.get_density
 
-## Validity, uniqueness and novelty
+## Evaluation CLIs
 
-::: _utils.metrics.get_valid
-::: _utils.metrics.get_unique
-::: _utils.metrics.get_novelty
-::: _utils.metrics.get_comp_novelty
-::: _utils.metrics.load_and_process_generated_data
-::: _utils.metrics.build_generated_structures
-::: _utils.metrics.extract_generated_formulas
-::: _utils.metrics.load_and_filter_training_data
-::: _utils.metrics.build_reference_compositions
-::: _utils.metrics.predict_properties
+### Validity evaluation
+
+::: _utils._generating.evaluate_cifs
+
+### Validity, uniqueness, and novelty
+
+::: _utils._scoring.vun_metrics
+::: _utils._scoring.vun_metrics.compute_vun_metrics
+
+### XRD structure match
+
+::: _utils._scoring.xrd_metrics
+::: _utils._scoring.xrd_metrics.get_match_rate_and_rms
+::: _utils._scoring.xrd_metrics.is_valid_bench
+
+### Property targets
+
+::: _utils._scoring.property_metrics
+
+### Stability
+
+::: _utils._scoring.mace_ehull
+::: _utils._scoring.dft_ehull
 
 ## Materials Project reference data
 
-Downloaded and cached once; only the stability metrics need it.
+Materials Project entries are downloaded and cached for the stability metrics.
 
 ::: _utils.mp_data.MPDataProvider
-::: _utils.mp_data.download_mp_data
+    options:
+      members:
+        - get_phase_diagram
+        - compute_ehull_and_eform
 
 ## Virtual crystals
 
-Converts an ordered structure into a disordered virtual crystal and promotes it to its
-higher-symmetry parent.
+Convert ordered structures to disordered virtual crystals and promote them to higher-symmetry parent structures.
 
-::: _utils._virtualiser.virtualiser.load_config
-::: _utils._virtualiser.virtualiser.compute_pair_fractions
+::: _utils._virtualiser.virtualiser
 ::: _utils._virtualiser.virtualiser.virtualise_structure
 ::: _utils._virtualiser.virtualiser.promote_symmetry

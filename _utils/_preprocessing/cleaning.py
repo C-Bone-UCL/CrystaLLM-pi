@@ -1,10 +1,12 @@
-r"""Clean and normalize CIF data before training.
+r"""Clean and normalise CIF data before training.
 
-Orders disordered structures, normalizes the property columns, and adds the atomic properties block the tokenizer expects. Running this is required. The models are trained on the normalized form, so skipping it shifts the property scale away from what the model learned.
+The pipeline orders disordered structures, normalises property columns, and adds the atomic-properties block expected by the tokenizer. The resulting property scale must match the normalised representation used during model training.
 
 Usage:
-    python -m _utils._preprocessing.cleaning --input_parquet dedup.parquet \
+    ```bash
+    python _utils/_preprocessing/cleaning.py --input_parquet dedup.parquet \
         --output_parquet clean.parquet --property_columns density --num_workers 8
+    ```
 """
 
 import argparse
@@ -16,7 +18,7 @@ import pandas as pd
 from tqdm import tqdm
 import sys
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import (
     extract_formula_units,
     replace_data_formula_with_nonreduced_formula,

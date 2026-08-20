@@ -8,8 +8,7 @@ from pydantic import BaseModel, Field
 
 
 class VUNMetricsRequest(BaseModel):
-    """Request body for POST /metrics/vun.
-    """
+    """Request body for `POST /metrics/vun`."""
     gen_data: str = Field(..., description="Path to generated structures parquet")
     huggingface_dataset: str | None = Field(None, description="HuggingFace dataset for novelty comparison")
     output_csv: str | None = Field(None, description="Output CSV file")
@@ -25,9 +24,9 @@ class VUNMetricsRequest(BaseModel):
 
 
 class EHullMetricsRequest(BaseModel):
-    """Request body for POST /metrics/ehull.
+    """Request body for `POST /metrics/ehull`.
 
-    Runs the MACE-based hull calculation, which relaxes each structure rather than calling DFT.
+    The endpoint computes the hull metrics using MACE-based structure relaxation rather than DFT.
     """
     post_parquet: str = Field(..., description="Path to postprocessed structures")
     output_parquet: str = Field(..., description="Output parquet with stability metrics")
@@ -38,8 +37,7 @@ class EHullMetricsRequest(BaseModel):
 
 
 class XRDMetricsRequest(BaseModel):
-    """Request body for POST /metrics/xrd.
-    """
+    """Request body for `POST /metrics/xrd`."""
     input_parquet: str = Field(..., description="Path to parquet file with generated structures")
     output_parquet: str = Field(..., description="Path to output XRD metrics parquet")
     num_gens: int = Field(0, description="Maximum generations per structure to score")
@@ -50,8 +48,7 @@ class XRDMetricsRequest(BaseModel):
 
 
 class PropertyMetricsRequest(BaseModel):
-    """Request body for POST /metrics/property.
-    """
+    """Request body for `POST /metrics/property`."""
     post_parquet: str = Field(..., description="Path to processed parquet file with VUN metrics")
     parquet_out: str | None = Field(None, description="Optional parquet output with property metrics columns")
     metrics_out: str | None = Field(None, description="Optional CSV output with property metrics summary")

@@ -1,10 +1,14 @@
 r"""Compute structure-matching metrics for XRD-conditioned generation.
 
-Reports match rate (the fraction of targets with a valid StructureMatcher match) and the mean RMS distance over matched pairs, using DiffCSP-compliant validity checks so the numbers are comparable with that benchmark. Also emits other metrics like per-axis lattice parameter differences, matched count over all (not only the matched) structures.
+The workflow reports match rate and mean RMS distance over matched pairs using DiffCSP-compliant validity checks. It also reports lattice-parameter differences and matched counts over all generated structures.
+
+Benchmark metrics are adapted from: https://github.com/jiaor17/DiffCSP/tree/main as well as the original https://github.com/lantunes/CrystaLLM/tree/main repo
 
 Usage:
-    python -m _utils._scoring.xrd_metrics --input_parquet gen.parquet \
+    ```bash
+    python _utils/_scoring/xrd_metrics.py --input_parquet gen.parquet \
         --ref_parquet reference.parquet --num_gens 20 --output_parquet xrd_metrics.parquet
+    ```
 """
 
 import os
@@ -24,7 +28,7 @@ import itertools
 import smact
 from smact.screening import pauling_test
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import is_sensible, is_valid
 
 import warnings
@@ -37,9 +41,11 @@ ANGLE_LO = 10.0
 ANGLE_HI = 170.0
 
 
-# DiffCSP smact validity check
-# adapted from https://github.com/jiaor17/DiffCSP/blob/ee131b03a1c6211828e8054d837caa8f1a980c3e/scripts/eval_utils.py
 def smact_validity(comp, count, use_pauling_test=True, include_alloys=True):
+    """Check composition validity via charge neutrality and the Pauling electronegativity test.
+
+    Adapted from: https://github.com/jiaor17/DiffCSP/blob/ee131b03a1c6211828e8054d837caa8f1a980c3e/scripts/eval_utils.py
+    """
     elem_symbols = tuple([Element.from_Z(elem).symbol for elem in comp])
     space = smact.element_dictionary(elem_symbols)
     smact_elems = [e[1] for e in space.items()]
@@ -77,9 +83,11 @@ def smact_validity(comp, count, use_pauling_test=True, include_alloys=True):
                 return True
     return False
 
-# DiffCSP structure validity check
-# from https://github.com/jiaor17/DiffCSP/blob/ee131b03a1c6211828e8054d837caa8f1a980c3e/scripts/eval_utils.py
 def structure_validity(crystal, cutoff=0.5):
+    """Check structure validity via minimum atom distance, cell volume, and lattice size.
+
+    Adapted from: https://github.com/jiaor17/DiffCSP/blob/ee131b03a1c6211828e8054d837caa8f1a980c3e/scripts/eval_utils.py
+    """
     dist_mat = crystal.distance_matrix
     # Pad diagonal with large number to ignore self-distances
     dist_mat = dist_mat + np.diag(
@@ -91,7 +99,10 @@ def structure_validity(crystal, cutoff=0.5):
         return True
 
 def is_valid_bench(struct):
-    """Validity check combining composition and structure validity."""
+    """Check benchmark validity using both composition and structure validity.
+
+    Adapted from: https://github.com/jiaor17/DiffCSP/blob/ee131b03a1c6211828e8054d837caa8f1a980c3e/scripts/compute_metrics.py
+    """
     elem_counter = Counter([specie.Z for specie in struct.species])
     elems = [(elem, elem_counter[elem]) for elem in sorted(elem_counter.keys())]
     comp, elem_counts = list(zip(*elems))
@@ -295,18 +306,21 @@ def _calculate_metrics(rms_dists, a_diffs, b_diffs, c_diffs, gen_structs):
     }
 
 
-def get_match_rate_and_rms(gen_structs, true_structs, matcher, args, score_data=None, num_workers=None,
-                           atom_counts=None, novel_data=None, material_ids_order=None):
-    """Compute match rate and RMS distance plus additional XRD metrics.
+def get_match_rate_and_rms(gen_structs, true_structs, matcher, args, score_data: dict | None = None,
+                           num_workers: int | None = None, atom_counts: list | None = None,
+                           novel_data: dict | None = None, material_ids_order: list | None = None):
+    """Compute XRD match rate, RMS distance, and related metrics.
 
-    - Only valid structures (smact + structure validity) are considered - Takes minimum RMS distance among all valid matches per material - Match rate = fraction of materials with at least one valid StructureMatcher match - Lattice parameter fallback for analysis only (doesn't count toward match rate)
+    Only structures passing SMACT and structure-validity checks are considered. The minimum RMS distance among valid matches is used for each material. Match rate is the fraction of materials with at least one valid `StructureMatcher` match. Lattice-parameter matching is used only as an analysis fallback and does not contribute to match rate.
+
+    Adapted from: https://github.com/jiaor17/DiffCSP/blob/ee131b03a1c6211828e8054d837caa8f1a980c3e/scripts/compute_metrics.py
 
     Args:
-        score_data: Dict mapping material_id -> list of scores corresponding to gen_structs
-        num_workers: Number of parallel workers (defaults to CPU count // 2)
-        atom_counts: List of true structure atom counts (one per material, in order)
-        novel_data: Dict mapping column name -> {material_id -> value} for extra columns
-        material_ids_order: List of material IDs in the same order as gen_structs/true_structs
+        score_data: Mapping from material id to scores corresponding to generated structures.
+        num_workers: Number of parallel workers. Defaults to half the available CPU count.
+        atom_counts: True structure atom counts, one per material in the same order as the generated and reference structures.
+        novel_data: Additional columns mapped from material id to values.
+        material_ids_order: Material ids in the same order as the generated and reference structures.
     """
     if num_workers is None:
         num_workers = max(1, multiprocessing.cpu_count() // 2)
@@ -383,10 +397,11 @@ def get_match_rate_and_rms(gen_structs, true_structs, matcher, args, score_data=
 
 
 def get_structs(id_to_gen_cifs, id_to_true_cifs, n_gens, num_workers, has_rank_column=False, id_to_scores=None):
-    """Process generated and true CIF structures in parallel.
-    
+    """Process generated and reference CIF structures in parallel.
+
     Args:
-        id_to_scores: Dict mapping material_id -> list of scores corresponding to CIFs
+        id_to_scores: Mapping from material IDs to lists of scores corresponding
+            to CIFs.
     """
     true_structs = []
     valid_material_ids = []
@@ -537,6 +552,7 @@ if __name__ == "__main__":
                 id_to_gen_cifs[mid] = [group["Generated CIF"].iloc[0]]
                 if has_score_column:
                     id_to_scores[mid] = [group["score"].iloc[0]]
+
     elif n_gens == 1 and args.sort_gens == 'random':
         print("Randomly selecting one generation per material for num_gens=1")
         id_to_gen_cifs = {}
@@ -546,6 +562,7 @@ if __name__ == "__main__":
             id_to_gen_cifs[mid] = selected_row["Generated CIF"].tolist()
             if has_score_column:
                 id_to_scores[mid] = selected_row["score"].tolist()
+
     elif n_gens == 1 and args.sort_gens == 'first':
         print("Selecting the first generation per material for num_gens=1")
         id_to_gen_cifs = {}
@@ -555,6 +572,7 @@ if __name__ == "__main__":
             id_to_gen_cifs[mid] = [first_row["Generated CIF"]]
             if has_score_column:
                 id_to_scores[mid] = [first_row["score"]]
+
     else:
         # Original logic: take all CIFs for each material
         id_to_gen_cifs = {mid: group["Generated CIF"].tolist() for mid, group in df.groupby("Material ID")}
@@ -585,6 +603,7 @@ if __name__ == "__main__":
         id_to_gen_cifs = {k: v for k, v in id_to_gen_cifs.items() if k in intersection_ids}
         id_to_true_cifs = {k: v for k, v in id_to_true_cifs.items() if k in intersection_ids}
         print(f"Using {len(intersection_ids)} matched materials from test DB")
+        
     else:
         id_to_true_cifs = {mid: group["True CIF"].iloc[0] for mid, group in df.groupby("Material ID")}
         print(f"Using true CIFs from input parquet")

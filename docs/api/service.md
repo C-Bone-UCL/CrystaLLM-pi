@@ -1,35 +1,27 @@
 # Service
 
-The FastAPI service wraps the command-line utilities. Long-running work is dispatched as a
-background job and polled through the jobs endpoints rather than held open on the request.
+The FastAPI service exposes the preprocessing, generation, training, evaluation, and virtualisation workflows as HTTP endpoints.
 
-The live endpoint documentation, with every field description rendered, is served by the running
-container at `/docs`. This page lists the request models behind it.
+Long-running operations run as background jobs. Clients submit a request and poll the job endpoints for its status and result.
+
+The running service provides complete request and response documentation at `/docs`. Request models that add semantics beyond their corresponding CLI are documented here. Request bodies that mirror CLI arguments are documented by the CLI entry points.
 
 ::: _api
+
+## Endpoints
+
+::: _api.root
+::: _api.healthz
 
 ## Job status
 
 ::: _api.JobStatus
-
-## Endpoint registration
-
-One module per endpoint group. Each registers its routes onto the root app.
-
-::: _utils._api.generation.register_generation_routes
-::: _utils._api.training.register_training_routes
-::: _utils._api.metrics.register_metrics_routes
-::: _utils._api.preprocessing.register_preprocessing_routes
-::: _utils._api.virtualiser.register_virtualiser_routes
-::: _utils._api.jobs.register_jobs_routes
 
 ## Generation requests
 
 ::: _utils._api.generation.DirectGenerationRequest
 ::: _utils._api.generation.MakePromptsRequest
 ::: _utils._api.generation.GenerateCIFsRequest
-::: _utils._api.generation.EvaluateCIFsRequest
-::: _utils._api.generation.PostprocessRequest
 
 ## Training requests
 
@@ -41,15 +33,6 @@ One module per endpoint group. Each registers its routes onto the root app.
 ::: _utils._api.metrics.EHullMetricsRequest
 ::: _utils._api.metrics.XRDMetricsRequest
 ::: _utils._api.metrics.PropertyMetricsRequest
-
-## Preprocessing requests
-
-::: _utils._api.preprocessing.DeduplicateRequest
-::: _utils._api.preprocessing.CleaningRequest
-::: _utils._api.preprocessing.SaveDatasetRequest
-::: _utils._api.preprocessing.XRDPreprocessRequest
-::: _utils._api.preprocessing.CalcTheorXRDRequest
-::: _utils._api.preprocessing.CifsZipToParquetRequest
 
 ## Virtualiser requests
 

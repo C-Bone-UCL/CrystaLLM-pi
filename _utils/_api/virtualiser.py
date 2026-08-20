@@ -10,8 +10,7 @@ from pydantic import BaseModel, Field
 
 
 class VirtualiseRequest(BaseModel):
-    """Request body for POST /virtualise.
-    """
+    """Request body for `POST /virtualise`."""
     input_cif: str = Field(..., description="Path to input ordered CIF file.")
     output_cif: str = Field(..., description="Path for the output virtual crystal CIF.")
     config_file: str | None = Field(

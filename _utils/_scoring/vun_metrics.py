@@ -1,10 +1,12 @@
-r"""Score generated CIFs for validity, uniqueness and novelty.
+r"""Score generated CIFs for validity, uniqueness, and novelty.
 
-Reports the VUN triple over a parquet of generated structures, optionally adding compositional novelty against the training set. Novelty needs the training data, supplied either as `--huggingface_dataset` or as a previously processed cache via `--load_processed_data`.
+The VUN metrics are computed over generated structures. Compositional novelty requires the training data, supplied through `--huggingface_dataset` or a processed cache loaded with `--load_processed_data`.
 
 Usage:
-    python -m _utils._scoring.vun_metrics --input_parquet gen.parquet \
+    ```bash
+    python _utils/_scoring/vun_metrics.py --input_parquet gen.parquet \
         --huggingface_dataset c-bone/mpdb-2prop_clean --output_csv vun.csv
+    ```
 """
 
 import argparse
@@ -16,7 +18,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pymatgen")
 
 
 # Add project root to path for internal imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import (
     extract_generated_formulas,
     build_generated_structures,
@@ -36,7 +38,7 @@ ANGLE_TOL = 5.0
 warnings.filterwarnings("ignore")
 
 def compute_vun_metrics(df: pd.DataFrame) -> dict[str, int]:
-    """Count how many structures pass each VUN check."""
+    """Count structures that pass each VUN criterion."""
     metrics = {
         "total": len(df),
         "valid": int(df['is_valid'].sum()),

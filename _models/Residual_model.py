@@ -38,9 +38,9 @@ logger = logging.get_logger(__name__)
 MISSING_CONDITION_VALUE = -100.0
 
 class ResidualGPT2Config(GPT2Config):
-    """GPT-2 configuration extended with residual conditioning options.
+    """Configuration for GPT-2 with residual scalar conditioning.
 
-    `slider_on` enables the conditioning path at all. `slider_n_variables` is how many scalar properties a row carries, `slider_n_hidden` the encoder MLP width, and `slider_n_heads_sharing_slider` how many attention heads share one conditioning projection, which must divide the head count.
+    `slider_on` enables the conditioning path. `slider_n_variables` specifies the number of scalar properties, `slider_n_hidden` the encoder MLP width, and `slider_n_heads_sharing_slider` the number of attention heads sharing each conditioning projection. The sharing count must divide the number of attention heads.
     """
 
     def __init__(
@@ -62,9 +62,7 @@ class ResidualGPT2Config(GPT2Config):
 class ResidualEncoder(nn.Module):
     """Encode scalar conditioning values into per-head key-value tensors.
 
-    Each variable gets its own encode, upscale and downscale projection, applied through batched einsums rather than separate modules. One projection is shared across a bundle of `slider_n_heads_sharing_slider` attention heads, which spreads the conditioning signal without needing a projection per head.
-
-    The learned mixing weight is `attention_factor`, an `nn.Parameter` here. The legacy `Slider_model` stores the same quantity as an `nn.Linear(1, 1)` and returns `weight[0, 0]`, which is why a Slider checkpoint loaded into this class silently produces no conditioning.
+    Each variable has its own encode, upscaling, and downscaling projections. A projection is shared across each group of `slider_n_heads_sharing_slider` attention heads. The learned mixing weight is stored as `attention_factor`.
     """
 
     def __init__(self, config: ResidualGPT2Config) -> None:
@@ -101,14 +99,19 @@ class ResidualEncoder(nn.Module):
         self.dropout = nn.Dropout(config.slider_dropout)
 
     def forward(self, prefix: torch.Tensor, hidden_states: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Encode conditioning values into per-head key-values and a mixing weight.
+        """Encode scalar conditions into per-head key-values and a mixing weight.
 
         Args:
-            prefix: [B, n_variables] - scalar conditioning, MISSING_CONDITION_VALUE or values outside (-100.1, 100.1) count as absent
-            hidden_states: optional, only used to pick device and dtype
+            prefix: Scalar conditioning with shape ``[B, n_variables]``.
+                ``MISSING_CONDITION_VALUE`` and values outside ``(-100.1, 100.1)``
+                are treated as absent.
+            hidden_states: Optional tensor used to determine device and dtype.
 
         Returns:
-            slider_keys [B, n_base_heads, n_variables, head_dim], slider_values same shape, attention_factor scalar Parameter, condition_mask [B, n_variables] True where present
+            ``slider_keys`` and ``slider_values`` with shape
+            ``[B, n_base_heads, n_variables, head_dim]``, an ``attention_factor``
+            parameter, and a ``condition_mask`` with shape ``[B, n_variables]`` that
+            is true for present conditions.
         """
         device = hidden_states.device if hidden_states is not None else self.dummy.device
         dtype = hidden_states.dtype if hidden_states is not None else self.dummy.dtype
@@ -156,7 +159,7 @@ class ResidualEncoder(nn.Module):
         return slider_keys, slider_values, self.attention_factor, condition_mask
 
 class ResidualAttention(GPT2Attention):
-    """GPT-2 attention with optional residual slider contributions."""
+    """GPT-2 attention with optional residual conditioning contributions."""
 
     def __init__(self, config, is_cross_attention=False, layer_idx=None):
         super().__init__(config, is_cross_attention=is_cross_attention, layer_idx=layer_idx)
@@ -287,7 +290,7 @@ class ResidualAttention(GPT2Attention):
 
 
 class ResidualGPT2Block(HFGPT2Block):
-    """GPT-2 block wired to the residual slider encoder."""
+    """GPT-2 block with residual scalar conditioning."""
     def __init__(self, config, layer_idx=None):
         super(HFGPT2Block, self).__init__()
 
@@ -396,7 +399,7 @@ class ResidualGPT2PreTrainedModel(GPT2PreTrainedModel):
 
 @add_start_docstrings_to_model_forward(GPT2_INPUTS_DOCSTRING)
 class ResidualGPT2Model(ResidualGPT2PreTrainedModel):
-    """Transformer body for scalar-conditioned GPT-2."""
+    """Transformer body for GPT-2 with residual scalar conditioning."""
     _supports_param_buffer_assignment = False
 
     def __init__(self, config: ResidualGPT2Config):
@@ -657,9 +660,9 @@ class ResidualGPT2Model(ResidualGPT2PreTrainedModel):
     GPT2_START_DOCSTRING,
 )
 class ResidualGPT(ResidualGPT2PreTrainedModel, GenerationMixin):
-    """GPT-2 with scalar conditioning injected inside each attention block.
+    """GPT-2 with scalar conditioning injected into each attention block.
 
-    Conditioning is mixed into attention per layer rather than prepended as cached tokens, so unlike the Prefix families the text length is unaffected. Handles rows with missing properties through the encoder's condition mask, which is what lets it train on heterogeneous datasets where not every row carries every property.
+    Conditioning is mixed into attention per layer rather than represented as prefix tokens, so it does not change the text sequence length. Missing properties are handled through the encoder's condition mask.
     """
 
     _tied_weights_keys = ["lm_head.weight"]
@@ -752,19 +755,24 @@ class ResidualGPT(ResidualGPT2PreTrainedModel, GenerationMixin):
         return_dict: bool | None = None,
         condition_values: torch.Tensor | None = None,
     ) -> tuple | CausalLMOutputWithPast:
-        """Forward pass with conditioning mixed into each attention block.
+        """Run GPT-2 with conditioning mixed into each attention block.
 
-        Conditioning never occupies a cached position, so unlike the Prefix families past_key_values holds text only and the text length is unaffected.
+        Conditioning does not occupy a cached position. Consequently,
+        ``past_key_values`` contains text positions only and the text sequence length
+        is unchanged.
 
         Args:
-            input_ids: [B, T] - token ids
-            attention_mask: [B, T]
-            condition_values: [B, slider_n_variables] - MISSING_CONDITION_VALUE masked per row and variable
-            labels: [B, T] - optional targets
-            past_key_values: standard GPT-2 cache, text positions only
+            input_ids: Token IDs with shape ``[B, T]``.
+            attention_mask: Attention mask for the text sequence.
+            condition_values: Scalar conditions with shape ``[B, slider_n_variables]``.
+                ``MISSING_CONDITION_VALUE`` is masked independently for each row and
+                variable.
+            labels: Optional targets with shape ``[B, T]``.
+            past_key_values: Standard GPT-2 cache containing text positions only.
 
         Returns:
-            CausalLMOutputWithPast, logits [B, T, vocab_size]
+            ``CausalLMOutputWithPast`` containing logits with shape
+            ``[B, T, vocab_size]``.
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 

@@ -6,7 +6,7 @@
 - PyTorch 2.1+
 - Conda for environment management
 - Hugging Face and Weights & Biases accounts should be set up
-- (Optional) CUDA-compatible GPU
+- (Optional but recommended) CUDA-compatible GPU
 
 
 ## Setup

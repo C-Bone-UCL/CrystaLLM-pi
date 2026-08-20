@@ -1,12 +1,14 @@
-r"""Compute energy above hull with the MACE potential and MP2020 corrections.
+r"""Compute energy above hull using the MACE potential and MP2020 corrections.
 
-Relaxes each generated structure with MACE and places it on the Materials Project convex hull, which avoids running DFT on every candidate. Applying the MP2020 compatibility corrections is what makes the resulting energies comparable with MP entries.
+Each generated structure is relaxed with MACE and placed on the Materials Project convex hull. MP2020 compatibility corrections make the resulting energies comparable with Materials Project entries.
 
 Inspired by: https://github.com/facebookresearch/crystal-text-llm/blob/main/e_above_hull.py
 
 Usage:
-    python -m _utils._scoring.mace_ehull --post_parquet gen_post.parquet \
+    ```bash
+    python _utils/_scoring/mace_ehull.py --post_parquet gen_post.parquet \
         --output_parquet ehull.parquet --mp_data mp_data.pkl --num_workers 4
+    ```
 """
 
 import argparse
@@ -32,7 +34,7 @@ from pymatgen.io.vasp.inputs import Incar, Poscar
 from pymatgen.io.ase import AseAtomsAdaptor
 from mace.calculators import mace_mp
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import (
     MPDataProvider,
     download_mp_data,
