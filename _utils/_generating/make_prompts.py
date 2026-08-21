@@ -422,7 +422,7 @@ if __name__ == "__main__":
             # make sure spacegroup exists using
             # look in HF-cif-tokenizer/spacegroups.txt
             valid_spacegroups = set()
-            with open(os.path.join(os.path.dirname(__file__), '..', '..', 'HF-cif-tokenizer', 'spacegroups.txt'), 'r') as f:
+            with open(os.path.join(os.path.dirname(__file__), '..', 'HF-cif-tokenizer', 'spacegroups.txt'), 'r') as f:
                 for line in f:
                     valid_spacegroups.add(line.strip())
             for sg in spacegroups:

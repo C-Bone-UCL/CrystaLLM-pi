@@ -292,7 +292,7 @@ class LoadAndGenerateTests:
             _load_and_generate.generate_cifs_with_hf_model = original_generate
 
     def test_direct_generation_logp_smoke(self):
-        """Run the README LOGP ranked Z-search flow and verify it emits a ranked CIF parquet."""
+        """Run the docs quickstart LOGP ranked Z-search flow and verify it emits a ranked CIF parquet."""
         output_parquet = os.path.join(self.temp_dir, "readme_logp_base_sio2.parquet")
         cmd = [
             sys.executable,
@@ -310,13 +310,13 @@ class LoadAndGenerateTests:
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
             raise AssertionError(
-                f"README LOGP smoke generation failed with code {proc.returncode}\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+                f"Quickstart LOGP smoke generation failed with code {proc.returncode}\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
             )
 
-        assert os.path.exists(output_parquet), "Expected README LOGP smoke test to write a parquet output"
+        assert os.path.exists(output_parquet), "Expected quickstart LOGP smoke test to write a parquet output"
 
         df_generated = pd.read_parquet(output_parquet)
-        assert len(df_generated) >= 1, "README LOGP smoke generation should return at least one row"
+        assert len(df_generated) >= 1, "Quickstart LOGP smoke generation should return at least one row"
         assert "Generated CIF" in df_generated.columns, "Expected Generated CIF output column"
         assert "score" in df_generated.columns, "Expected LOGP score column in output"
         assert "reduced_formula_target" in df_generated.columns, "Expected reduced formula metadata in output"
@@ -330,7 +330,7 @@ class LoadAndGenerateTests:
         finite_scores = finite_scores[finite_scores.notna()]
         assert not finite_scores.empty, "Expected finite LOGP scores"
         assert finite_scores.is_monotonic_increasing, "LOGP-ranked outputs should be sorted by score"
-        assert set(df_generated["reduced_formula_target"].dropna()) == {"SiO2"}, "Expected SiO2-only output for this README example"
+        assert set(df_generated["reduced_formula_target"].dropna()) == {"SiO2"}, "Expected SiO2-only output for this quickstart example"
 
     def test_multi_gpu_single_prompt_worker_resolution(self):
         """num_workers_gpu is the single knob: unset fans out, N caps, 1 forces single-GPU."""

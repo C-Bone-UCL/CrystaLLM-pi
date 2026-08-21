@@ -7,8 +7,38 @@ class GenerationPipelineTests:
         self.temp_dir = temp_dir
         self.test_data = test_data
     
+    def test_tokenizer_dir_resolves_when_cwd_copy_is_absent(self):
+        """The bare name must resolve to the packaged copy from any working directory.
+
+        HF-cif-tokenizer ships inside the wheel under _utils/. Without this fallback an
+        installed CrystaLLM-pi could only generate when run from the repo root, which is the
+        bug the wheel-install CI job guards against.
+        """
+        import os
+        import tempfile
+
+        from _tokenizer import BUNDLED_TOKENIZER_DIR, CustomCIFTokenizer, resolve_tokenizer_dir
+
+        assert os.path.isdir(BUNDLED_TOKENIZER_DIR), "Packaged tokenizer directory is missing"
+
+        original_cwd = os.getcwd()
+        try:
+            with tempfile.TemporaryDirectory() as elsewhere:
+                os.chdir(elsewhere)
+                resolved = resolve_tokenizer_dir("HF-cif-tokenizer")
+                assert os.path.isdir(resolved), "Bare name should fall back to the packaged copy"
+                tokenizer = CustomCIFTokenizer.from_pretrained("HF-cif-tokenizer")
+                assert len(tokenizer) > 0, "Packaged tokenizer loaded no vocabulary"
+        finally:
+            os.chdir(original_cwd)
+
+        # An explicit directory that does exist still wins over the packaged copy.
+        assert resolve_tokenizer_dir(BUNDLED_TOKENIZER_DIR) == BUNDLED_TOKENIZER_DIR
+        # An unrelated missing path is returned untouched, so callers still see their own error.
+        assert resolve_tokenizer_dir("no/such/tokenizer") == "no/such/tokenizer"
+
     def test_generation_script_imports(self):
-        """Test generation script components - comprehensive import check."""
+        """Every name the generation pipeline exposes is still importable."""
         from _utils._generating.generate_cifs import (
             init_tokenizer, check_cif, get_model_class,
             build_generation_kwargs, parse_condition_vector,
@@ -113,7 +143,7 @@ class GenerationPipelineTests:
             assert key in kwargs, f"{key} should be in generation kwargs"
     
     def test_check_cif_comprehensive(self):
-        """Comprehensive CIF validation tests."""
+        """check_cif returns a bool for junk input and rejects formula mismatches."""
         from _utils._generating.generate_cifs import check_cif
         
         # Test valid CIF structure
@@ -144,7 +174,7 @@ class GenerationPipelineTests:
         assert check_cif(mismatched_cif) is False, "Mismatched formula should fail validation"
     
     def test_condition_vector_parsing_comprehensive(self):
-        """Comprehensive condition vector parsing tests."""
+        """parse_condition_vector handles each string form the CLI and parquet paths produce."""
         from _utils._generating.generate_cifs import parse_condition_vector
         
         # Test various input formats

@@ -26,7 +26,7 @@ Property information is injected into the attention mechanism through its past k
 
 `--activate_conditionality="PrefixXRD"`
 
-This model uses the same prefix conditioning mechanism, preceded by a Perceiver Resampler module. Scalar properties contain only a small number of values, whereas a diffraction pattern may contain thousands of measurements. The resampler maps the large incoming information dense tensor to a fixed number of latent vectors, which are then used as the prefix key-values. This allows compression to filter out noise and keep only relevant condtiioning information, and also allows us to feed varying length inputs into the prefix model which normally cant handle heterogeneous data.
+This model uses the same prefix conditioning mechanism, preceded by a Perceiver Resampler module. Scalar properties contain only a small number of values, whereas a diffraction pattern may contain thousands of measurements. The resampler maps the large incoming information dense tensor to a fixed number of latent vectors, which are then used as the prefix key-values. This allows compression to filter out noise and keep only relevant conditioning information, and also allows us to feed varying length inputs into the prefix model, which normally cannot handle heterogeneous data.
 
 During training, discrete `[Q, I]` peak lists are synthetically broadened and noised on the fly. During inference, continuous, unprocessed XRD profiles can be used directly as conditioning input. This avoids peak selection and trimming, and does not impose restrictions on the incident angle range compared to the old XRD conditioning model we had.
 
@@ -41,7 +41,7 @@ Conditioning information is injected into each attention block through a slider 
 </div>
 
 ??? note "Paper-era checkpoints"
-    Models released with the paper were trained with earlier implementations of the same two conditioning mechanisms. These are named `PKV` (prefix) and `Slider` (residual) in the code, and `Prefix attention` and `Residual attention` in the paper. They are loaded and used automatically based on the model name - you can use them in the `_load_and_generate.py` script. The two generations remain separate classes because their weights are not interchangeable - we made some minor improvements to the model internals. Training these legacy classes is disabled, and `--activate_conditionality="PKV"` or `"Slider"` raises an error pointing to the current implementations.
+    Models released with the paper were trained with earlier implementations of the same two conditioning mechanisms. These are named `PKV` (prefix) and `Slider` (residual) in the code, and `Prefix attention` and `Residual attention` in the paper. They are loaded and used automatically based on the model name, so you can use them in the `_load_and_generate.py` script. The two generations remain separate classes because their weights are not interchangeable, since we made some minor improvements to the model internals. Training these legacy classes is disabled, and `--activate_conditionality="PKV"` or `"Slider"` raises an error pointing to the current implementations.
 
     > The paper also benchmarks two comparative baselines, Prepend-GPT and Raw-GPT. These are available in the reproduction repository [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper).
 

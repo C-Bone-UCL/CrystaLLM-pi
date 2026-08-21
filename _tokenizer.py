@@ -7,6 +7,24 @@ import re
 import json
 from transformers import PreTrainedTokenizer
 
+BUNDLED_TOKENIZER_DIR = os.path.join(os.path.dirname(__file__), "_utils", "HF-cif-tokenizer")
+
+
+def resolve_tokenizer_dir(pretrained_dir: str) -> str:
+    """Map a tokenizer directory name to a path that exists.
+
+    A relative name is honoured as-is when it resolves against the working directory, which is
+    how clone-based runs and `--pretrained_tokenizer_dir` overrides have always worked. When it
+    does not, the copy bundled inside the installed package is used instead, so an installed
+    CrystaLLM-pi generates from any working directory rather than only from the repo root.
+    """
+    if os.path.isdir(pretrained_dir):
+        return pretrained_dir
+    if os.path.basename(os.path.normpath(pretrained_dir)) == "HF-cif-tokenizer":
+        return BUNDLED_TOKENIZER_DIR
+    return pretrained_dir
+
+
 class CustomCIFTokenizer(PreTrainedTokenizer):
     """Hugging Face-compatible tokenizer for CIF text.
 
@@ -45,11 +63,10 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
             reverse=True
         )
         
-        # Escaped tokens refer to tokens that have been processed 
-        # to ensure that any special characters they contain are treated as literal characters
-        # escaping means prefixing the special character with a backslash (like \\n)
-        # you sort the tokens by length so that the longest token is matched first
-        # this is important because if you have a token "a" and "ab", you want to match "ab" first
+        # re.escape backslashes any regex metacharacter in a token, so a token containing
+        # "\\n" or "." matches as literal text instead of as a newline or a wildcard.
+        # Longest first matters: with "a" ahead of "ab" in the alternation, the regex would
+        # match "a" and leave a stray "b" to be tokenised separately.
 
         # Define main special tokens
         self.unk_token = unk_token
@@ -209,6 +226,7 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
 
         The directory must contain `vocabulary.json`, `spacegroups.txt`, and `tokenizer_config.json`.
         """
+        pretrained_dir = resolve_tokenizer_dir(pretrained_dir)
         vocab_file = os.path.join(pretrained_dir, "vocabulary.json")
         spacegroups_file = os.path.join(pretrained_dir, "spacegroups.txt")
         tokenizer_config_file = os.path.join(pretrained_dir, "tokenizer_config.json")

@@ -64,7 +64,7 @@ def _pack_condition_values(values_list: list) -> torch.Tensor:
 class CustomCIFDataCollator:
     """Collate tokenized CIF rows into fixed-length training batches.
 
-    Every sequence in a batch is exactly `context_length` tokens. A CIF longer than that is sliced from the beginning; a shorter one is packed with further CIFs taken round-robin from the rest of the batch until the window is full. Packing rather than padding is what keeps the context window carrying real tokens instead of filler.
+    Every sequence in a batch is exactly `context_length` tokens. A CIF longer than that is sliced from the beginning, a shorter one is packed with further CIFs taken round-robin from the rest of the batch until the window is full. Packing rather than padding is what keeps the context window carrying real tokens instead of filler.
 
     Conditional mode is detected from the features themselves, by whether `condition_values` is present, so the same collator serves both training modes.
     """

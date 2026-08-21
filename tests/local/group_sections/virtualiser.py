@@ -46,7 +46,7 @@ class VirtualiserTests:
         assert callable(load_config)
 
     def test_compute_pair_fractions(self):
-        """Pair fractions are computed correctly from site counts."""
+        """Pair fractions match the pure-element site counts."""
         from _utils._virtualiser import compute_pair_fractions
 
         struct = self._make_ordered_struct()

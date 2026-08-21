@@ -8,8 +8,7 @@ import torch
 np.random.seed(1)
 
 def validate_condition_values(tokenized_dataset, dataset_with_idx, parsed_condition_columns):
-    """Helper function to validate condition values between source and tokenized datasets.
-    """
+    """Check that condition values survive tokenisation, comparing one row against its source."""
     print("\nCondition Values Check")
     if not tokenized_dataset["train"]:
         print("Train split is empty, skipping condition check")

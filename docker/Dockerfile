@@ -18,17 +18,12 @@ RUN pip install --no-cache-dir --ignore-installed --prefix=/install -r requireme
 ENV PATH="/install/bin:$PATH"
 ENV PYTHONPATH="/install/lib/python3.10/site-packages"
 
-# Install material-hasher from git (required for uniqueness metrics)
-RUN pip install --no-cache-dir --prefix=/install git+https://github.com/lematerial/material-hasher.git
-
-# also install pip install git+https://github.com/KellerJordan/Muon
-RUN pip install --no-cache-dir --prefix=/install git+https://github.com/KellerJordan/Muon
-
 # Copy application code
 COPY . .
 
-# Install the application package
-RUN pip install --no-cache-dir --prefix=/install .
+# Install the application package with every extra. material-hasher and muon-optimizer are
+# declared in pyproject.toml, so they no longer need their own pip commands here.
+RUN pip install --no-cache-dir --prefix=/install ".[all]"
 
 # Stage 2: Runtime stage with CUDA
 FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04

@@ -5,7 +5,7 @@ The vocabulary and space-group files are written in the layout expected by `Cust
 Usage:
     ```bash
     python _utils/_preprocessing/save_tokenizer_to_hf.py --vocab_file vocabulary.json \
-        --spacegroups_file spacegroups.txt --path HF-cif-tokenizer
+        --spacegroups_file spacegroups.txt --path _utils/HF-cif-tokenizer
     ```
 """
 
@@ -120,7 +120,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Save the CIF tokenizer to a local directory.")
     parser.add_argument("--vocab_file", type=str, default="_utils/_tokenizer/vocabulary.json", help="Path to vocabulary file (generated with the _utils/_tokenizer/create_vocab.py).")
     parser.add_argument("--spacegroups_file", type=str, default="_utils/_tokenizer/spacegroups.txt", help="Path to spacegroups file (can add more, but generally unlikely to change).")
-    parser.add_argument("--path", type=str, default="HF-cif-tokenizer", help="Local save path.")
+    parser.add_argument("--path", type=str, default="_utils/HF-cif-tokenizer", help="Local save path. The default overwrites the tokenizer that ships in the wheel; give a custom tokenizer its own directory instead.")
     parser.add_argument("--hub_path", type=str, default="c-bone/HF-cif-tokenizer", help="Hugging Face Hub path.")
     parser.add_argument("--push_to_hub", action="store_true", help="Push to Hugging Face Hub.")
     parser.add_argument("--testing", action="store_true", help="Test the tokenizer with a sample CIF.")

@@ -1,3 +1,6 @@
+# Exact versions this project is developed and tested against. pyproject.toml carries the same
+# dependencies as version floors; use that (pip install -e ".[all]") for a normal install and
+# this file when you want to reproduce our environment precisely.
 accelerate==1.2.1
 torch==2.5.1
 pandas==2.2.3
@@ -5,29 +8,22 @@ transformers==4.48.0
 tokenizers==0.21.0
 datasets==3.2.0
 matplotlib==3.10.0
-torchmetrics==1.6.1
-scikit-learn==1.6.1
 joblib==1.4.2
 tqdm==4.67.1
-omegaconf==2.3.0
 pyyaml==6.0.2
 smact==3.0.1
-matminer==0.9.3
 wandb==0.25.0
 codecarbon==2.8.2
-psutil==6.1.1
-pymatgen==2025.1.9
+pymatgen==2025.6.14
 numpy==1.26.4
-flash-attention==1.0.0
 commentjson==0.9.0
 deepspeed==0.16.3
 ipywidgets==8.1.6
 jarvis-tools==2024.10.30
-brokenaxes==0.6.2
-seaborn==0.13.2
 mace-torch==0.3.13
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
 einops==0.8.1
 pybaselines==1.2.1
-# pip install git+https://github.com/lematerial/material-hasher.git
+muon-optimizer==0.1.0
+material-hasher @ git+https://github.com/lematerial/material-hasher.git

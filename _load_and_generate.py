@@ -60,7 +60,7 @@ DEFAULT_Z_LIST = [1, 2, 3, 4, 6]
 
 @lru_cache(maxsize=1)
 def _tokenizer() -> CustomCIFTokenizer:
-    """Load the CIF tokenizer once per process; the early-stop Z loop reuses it."""
+    """Load the CIF tokenizer once per process so the early-stop Z loop can reuse it."""
     return init_tokenizer(TOKENIZER_DIR)
 
 
@@ -132,7 +132,7 @@ def generate_cifs_with_hf_model(df_prompts: pd.DataFrame, hf_model_path: str, ar
     # build_generation_kwargs reads gen_max_length off args, so pin it to the model context.
     args.gen_max_length = max_length
     generation_kwargs = build_generation_kwargs(args, tokenizer, max_length)
-    # There is no --seed CLI knob; every run keeps the historical default.
+    # There is no --seed CLI knob, so every run keeps the historical default.
     base_seed = 1
 
     if worker_count >= 2:
@@ -218,7 +218,7 @@ def _run_batch_generation(args: argparse.Namespace, canonical_formulas: list, ro
     """Single generation pass: explicit Z values, or the full formula x DEFAULT_Z_LIST grid."""
     print("\nExecuting Batch Generation")
     if args.search_zs:
-        # Expand each formula x DEFAULT_Z_LIST; the reducer picks one best row per formula below.
+        # Expand each formula x DEFAULT_Z_LIST. The reducer below keeps one best row per formula.
         formulas = [f for f in canonical_formulas for _ in DEFAULT_Z_LIST]
         z_values = [z for _ in canonical_formulas for z in DEFAULT_Z_LIST]
         properties = [p for p in row_properties for _ in DEFAULT_Z_LIST]
@@ -373,7 +373,7 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Fixed sampling settings for every CLI run; build_generation_kwargs reads these off args.
+    # Fixed sampling settings for every CLI run. build_generation_kwargs reads these off args.
     args.do_sample = DO_SAMPLE
     args.top_k = TOP_K
     args.top_p = TOP_P

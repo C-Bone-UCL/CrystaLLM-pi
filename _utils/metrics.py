@@ -271,7 +271,7 @@ def get_novelty(df_gen: pd.DataFrame, base_comps: set, ltol: float, stol: float,
     tasks = []
     for idx, row in df_to_check.iterrows():
         struct = structures[df_gen.index.get_loc(idx)]
-        # Normalize composition key for robust matching
+        # Reduce to the smallest whole-number formula so Si2O4 and SiO2 share a key
         if struct:
             try:
                 comp_key = Composition(struct.composition).reduced_formula
@@ -368,7 +368,7 @@ def get_comp_novelty(df_gen: pd.DataFrame, base_comps: set, structures: list) ->
             is_comp_novel_list.append(False)
             continue
         
-        # Normalize composition key for robust matching
+        # Reduce to the smallest whole-number formula so Si2O4 and SiO2 share a key
         try:
             comp_key = Composition(struct.composition).reduced_formula
         except Exception:

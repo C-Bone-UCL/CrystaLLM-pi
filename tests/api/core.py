@@ -164,7 +164,7 @@ class APITestSuite:
             return 1
 
 class DockerTestClient:
-    """Simple wrapper for testing against a running Docker container."""
+    """Requests-backed stand-in for the FastAPI TestClient, pointed at a running container."""
     
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip('/')

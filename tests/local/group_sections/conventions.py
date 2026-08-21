@@ -97,7 +97,7 @@ class SourceConventionTests:
         assert not problems, "module docstring format:\n  " + "\n  ".join(problems)
 
     def test_no_legacy_typing_generics(self):
-        """No module spells generics the old way; the 3.10 floor makes builtins available."""
+        """No module spells generics the old way, since the 3.10 floor makes builtins available."""
         names = ["L" + "ist", "D" + "ict", "T" + "uple", "S" + "et", "T" + "ype",
                  "O" + "ptional", "U" + "nion"]
         legacy = re.compile(r"from typing import[^\n]*\b(" + "|".join(names) + r")\b")

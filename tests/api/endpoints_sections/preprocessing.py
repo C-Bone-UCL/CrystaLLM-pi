@@ -87,7 +87,7 @@ class PreprocessingEndpointTests(IntegrationMixin):
             "property1_normaliser": "power_log"
         })
         data = self._wait_and_assert(response, job_name="clean")
-        assert "_cleaning" in data["command"]
+        assert "_utils._preprocessing.cleaning" in data["command"]
         
     def test_clean_with_normalizers(self):
         """Test clean with property normalizers."""

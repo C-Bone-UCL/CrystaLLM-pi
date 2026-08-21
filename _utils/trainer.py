@@ -11,7 +11,6 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn.functional as F
-from codecarbon import OfflineEmissionsTracker
 from transformers import (
     AdamW,
     Trainer,
@@ -21,7 +20,6 @@ from transformers import (
     TrainingArguments,
     get_scheduler,
 )
-from muon import MuonWithAuxAdam, SingleDeviceMuonWithAuxAdam
 import torch.distributed as dist
 
 import _tokenizer
@@ -362,6 +360,10 @@ class ContextExtensionWarmupCallback(TrainerCallback):
 
 def start_codecarbon_tracker(args):
     """Start the CodeCarbon tracker to log emissions during training."""
+    # Imported here, not at module scope: codecarbon is a training extra, and _utils/__init__
+    # star-imports this module, so a top-level import would make it mandatory for generation.
+    from codecarbon import OfflineEmissionsTracker
+
     output_directory = os.path.join('__comp_metrics', args.output_dir)
     os.makedirs(output_directory, exist_ok=True)
 
@@ -429,6 +431,9 @@ def setup_scheduler(args, model):
     warmup_steps = args.warmup_steps if args.warmup_steps is not None else int(args.warmup_ratio * num_training_steps)
 
     if args.optimizer == "muon":
+        # Training extra, imported lazily for the same reason as codecarbon above.
+        from muon import MuonWithAuxAdam, SingleDeviceMuonWithAuxAdam
+
         hidden_matrix_params = [] # 2D weights in transformer blocks (Muon)
         adamw_params = [] # Embeddings, lm_head, 1D params (AdamW)
         cond_params = [] # Conditioning module params (AdamW with cond_lr)

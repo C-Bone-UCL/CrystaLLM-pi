@@ -48,7 +48,7 @@ def load_config(yaml_path: Path) -> dict:
 def compute_pair_fractions(struct: Structure, pair: tuple[str, str]) -> dict[str, float]:
     """Fraction of pure-element sites each member of a pair occupies.
 
-    Only sites holding a single pure element count toward the totals; already-disordered sites are ignored, since their occupancy is not a clean vote for either member. Returns both fractions keyed by element symbol, or zeros when neither element is present.
+    Only sites holding a single pure element count toward the totals. Already-disordered sites are ignored, since their occupancy is not a clean vote for either member. Returns both fractions keyed by element symbol, or zeros when neither element is present.
     """
     a, b = pair
     count_a = 0
@@ -97,7 +97,7 @@ def virtualise_structure(struct: Structure, virtual_pairs: list[tuple[str, str]]
             else:
                 new_species.append(site.species)
         else:
-            # already disordered; keep as-is
+            # already disordered, keep as-is
             new_species.append(site.species)
         new_coords.append(site.frac_coords)
 

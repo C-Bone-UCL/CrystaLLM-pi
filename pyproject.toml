@@ -11,6 +11,63 @@ license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [{ name = "Cyprien Bone", email = "cyprien.bone.24@ucl.ac.uk" }]
 
+# Floors, not exact pins: this is a library, and hard pins make it uninstallable alongside
+# anything else. requirements.txt keeps the exact versions we develop and test against.
+dependencies = [
+  "torch>=2.5.1",
+  "transformers>=4.48.0",
+  "tokenizers>=0.21.0",
+  "datasets>=3.2.0",
+  "huggingface_hub>=0.26",
+  "pymatgen>=2025.1.9",
+  "numpy>=1.26.4,<2",
+  "pandas>=2.2.3",
+  "pyarrow>=15",
+  "scipy>=1.11",
+  "matplotlib>=3.8",
+  "joblib>=1.4.2",
+  "tqdm>=4.67.1",
+  "commentjson>=0.9.0",
+  "einops>=0.8.1",
+  "pybaselines>=1.2.1",
+  "pyyaml>=6.0.2",
+  "requests>=2.31",
+]
+
+# `metrics` carries a direct git reference, which is legal for a source or GitHub install but
+# is rejected by PyPI. The documented install is clone-based and the package is not published
+# to PyPI, so this is deliberate. Publishing there later means vendoring or dropping BAWL.
+[project.optional-dependencies]
+train = [
+  "accelerate>=1.2.1",
+  "wandb>=0.25.0",
+  "deepspeed>=0.16.3",
+  "codecarbon>=2.8.2",
+  "muon-optimizer>=0.1.0",
+]
+api = [
+  "fastapi>=0.115.5",
+  "uvicorn[standard]>=0.32.1",
+  "pydantic>=2",
+]
+metrics = [
+  "mace-torch>=0.3.13",
+  "smact>=3.0.1",
+  "material-hasher @ git+https://github.com/lematerial/material-hasher.git",
+]
+notebooks = [
+  "ipywidgets>=8.1.6",
+  "jarvis-tools>=2024.10.30",
+]
+docs = [
+  "mkdocs>=1.6",
+  "mkdocs-material>=9.5",
+  "mkdocstrings[python]>=0.26",
+]
+all = [
+  "crystallm-pi[train,api,metrics,notebooks]",
+]
+
 [project.urls]
 Homepage = "https://github.com/C-Bone-UCL/CrystaLLM-pi"
 "Bug Tracker" = "https://github.com/C-Bone-UCL/CrystaLLM-pi/issues"
@@ -34,5 +91,7 @@ where = ["."]
 include = ["_models*", "_utils*"]
 
 [tool.setuptools.package-data]
-"_utils" = ["model_registry.json"]
+# HF-cif-tokenizer lives under _utils so it ships in the wheel; without it an installed
+# CrystaLLM-pi can only generate when run from the repo root. See resolve_tokenizer_dir.
+"_utils" = ["model_registry.json", "HF-cif-tokenizer/*"]
 

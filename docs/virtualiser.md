@@ -1,6 +1,6 @@
 # Virtual Crystal Generation (Post-processing)
 
-After generating ordered CIF structures, you can convert them to **disordered virtual crystals** using the [`virtualiser`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/_utils/_virtualiser/virtualiser.py) utility. This replaces specified element pairs with fractional occupancies at shared sites and promotes the structure to its higher-symmetry parent with spglib. Useful for comparing against experimental diffraction data or estimating a disordered structure candidate.
+After generating ordered CIF structures, you can convert them to disordered virtual crystals using the [`virtualiser`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/_utils/_virtualiser/virtualiser.py) utility. This replaces specified element pairs with fractional occupancies at shared sites and promotes the structure to its higher-symmetry parent with spglib. Useful for comparing against experimental diffraction data or estimating a disordered structure candidate.
 
 <details markdown>
 <summary>Example Usage and Config</summary>

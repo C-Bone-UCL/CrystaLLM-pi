@@ -475,10 +475,10 @@ def run_generation_pool(
         generation_kwargs: sampling args from build_generation_kwargs, passed to model.generate
         activate_conditionality: registry key selecting the model class, None for the base model
         scoring_mode: raw mode string, normalized internally
-        target_valid_cifs: valid CIFs wanted per prompt; 0 returns everything and needs scoring off
+        target_valid_cifs: valid CIFs wanted per prompt (0 returns everything and needs scoring off)
         max_return_attempts: generation rounds per prompt before giving up
         base_seed: worker N seeds with base_seed + N so GPUs do not duplicate samples
-        worker_count: GPU workers, clamped to visible devices; None uses all
+        worker_count: GPU workers, clamped to visible devices (None uses all)
         initargs_override: replaces the defaults passed to init_worker, used to load from the Hub and carry config_overrides such as skip_xrd_convert_model
 
     Returns:

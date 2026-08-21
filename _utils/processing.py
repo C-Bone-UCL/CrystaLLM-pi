@@ -1,4 +1,4 @@
-"""General utilities for processing CIF files and and extracting structural information.
+"""General utilities for processing CIF files and extracting structural information.
 """
 
 import math

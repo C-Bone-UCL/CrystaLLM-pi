@@ -287,9 +287,9 @@ class SliderAttention(GPT2Attention):
 
         if getattr(self.config, "slider_on", False):
             if slider_key_value_factor_mask is None:
-                # This path might be hit if called without conditions during generation,
-                # assuming SliderGPT2Model handles the None case by creating default markers.
-                # We can add a warning or simply proceed assuming zero contribution is desired.
+                # Reached when generation runs without conditions and SliderGPT2Model never
+                # built the default markers. Warn once and leave the slider contribution at
+                # zero rather than failing the forward pass.
                 logger.warning_once(f"[Rank {rank} Layer {self.layer_idx}] Slider is ON but slider_key_value_factor_mask is None. Skipping slider contribution.")
             else:
                 slider_key, slider_value, slider_factor, condition_mask = slider_key_value_factor_mask

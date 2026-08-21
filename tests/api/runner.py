@@ -178,7 +178,7 @@ def run_all_tests(
             suite.run_test("integration_xrd_preprocessing", int_preproc_tests.test_xrd_preprocessing_valid_request)
             
             print("\nGeneration integration tests")
-            # Run make_prompts FIRST so the files exist for downstream tests!
+            # Run make_prompts first so the prompt files exist for the downstream tests.
             suite.run_test("integration_make_prompts_manual", int_gen_tests.test_make_prompts_manual)
             suite.run_test("integration_make_prompts_automatic", int_gen_tests.test_make_prompts_automatic)
 

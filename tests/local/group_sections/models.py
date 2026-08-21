@@ -366,7 +366,7 @@ class ModelTests:
         assert metadata["protected_wpe_row_ranges"] == [(4, 12)]
 
     def _run_prefix_load_shift_probe(self, source_config_dict):
-        """Drive load_pretrained_model with dummy classes; return the recorded resize call."""
+        """Drive load_pretrained_model with dummy classes and return the recorded resize call."""
         from types import SimpleNamespace
         import _utils.model as model_utils
 

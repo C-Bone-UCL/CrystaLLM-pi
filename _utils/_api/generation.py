@@ -199,7 +199,7 @@ def register_generation_routes(
 
         if request.max_samples is not None:
             cmd.extend(["--max_samples", str(request.max_samples)])
-        # The CLI's single GPU knob is --num_workers_gpu; deprecated multi_gpu="false"
+        # The CLI's single GPU knob is --num_workers_gpu. A deprecated multi_gpu="false"
         # translates to a cap of 1 so existing API clients keep single-GPU behavior.
         if request.multi_gpu == "false":
             cmd.extend(["--num_workers_gpu", "1"])

@@ -3,7 +3,7 @@
 !!! tip "Run it in a notebook"
     [`T3_API_density_example.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T3_API_density_example.ipynb) shows how we can use the `_load_and_generate.py` but using the API to predict structure densities using our models.
 
-Containerized API provides REST endpoints for preprocessing, training, generation, and metrics.
+The containerised API provides REST endpoints for preprocessing, training, generation, and metrics.
 
 First-time host setup (Linux + NVIDIA GPU required):
 
@@ -111,7 +111,7 @@ See the examples below.
 For `/generate/direct`, provide exactly one of `output_parquet` or `output_cif_dir`.
 
 <details markdown>
-<summary>Expand for comprehensive API generation examples (curl)</summary>
+<summary>API generation examples (curl)</summary>
 
 **Direct generation (Explicit Z, Spacegroup targeting)**
 
@@ -212,7 +212,7 @@ Use this when you want the API packaged as a portable `.sif` (e.g. for HPC / no-
 ### 1) Build the production Docker image
 
 ```bash
-# Builds the docker image so we can make a .sif file from it, this command doesnt boot up the container.
+# Builds the docker image so we can make a .sif file from it, this command does not boot up the container.
 make api-build
 ```
 

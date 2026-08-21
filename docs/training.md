@@ -68,7 +68,7 @@ python _utils/_preprocessing/cleaning.py \
   --property2_normaliser "linear"
 ```
 
-> Tip: Keep a note somewhere of the lowest and highest property values for each property, so that later when you have a particular property target you can easily normalize it to the format the model expects.
+> Tip: Keep a note somewhere of the lowest and highest property values for each property, so that when you have a property target later you can normalize it to the format the model expects.
 
 **Key arguments:**
 
@@ -121,7 +121,7 @@ python _utils/_preprocessing/save_dataset_to_hf.py \
 
 All training should be done via configuration files (`.jsonc` format). These files specify model architecture, hyperparameters, data paths, and training settings. See example configs in `_config_files/training/` and review [`_args.py`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/_args.py). for all available parameters.
 
-> The `Muon` optimiser is now available for training, see [this blog post](https://kellerjordan.github.io/posts/muon/) for details. Importantly, you cannot use deepspeed when using muon. Simply do not feed a deepspeed configuration file and it will work fine (multi-GPU training still supported). Muon speeds up and stabilises training without any performance trade-offs (did some internal checks).
+> The `Muon` optimiser is now available for training, see [this blog post](https://kellerjordan.github.io/posts/muon/) for details. Muon does not work with deepspeed. Leave the deepspeed configuration file out and it runs, multi-GPU training included. In our internal checks Muon sped up and stabilised training with no performance trade-off.
 
 <details markdown>
 <summary>Base model training CLI example</summary>
@@ -211,7 +211,7 @@ python _utils/_generating/make_prompts.py \
 
 **Composition-Condition Pairing modes `--mode`:**
 
-Each quoted string is a **complete condition vector** (comma-separated property values).
+Each quoted string is one complete condition vector, comma-separated property values.
 
 * `cartesian` (default): All conditions applied to all compositions
 * `paired`: 1:1 mapping - must have same count of conditions and compositions
@@ -237,7 +237,7 @@ python _utils/_generating/generate_cifs.py \
 
 * **Temperature:** Controls randomness (default ~1.0, higher is more exploratory but higher chance of gibberish)
 * **Top-p/Top-k:** Sampling parameters (typical: 0.95, 50)
-* **scoring_mode:** if set to `None` and `target_valid_cifs = 0`, then we generate `max_return_attempts * num_return_sequences` CIFs per Prompt/Condition pair without validation. If set to `None` and `target_valid_cifs > 0`, then we validate generated CIFs and stop once that many valid CIFs are found, without ranking. If set to `LOGP`, we validate and rank using a perplexity based scoring method. `PEARSON` (continuous-XRD models only) validates and ranks by agreement between each candidate's simulated diffraction pattern and the input scan; a continuous-XRD `--search_zs` run defaults to `PEARSON` when no mode is given.
+* **scoring_mode:** if set to `None` and `target_valid_cifs = 0`, then we generate `max_return_attempts * num_return_sequences` CIFs per Prompt/Condition pair without validation. If set to `None` and `target_valid_cifs > 0`, then we validate generated CIFs and stop once that many valid CIFs are found, without ranking. If set to `LOGP`, we validate and rank using a perplexity based scoring method. `PEARSON` (continuous-XRD models only) validates and ranks by agreement between each candidate's simulated diffraction pattern and the input scan. A continuous-XRD `--search_zs` run defaults to `PEARSON` when no mode is given.
 * **num_return_sequences:** Batch size for generation (adjust for GPU mem.)
 * **max_return_attempts:** In raw mode, total generation for each Prompt/Condition pair = `max_return_attempts * num_return_sequences`. In validation-targeted modes, generation stops when `target_valid_cifs` valid CIFs are found or `max_return_attempts` is reached.
 
@@ -257,7 +257,7 @@ python _utils/_generating/postprocess.py \
   --num_workers 4
 ```
 
-Convcerts LLM outputs to standard Pymatgen style CIF format.
+Converts LLM outputs to standard Pymatgen style CIF format.
 
 </details>
 

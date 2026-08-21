@@ -364,7 +364,7 @@ class GenerationEndpointTests(IntegrationMixin):
 
         if self.is_integration:
             container_config_path = self._out("gen_config.jsonc")
-            # Clever trick: strip '/app/' to get the local host path!
+            # The container mounts the repo at /app, so dropping that prefix gives the host path.
             local_config_path = container_config_path.replace("/app/", "")
             
             input_prompts = self._out("prompts_auto.parquet")

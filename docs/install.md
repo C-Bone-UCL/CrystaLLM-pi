@@ -20,15 +20,23 @@ cd CrystaLLM-pi
 conda create -n CrystaLLM-pi_env python=3.10
 conda activate CrystaLLM-pi_env
 
-# Install dependencies and setup package
-pip install -r requirements.txt
-# material-hasher package needs to be installed via
-pip install git+https://github.com/lematerial/material-hasher.git
-# muon optimizer (addition in development, install required)
-pip install git+https://github.com/KellerJordan/Muon
-# Install CrystaLLM-pi in editable mode
-pip install -e .
+# Install CrystaLLM-pi and all its dependencies
+pip install -e ".[all]"
 ```
+
+### Choosing what to install
+
+`[all]` installs everything. If you only need part of the toolkit, install just that part
+instead. It is much faster and avoids building DeepSpeed.
+
+| Command | Gives you |
+|---|---|
+| `pip install -e .` | generating structures with released models |
+| `pip install -e ".[train]"` | + training and finetuning your own |
+| `pip install -e ".[api]"` | + the containerised HTTP service |
+| `pip install -e ".[metrics]"` | + VUN, stability and property scoring |
+| `pip install -e ".[notebooks]"` | + the tutorial notebooks |
+| `pip install -e ".[all]"` | everything above |
 
 ### API Keys Configuration
 

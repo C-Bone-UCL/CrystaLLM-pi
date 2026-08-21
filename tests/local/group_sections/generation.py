@@ -108,7 +108,7 @@ class GenerationTests:
             assert "Unknown model type" in str(err), f"Unexpected error: {err}"
 
     def test_parse_condition_vector_nested(self):
-        """Nested condition vectors (continuous XRD) survive parsing; flat strings unchanged."""
+        """Nested condition vectors (continuous XRD) survive parsing, and flat strings stay unchanged."""
         from _utils._generating.generate_cifs import parse_condition_vector
 
         # Nested string form (parquet round-trip) and native nested lists preserve 2D shape

@@ -120,6 +120,7 @@ def main():
         # Core component tests
         print("\n🔧 Core Component Tests:")
         suite.run_test("tokenizer_basic", data_tests.test_tokenizer_basic)
+        suite.run_test("tokenizer_dir_resolves_when_cwd_copy_is_absent", gen_pipeline_tests.test_tokenizer_dir_resolves_when_cwd_copy_is_absent)
         suite.run_test("cif_validation", data_tests.test_cif_validation)
         suite.run_test("prompt_creation", data_tests.test_prompt_creation)
         suite.run_test("automatic_prompts_keep_condition_column_intact", data_tests.test_automatic_prompts_keep_condition_column_intact)
