@@ -1,6 +1,8 @@
 r"""Compute energy above hull using the MACE potential and MP2020 corrections.
 
-Each generated structure is relaxed with MACE and placed on the Materials Project convex hull. MP2020 compatibility corrections make the resulting energies comparable with Materials Project entries.
+Each generated structure is relaxed with MACE and placed on the Materials Project convex hull.
+MP2020 compatibility corrections make the resulting energies comparable with Materials Project
+entries.
 
 Inspired by: https://github.com/facebookresearch/crystal-text-llm/blob/main/e_above_hull.py
 

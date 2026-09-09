@@ -10,7 +10,8 @@ class TrainingTests:
     def test_train_cli_help_runs(self):
         """_train.py must build its parser and exit cleanly.
 
-        The training entrypoint is otherwise untested end to end, so argparse or import-level breakage would only show up on a real run.
+        The training entrypoint is otherwise untested end to end, so argparse or import-level
+        breakage would only show up on a real run.
         """
         import os
         import subprocess

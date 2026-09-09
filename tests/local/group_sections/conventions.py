@@ -1,8 +1,12 @@
 """Local test section: source conventions for module docstrings, naming and annotations.
 
-Fails the suite when a module docstring drifts from the expected format, and when a symbol listed on the docs API pages carries no docstring of its own. Those pages double as the manifest of what counts as public, since Python has no export list to check against.
+Fails the suite when a module docstring drifts from the expected format, and when a symbol listed on
+the docs API pages carries no docstring of its own. Those pages double as the manifest of what
+counts as public, since Python has no export list to check against.
 
-Nothing here imports the code it checks. Everything is read with ast instead, because `_train` imports wandb and the offline CI tier does not install it, so an import-based check would fail the gate rather than the docstring.
+Nothing here imports the code it checks. Everything is read with ast instead, because `_train`
+imports wandb and the offline CI tier does not install it, so an import-based check would fail the
+gate rather than the docstring.
 
 Inspired by: https://github.com/Frost-group/PolaronMobility.jl/blob/main/test/docs_smoke.jl
 """
@@ -27,7 +31,8 @@ def _python_files():
 def _is_cli_entry_point(tree):
     """True when the module has a real `if __name__ == "__main__":` guard.
 
-    Matched on the parsed tree, not by substring: this very module mentions `__main__` inside a string literal, and a substring check would call every such file a CLI.
+    Matched on the parsed tree, not by substring: this very module mentions `__main__` inside a
+    string literal, and a substring check would call every such file a CLI.
     """
     for node in tree.body:
         if not isinstance(node, ast.If):
@@ -57,7 +62,9 @@ def _wraps_a_command(path, tree):
 def _is_raw_literal(path, tree):
     """True when the docstring is written as an r-string.
 
-    A lone backslash-newline inside a normal literal is a Python line continuation, so the wrapped shell command collapses onto one line and loses the backslash when rendered. Raw literals keep both, which is what a docs site and help() need to show a runnable command.
+    A lone backslash-newline inside a normal literal is a Python line continuation, so the wrapped
+    shell command collapses onto one line and loses the backslash when rendered. Raw literals keep
+    both, which is what a docs site and help() need to show a runnable command.
     """
     return _docstring_source(path, tree).lstrip().startswith(("r\"\"\"", "r'''"))
 
@@ -143,7 +150,9 @@ class SourceConventionTests:
     def test_module_names_follow_the_house_convention(self):
         """Module files under `_utils/` are lowercase, unprefixed and free of a `_utils` suffix.
 
-        `_models/` is exempt: its filenames track the checkpoint families they load (`PKV_model.py`, `PrefixXRD_model.py`), which is worth more than PEP 8 casing. Root scripts are exempt too, since the leading underscore there marks the package's own entry points.
+        `_models/` is exempt: its filenames track the checkpoint families they load (`PKV_model.py`,
+        `PrefixXRD_model.py`), which is worth more than PEP 8 casing. Root scripts are exempt too,
+        since the leading underscore there marks the package's own entry points.
         """
         utils = REPO_ROOT / "_utils"
         sources = [p for p in sorted(utils.rglob("*.py"))
@@ -171,7 +180,10 @@ class SourceConventionTests:
     def test_api_pages_list_documented_symbols(self):
         """Every `:::` directive on the docs API pages resolves to a symbol with a docstring.
 
-        These pages double as the manifest of what counts as public, since Python has no export list to check against. A directive that names a moved or renamed symbol would build a page with a hole in it, and mkdocs only catches that when the docs toolchain is installed, which the offline tier does not have.
+        These pages double as the manifest of what counts as public, since Python has no export list
+        to check against. A directive that names a moved or renamed symbol would build a page with a
+        hole in it, and mkdocs only catches that when the docs toolchain is installed, which the
+        offline tier does not have.
         """
         api_dir = REPO_ROOT / "docs" / "api"
         assert api_dir.is_dir(), "docs/api is missing, the API reference pages are the manifest"

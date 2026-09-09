@@ -1,6 +1,8 @@
 r"""Generate CIF structures across GPU workers with validation and optional ranking.
 
-Candidates are validated and surviving structures can be ranked by model perplexity or XRD fit before selection. The workflow accepts already-built prompts and can resolve a run directory to its newest checkpoint.
+Candidates are validated and surviving structures can be ranked by model perplexity or XRD fit
+before selection. The workflow accepts already-built prompts and can resolve a run directory to its
+newest checkpoint.
 
 Usage:
     ```bash
@@ -46,15 +48,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from _tokenizer import CustomCIFTokenizer
 from _models import PKVGPT, SliderGPT
 from _utils.model import MODEL_REGISTRY
-from _utils._generating.scoring_methods import score_outputs_logp
 from _args import parse_args
 from _utils import find_checkpoint_from_dir, is_sensible, is_formula_consistent, is_space_group_consistent, extract_space_group_symbol, replace_symmetry_operators, bond_length_reasonableness_score
 
 model = None
 tokenizer = None
 
-def check_cif(cif_str: str) -> bool:
-    """Check if CIF string is structurally and chemically self-consistent."""
+def check_cif(cif_str: str, check_bond_length: bool=True) -> bool:
+    """Check if CIF string is structurally and chemically self-consistent.
+
+    Callers set `check_bond_length` from the screening profile. The published numbers had it off.
+    """
+    if not cif_str:
+        return False
     try:
         space_group_symbol = extract_space_group_symbol(cif_str)
         if space_group_symbol is not None and space_group_symbol != "P 1":
@@ -66,10 +72,12 @@ def check_cif(cif_str: str) -> bool:
             return False
         if not is_space_group_consistent(cif_str):
             return False
-        bond_length_score = bond_length_reasonableness_score(cif_str)
-        if bond_length_score < 1.0:
-            return False
-        
+        if check_bond_length:
+            # None means disordered, so not checked.
+            bond_length_score = bond_length_reasonableness_score(cif_str)
+            if bond_length_score is not None and bond_length_score < 1.0:
+                return False
+
         return True
     except Exception:
         return False
@@ -121,7 +129,8 @@ def get_model_max_length(model_ckpt_dir: str, activate_conditionality: str | Non
 def build_generation_kwargs(args: argparse.Namespace, tokenizer: CustomCIFTokenizer, max_length: int) -> dict:
     """Assemble the keyword arguments passed to `model.generate`.
 
-    Clamps `max_length` to the model's own context window, so a longer request cannot overrun the positional embeddings, and sets the sampling knobs from `args`.
+    Clamps `max_length` to the model's own context window, so a longer request cannot overrun the
+    positional embeddings, and sets the sampling knobs from `args`.
     """
     base_kwargs = {
         "max_length": min(args.gen_max_length, max_length),
@@ -165,7 +174,9 @@ def build_generation_kwargs(args: argparse.Namespace, tokenizer: CustomCIFTokeni
 def parse_condition_vector(condition_vector: object) -> list | None:
     """Normalize a condition vector from any of the formats a parquet round trip can produce.
 
-    Accepts a scalar, a comma-separated string, a repr string, a list, or a numpy array, and returns a list of floats. Nested sequences stay nested. That is what keeps a `(1000, 2)` continuous-XRD profile as `[Q, I]` pairs instead of flattening it.
+    Accepts a scalar, a comma-separated string, a repr string, a list, or a numpy array, and returns
+    a list of floats. Nested sequences stay nested, which keeps a `(1000, 2)` continuous-XRD profile
+    as `[Q, I]` pairs instead of flattening it.
 
     Returns None for a genuine absence: None itself, the string "None", or NaN.
     """
@@ -209,9 +220,12 @@ def _normalize_scoring_mode(mode: str | None) -> str:
 def resolve_generation_plan(scoring_mode: str | None, target_valid_cifs: int, max_return_attempts: int, num_return_sequences: int, total_samples: int) -> dict:
     """Work out how many candidates to generate per prompt and whether to validate them.
 
-    Scoring implies validation, since an invalid CIF cannot be meaningfully ranked, and so does any non-zero `target_valid_cifs`. When neither applies, the target becomes the full `num_return_sequences * max_return_attempts` grid and everything generated is returned.
+    Scoring implies validation, since an invalid CIF cannot be meaningfully ranked, and so does any
+    non-zero `target_valid_cifs`. When neither applies, the target becomes the full
+    `num_return_sequences * max_return_attempts` grid and everything generated is returned.
 
-    Returns a dict with the normalized scoring mode, the `need_scores` and `check_validity` flags, the per-prompt target, and the total expected generations used for the progress bar.
+    Returns a dict with the normalized scoring mode, the `need_scores` and `check_validity` flags,
+    the per-prompt target, and the total expected generations used for the progress bar.
     """
     normalized_scoring_mode = _normalize_scoring_mode(scoring_mode)
     need_scores = (normalized_scoring_mode == "logp")
@@ -312,6 +326,7 @@ def main() -> None:
     
     # Normalize scoring mode and set base seed
     base_seed = getattr(args, 'seed', 1)
+    print(f"Screening profile: {args.screening_profile}")
     plan = resolve_generation_plan(
         scoring_mode=args.scoring_mode,
         target_valid_cifs=args.target_valid_cifs,
@@ -358,7 +373,8 @@ def main() -> None:
                 results.append(pool.apply_async(
                     generate_on_gpu,
                     (0, df_prompts, generation_kwargs, queue, 0, total_samples,
-                    args.activate_conditionality, 0, scoring_mode, target_valid_cifs, args.max_return_attempts, base_seed)
+                    args.activate_conditionality, 0, scoring_mode, target_valid_cifs, args.max_return_attempts, base_seed,
+                    args.screening_profile)
                 ))
             
             elif is_single_prompt:
@@ -382,7 +398,7 @@ def main() -> None:
                 current_offset = 0
                 
                 for gpu_id in range(num_gpus):
-                    # Ensure at least 1 attempt if there's work to do
+                    # Do not skip a non-empty workload when the attempt count is zero.
                     local_attempts = max(1, attempts_per_gpu[gpu_id]) if base_attempts > 0 else 0
                     local_target = max(1, targets_per_gpu[gpu_id]) if base_target > 0 else 0
                     
@@ -393,7 +409,8 @@ def main() -> None:
                     results.append(pool.apply_async(
                         generate_on_gpu,
                         (gpu_id, df_prompts, generation_kwargs, queue, 0, 1,
-                         args.activate_conditionality, current_offset, scoring_mode, local_target, local_attempts, base_seed)
+                         args.activate_conditionality, current_offset, scoring_mode, local_target, local_attempts, base_seed,
+                         args.screening_profile)
                     ))
                     
                     # Estimate offset increment for next worker to avoid ID collision
@@ -413,7 +430,8 @@ def main() -> None:
                     results.append(pool.apply_async(
                         generate_on_gpu,
                         (gpu_id, df_prompts, generation_kwargs, queue, start, end,
-                        args.activate_conditionality, global_offset, scoring_mode, target_valid_cifs, args.max_return_attempts, base_seed)
+                        args.activate_conditionality, global_offset, scoring_mode, target_valid_cifs, args.max_return_attempts, base_seed,
+                        args.screening_profile)
                     ))
 
         except Exception as e:
@@ -467,6 +485,7 @@ def run_generation_pool(
     base_seed: int=1,
     worker_count: int | None=None,
     initargs_override: tuple | None=None,
+    screening_profile: str="application",
 ) -> list[dict]:
     """Generate CIFs across worker processes and return the collected rows.
 
@@ -479,10 +498,14 @@ def run_generation_pool(
         max_return_attempts: generation rounds per prompt before giving up
         base_seed: worker N seeds with base_seed + N so GPUs do not duplicate samples
         worker_count: GPU workers, clamped to visible devices (None uses all)
-        initargs_override: replaces the defaults passed to init_worker, used to load from the Hub and carry config_overrides such as skip_xrd_convert_model
+        initargs_override: replaces the defaults passed to init_worker, used to load from the Hub
+                           and carry config_overrides such as skip_xrd_convert_model
+        screening_profile: 'benchmark' or 'application', see the --screening_profile help in
+                           _args.py
 
     Returns:
-        list of row dicts with prompt metadata, generated CIF text, and the ranking score when scoring is on
+        list of row dicts with prompt metadata, generated CIF text, and the ranking score when
+        scoring is on
     """
     # Imported here rather than at module scope: workers.py imports this module's
     # helpers, so a top-level import either way would be circular.
@@ -521,7 +544,8 @@ def run_generation_pool(
             results.append(pool.apply_async(
                 generate_on_gpu,
                 (0, df_prompts, generation_kwargs, queue, 0, total_samples,
-                 activate_conditionality, 0, normalized_scoring_mode, target_valid_cifs, max_return_attempts, base_seed)
+                 activate_conditionality, 0, normalized_scoring_mode, target_valid_cifs, max_return_attempts, base_seed,
+                 screening_profile)
             ))
 
         elif is_single_prompt:
@@ -541,7 +565,7 @@ def run_generation_pool(
                     generate_on_gpu,
                     (gpu_id, df_prompts, generation_kwargs, queue, 0, 1,
                      activate_conditionality, current_offset, normalized_scoring_mode,
-                     l_target, l_attempts, base_seed)
+                     l_target, l_attempts, base_seed, screening_profile)
                 ))
                 if not check_validity:
                     current_offset += local_goal * generation_kwargs.get("num_return_sequences", 1)
@@ -558,7 +582,8 @@ def run_generation_pool(
                 results.append(pool.apply_async(
                     generate_on_gpu,
                     (gpu_id, df_prompts, generation_kwargs, queue, start, end,
-                     activate_conditionality, start, normalized_scoring_mode, target_valid_cifs, max_return_attempts, base_seed)
+                     activate_conditionality, start, normalized_scoring_mode, target_valid_cifs, max_return_attempts, base_seed,
+                     screening_profile)
                 ))
 
         for res in results:

@@ -268,7 +268,7 @@ Converts LLM outputs to standard Pymatgen style CIF format.
 
 ### VUN Metrics (Validity, Uniqueness, Novelty)
 
-**Script:** `_utils/_scoring/vun_metrics.py` - Essential metrics for assessing generation quality using structural analysis.
+**Script:** `_utils/_scoring/vun_metrics.py` - Validity, uniqueness and novelty metrics from structural analysis.
 
 **Required:** Structures must be post-processed with Reduced Formulas column included
 
@@ -298,7 +298,7 @@ We can optionally set the `--check_comp_novelty` flag, which adds an `is_comp_no
 
 **Script:** `_utils/_scoring/mace_ehull.py` - Calculate thermodynamic stability using MACE energy predictions. See the [MACE paper](https://arxiv.org/abs/2206.07697) for details on the surrogate model.
 
-> To calculate E_hull First, total energies are computed using the MACE-MP default calculator, predicted energies are then processed using the *MaterialsProject2020Compatibility* scheme to ensure consistency between GGA and GGA+U calculations. The surrogate energy predictions are compared to formation energies of known materials from the MP dataset and used to construct a convex hull. The energy above the convex hull (E_hull) quantifies thermodynamic stability by comparing a material's formation energy to competing phases.
+> To calculate E_hull First, total energies are computed using the MACE-MP default calculator, predicted energies are then processed using the *MaterialsProject2020Compatibility* scheme for consistency between GGA and GGA+U calculations. The surrogate energy predictions are compared to formation energies of known materials from the MP dataset and used to construct a convex hull. The energy above the convex hull (E_hull) quantifies thermodynamic stability by comparing a material's formation energy to competing phases.
 
 <details markdown>
 <summary>Example Usage and Args</summary>

@@ -90,7 +90,7 @@ class IntegrationTests:
         # Run 2 training steps
         train_result = trainer.train()
 
-        # Verify the trainer actually executed steps and produced a finite loss
+        # Verify the trainer executed steps and produced a finite loss
         assert train_result.global_step == 2, "Expected exactly 2 training steps"
         assert train_result.training_loss == train_result.training_loss, "Training loss should be finite"
     

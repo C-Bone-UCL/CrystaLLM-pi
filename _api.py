@@ -1,6 +1,7 @@
 """FastAPI service for the CrystaLLM-pi command-line utilities.
 
-Endpoint groups are registered from the `_utils._api` modules. Long-running generation and training work runs as background jobs and is polled through the jobs endpoints.
+Endpoint groups are registered from the `_utils._api` modules. Long-running generation and training
+work runs as background jobs and is polled through the jobs endpoints.
 
 Usage:
     ```bash
@@ -47,7 +48,8 @@ _ACTIVE_PROCESSES = {}
 class JobStatus(BaseModel):
     """Status of a background job.
 
-    Generation and training endpoints return a job status while the work runs in the background. Callers poll the jobs endpoints for completion.
+    Generation and training endpoints return a job status while the work runs in the background.
+    Callers poll the jobs endpoints for completion.
     """
     job_id: str
     status: Literal['pending', 'running', 'completed', 'failed']

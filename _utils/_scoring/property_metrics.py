@@ -1,6 +1,7 @@
 r"""Score generated structures against their conditioned property targets.
 
-Targets are normalised using the training convention, properties are predicted from the generated structures, and errors are grouped by condition vector so each target value is scored separately.
+Targets are normalised using the training convention, properties are predicted from the generated
+structures, and errors are grouped by condition vector so each target value is scored separately.
 
 Usage:
     ```bash
@@ -106,7 +107,7 @@ def process_property_targets(gen_df_proc, property_targets, norm_methods, max_va
     # Vectorized parsing of condition vectors
     gen_df_proc['parsed_conditions'] = gen_df_proc[condition_column_name].apply(parse_condition_vector)
     
-    # Ensure all parsed conditions are lists
+    # Parsed conditions must all be lists
     gen_df_proc['parsed_conditions'] = gen_df_proc['parsed_conditions'].apply(
         lambda x: x if isinstance(x, (list, tuple)) else [x]
     )

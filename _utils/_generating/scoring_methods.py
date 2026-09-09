@@ -1,6 +1,8 @@
 """Provide ranking strategies for generated CIF candidates.
 
-Log-probability ranking measures model output likelihood and applies to all model families. XRD pearson ranking correlates a simulated powder pattern with the processed conditioning profile so it applies only to continuous-XRD models.
+Log-probability ranking measures model output likelihood and applies to all model families. XRD
+pearson ranking correlates a simulated powder pattern with the processed conditioning profile so it
+applies only to continuous-XRD models.
 """
 
 import numpy as np
@@ -14,72 +16,55 @@ from _utils import extract_space_group_symbol, replace_symmetry_operators
 from _utils._preprocessing.process_exp_xrd_continuous import DEFAULT_WAVELENGTH
 
 
-def _score_transition_slice(generated_scores: tuple, original_sequence: torch.Tensor, input_length: int, eos_token_id: int | None=None) -> torch.Tensor:
-    """Score one generated sequence from a precomputed transition-score row."""
-    scoring_length = len(generated_scores)
+def forward_pass_logp(model: torch.nn.Module, full_sequences: torch.Tensor, input_length: int, eos_token_id: int | None=None, condition_tensor: torch.Tensor | None=None) -> list[float]:
+    """Score generated sequences by perplexity under the model, in one forward pass.
+
+    Uses a fresh teacher-forced pass over the full vocabulary at temperature 1. Scoring
+    `outputs.scores` instead measures the sampling distribution, whose per-step renormaliser
+    varies by context and so moves the ranking. Excludes tokens before `input_length` and
+    from EOS onward.
+    """
+    if full_sequences is None or full_sequences.numel() == 0:
+        return []
+
+    forward_kwargs = {}
+    if condition_tensor is not None:
+        if condition_tensor.shape[0] != full_sequences.shape[0]:
+            repeat_shape = [full_sequences.shape[0]] + [1] * (condition_tensor.dim() - 1)
+            condition_tensor = condition_tensor.repeat(*repeat_shape)
+        forward_kwargs["condition_values"] = condition_tensor
+
+    with torch.inference_mode():
+        logits = model(input_ids=full_sequences, **forward_kwargs).logits
+
+    shifted_logits = logits[:, :-1, :]
+    shifted_labels = full_sequences[:, 1:]
+    token_log_probs = torch.log_softmax(shifted_logits, dim=-1)
+    gathered_log_probs = token_log_probs.gather(-1, shifted_labels.unsqueeze(-1)).squeeze(-1)
+
+    start_idx = max(int(input_length) - 1, 0)
+    positions = torch.arange(shifted_labels.shape[1], device=full_sequences.device).unsqueeze(0)
+    valid_mask = positions >= start_idx
 
     if eos_token_id is not None:
-        eos_positions = (original_sequence == eos_token_id).nonzero(as_tuple=True)[0]
-        if eos_positions.numel() > 0:
-            scoring_length = max(int(eos_positions[0]) - input_length, 0)
-
-    if scoring_length <= 0:
-        return float('inf')
-
-    generated_only_scores = generated_scores[:scoring_length]
-
-    if len(generated_only_scores) == 0:
-        return float('inf')
-
-    if torch.isnan(generated_only_scores).any() or torch.isinf(generated_only_scores).any():
-        valid_scores = generated_only_scores[~(torch.isnan(generated_only_scores) | torch.isinf(generated_only_scores))]
-        if len(valid_scores) == 0:
-            return float('inf')
-        generated_only_scores = valid_scores
-
-    mean_log_prob = torch.mean(generated_only_scores).item()
-    return np.exp(-mean_log_prob)
-
-
-def score_output_logp(model: torch.nn.Module, scores: tuple, full_sequences: torch.Tensor, sequence_idx: int, input_length: int, eos_token_id: int | None=None) -> float:
-    """Score one generated output based on transition scores up to EOS if present."""
-    batch_scores = score_outputs_logp(
-        model=model,
-        scores=scores,
-        full_sequences=full_sequences,
-        input_length=input_length,
-        eos_token_id=eos_token_id,
-    )
-    return batch_scores[sequence_idx]
-
-
-def score_outputs_logp(model: torch.nn.Module, scores: tuple, full_sequences: torch.Tensor, input_length: int, eos_token_id: int | None=None) -> list[float]:
-    """Score every generated output in a batch with one transition-score pass."""
-    if scores is None or len(scores) == 0:
-        if full_sequences is None:
-            return [float('inf')]
-        n_sequences = full_sequences.shape[0] if hasattr(full_sequences, "shape") else len(full_sequences)
-        return [float('inf')] * n_sequences
-
-    transition_scores = model.compute_transition_scores(
-        full_sequences, scores, normalize_logits=True
-    )
-
-    if transition_scores.dim() == 1:
-        transition_scores = transition_scores.unsqueeze(0)
-
-    scored_outputs = []
-    for sequence_idx, original_sequence in enumerate(full_sequences):
-        scored_outputs.append(
-            _score_transition_slice(
-                generated_scores=transition_scores[sequence_idx],
-                original_sequence=original_sequence,
-                input_length=input_length,
-                eos_token_id=eos_token_id,
-            )
+        eos_mask = full_sequences.eq(eos_token_id)
+        has_eos = eos_mask.any(dim=1)
+        first_eos = torch.where(
+            has_eos,
+            eos_mask.float().argmax(dim=1),
+            torch.full((full_sequences.shape[0],), full_sequences.shape[1], device=full_sequences.device, dtype=torch.long),
         )
+        valid_mask = valid_mask & (positions < (first_eos.unsqueeze(1) - 1))
 
-    return scored_outputs
+    token_counts = valid_mask.sum(dim=1)
+    safe_counts = torch.clamp(token_counts, min=1)
+    mean_log_probs = (gathered_log_probs * valid_mask).sum(dim=1) / safe_counts
+    perplexities = torch.exp(-mean_log_probs)
+
+    return [
+        float("inf") if token_counts[i].item() <= 0 else perplexities[i].item()
+        for i in range(full_sequences.shape[0])
+    ]
 
 
 XRD_FIT_MODES = ("pearson",)
@@ -93,7 +78,8 @@ SIM_ETA = 0.5
 def simulate_profile(cif_str: str, wavelength: float = DEFAULT_WAVELENGTH) -> np.ndarray:
     """Simulate a candidate's diffraction profile on the 1000-point Q grid.
 
-    Q positions are wavelength independent, so 2theta runs to 180 deg to cover every reflection reachable at this wavelength rather than the usual 90.
+    Q positions are wavelength independent, so 2theta runs to 180 deg to cover every reflection
+    reachable at this wavelength rather than the usual 90.
     """
     # Scoring runs on raw generated CIFs, which hold only the asymmetric unit plus a
     # placeholder operator list. Expand the symmetry first or the simulated pattern
@@ -152,7 +138,8 @@ def pearson_score(input_iq: np.ndarray, sim_iq: np.ndarray) -> float:
 def score_generated_rows(df, wavelength: float = None) -> list:
     """One pearson score per dataframe row, np.nan where the CIF cannot be simulated.
 
-    Each row carries its own conditioning profile in condition_vector, the nested (1000, 2) [Q, I] list built by the preprocessing pipeline.
+    Each row carries its own conditioning profile in condition_vector, the nested (1000, 2) [Q, I]
+    list built by the preprocessing pipeline.
     """
     wavelength = wavelength or DEFAULT_WAVELENGTH
 

@@ -1,6 +1,8 @@
 r"""Deduplicate CIF data to one entry per formula and space group.
 
-For each `(formula, space group)` pair, the entry with the smallest volume per formula unit is retained. Rows with `"N/A"`, zero, or negative values in the selected property columns can be removed before deduplication.
+For each `(formula, space group)` pair, the entry with the smallest volume per formula unit is
+retained. Rows with `"N/A"`, zero, or negative values in the selected property columns can be
+removed before deduplication.
 
 Usage:
     ```bash
@@ -191,7 +193,7 @@ if __name__ == "__main__":
 
     print(f"\nSaving deduplicated data to {out_fname}...")
     
-    # Ensure output directory exists (only if there's actually a directory path)
+    # A bare filename has no directory component, so create a directory only when one is specified.
     output_dir = os.path.dirname(out_fname)
     if output_dir:  # Only create directory if it's not empty string
         os.makedirs(output_dir, exist_ok=True)

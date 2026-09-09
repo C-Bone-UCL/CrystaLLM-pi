@@ -10,7 +10,8 @@ from pydantic import BaseModel, Field
 class TrainRequest(BaseModel):
     """Request body for `POST /train`.
 
-    When `multi_gpu` is unset, the API uses `torchrun` automatically when at least two GPUs are visible. `nproc_per_node` defaults to the number of visible GPUs.
+    When `multi_gpu` is unset, the API uses `torchrun` automatically when at least two GPUs are
+    visible. `nproc_per_node` defaults to the number of visible GPUs.
     """
     config_file: str = Field(..., description="Path to training config JSONC file")
     multi_gpu: bool | None = Field(None, description="Force multi-GPU on/off. If omitted, API auto-selects torchrun when 2+ GPUs are visible")

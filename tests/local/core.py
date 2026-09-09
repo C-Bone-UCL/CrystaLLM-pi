@@ -1,9 +1,9 @@
 """Core local test harness utilities."""
 
 """
-Comprehensive automated test suite for CrystaLLM-pi pipeline components.
-Tests all major functionality including data processing, training, generation, 
-and evaluation pipelines without creating permanent files.
+Automated test suite for CrystaLLM-pi pipeline components.
+Covers data processing, training, generation and evaluation without creating
+permanent files.
 
 Covers all scripts documented on the docs site:
 - Data processing: deduplication, cleaning, XRD calculation, HF formatting

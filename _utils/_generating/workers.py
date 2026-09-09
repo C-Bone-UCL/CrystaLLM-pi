@@ -19,7 +19,7 @@ from _utils._generating.generate_cifs import (
     parse_condition_vector,
     _normalize_scoring_mode,
 )
-from _utils._generating.scoring_methods import score_outputs_logp
+from _utils._generating.scoring_methods import forward_pass_logp
 
 model = None
 tokenizer = None
@@ -67,7 +67,11 @@ def init_worker(
 ) -> None:
     """Load the model and tokenizer once per worker process.
 
-    Populates the module-level `model` and `tokenizer` globals that `generate_on_gpu` reads, since a `multiprocessing` pool cannot pass a loaded model through the task queue. Picks bfloat16 where the GPU supports it, float16 on older GPUs, float32 on CPU. Each worker seeds with `base_seed + LOCAL_RANK`, which keeps runs reproducible while stopping every GPU from drawing the same samples.
+    Populates the module-level `model` and `tokenizer` globals that `generate_on_gpu` reads, since a
+    `multiprocessing` pool cannot pass a loaded model through the task queue. Picks bfloat16 where
+    the GPU supports it, float16 on older GPUs, float32 on CPU. Each worker seeds with `base_seed +
+    LOCAL_RANK`, which keeps runs reproducible while stopping every GPU from drawing the same
+    samples.
     """
     global model, tokenizer
 
@@ -106,10 +110,15 @@ def generate_on_gpu(
     target_valid_cifs: int=0,
     max_return_attempts: int=2,
     base_seed: int=1,
+    screening_profile: str="application",
 ) -> list[dict]:
     """Generate CIFs for one slice of the prompt list inside a worker process.
 
-    Runs on the device `gpu_id` selects, reading the model and tokenizer that `init_worker` placed in module globals. Handles `prompts[start_idx:end_idx]`, retrying up to `max_return_attempts` rounds until it has `target_valid_cifs` valid structures per prompt, and reports progress through `queue`. `global_offset` keeps material IDs unique when several workers write into one run.
+    Runs on the device `gpu_id` selects, reading the model and tokenizer that `init_worker` placed
+    in module globals. Handles `prompts[start_idx:end_idx]`, retrying up to `max_return_attempts`
+    rounds until it has `target_valid_cifs` valid structures per prompt, and reports progress
+    through `queue`. `global_offset` keeps material IDs unique when several workers write into one
+    run.
     """
     global model, tokenizer
     
@@ -128,16 +137,21 @@ def generate_on_gpu(
     check_validity = need_scores or (target_valid_cifs > 0)
 
     # XRD fit scoring ranks after generation in _load_and_generate, so workers hand
-    # back every valid candidate. Truncating to target_valid_cifs here would rank on
-    # first-come order and starve the XRD comparison of its candidate pool.
+    # back every valid candidate. Truncating here would rank on first-come order.
     keep_all_valid = scoring_mode == "pearson"
+
+    # Keep the batch that meets the target whole so ranking sees it all. The published
+    # benchmarks ranked a pool truncated at the target, so 'benchmark' keeps truncating.
+    rank_over_full_batch = keep_all_valid or (need_scores and screening_profile == "application")
     
     # Process each prompt individually
     for idx in range(start_idx, end_idx):
         row = prompts.iloc[idx]
         input_ids = tokenizer.encode(row["Prompt"], return_tensors="pt").to(device)
-        
+
         valid_cifs = []
+        valid_seqs = []
+        condition_tensor = None
         generation_attempts = 0
         progress_made = 0
         
@@ -150,25 +164,25 @@ def generate_on_gpu(
             target_generations = target_valid_cifs
             max_attempts = max_return_attempts
         
+        # Hoisted out of the loop because the scoring pass below needs it. A nested (1000, 2)
+        # profile becomes a (1, 1000, 2) tensor, a flat PKV list stays (1, n).
+        if activate_conditionality in ["PKV", "Slider", "Prefix", "PrefixXRD", "Residual"]:
+            values = parse_condition_vector(row.get("condition_vector"))
+            if values is not None:
+                condition_tensor = torch.tensor([values], device=device, dtype=model.dtype)
+
         while len(valid_cifs) < target_generations and generation_attempts < max_attempts:
             generation_attempts += 1
-            
+
             try:
                 # Handle different conditionality types
                 if activate_conditionality in ["PKV", "Slider", "Prefix", "PrefixXRD", "Residual"]:
-                    # Parse first: a nested (1000, 2) profile becomes a (1, 1000, 2) tensor,
-                    # a flat PKV list stays (1, n), unchanged legacy behavior.
-                    condition_tensor = None
-                    values = parse_condition_vector(row.get("condition_vector"))
-                    if values is not None:
-                        condition_tensor = torch.tensor([values], device=device, dtype=model.dtype)
-                    
                     with torch.inference_mode():
                         outputs = model.generate(
                             input_ids=input_ids,
                             condition_values=condition_tensor,
                             return_dict_in_generate=True,
-                            output_scores=need_scores,
+                            output_scores=False,
                             **generation_kwargs,
                         )
                 else:
@@ -177,20 +191,10 @@ def generate_on_gpu(
                         outputs = model.generate(
                             input_ids=input_ids,
                             return_dict_in_generate=True,
-                            output_scores=need_scores,
+                            output_scores=False,
                             **generation_kwargs,
                         )
 
-                batch_scores = None
-                if need_scores:
-                    batch_scores = score_outputs_logp(
-                        model=model,
-                        scores=outputs.scores,
-                        full_sequences=outputs.sequences,
-                        input_length=input_ids.shape[1],
-                        eos_token_id=tokenizer.eos_token_id,
-                    )
-                
                 # Process each generated sequence
                 for seq_idx, output_seq in enumerate(outputs.sequences):
                     if torch.isnan(output_seq).any() or torch.isinf(output_seq).any():
@@ -209,7 +213,7 @@ def generate_on_gpu(
                     cif_txt = tokenizer.decode(full_sequence, skip_special_tokens=True).replace("\n\n", "\n")
 
                     if not check_validity:
-                        # No validation or scoring - just collect all CIFs
+                        # Collect all CIFs without validation or scoring.
                         mid = get_material_id(row, len(valid_cifs), global_offset)
                         valid_cifs.append({
                             "Material ID": mid,
@@ -222,14 +226,14 @@ def generate_on_gpu(
                             progress_made += 1
                     else:
                         # Validate CIF
-                        is_consistent = check_cif(cif_txt)
+                        is_consistent = check_cif(cif_txt, check_bond_length=screening_profile == "application")
                         
                         if is_consistent:
+                            # Placeholder, scoring runs once per prompt below.
+                            score = -100
                             if need_scores:
-                                score = batch_scores[seq_idx]
-                            else:
-                                score = -100
-                            
+                                valid_seqs.append(output_seq.detach().clone())
+
                             mid = get_material_id(row, len(valid_cifs), global_offset)
                             valid_cifs.append({
                                 "Material ID": mid,
@@ -243,9 +247,8 @@ def generate_on_gpu(
                                 queue.put(1)
                                 progress_made += 1
                     
-                    # Validation-only mode can stop mid-batch. LOGP and XRD fit scoring
-                    # must keep the full batch for ranking.
-                    if len(valid_cifs) >= target_generations and not need_scores and not keep_all_valid:
+                    # Stop mid-batch on target, unless the profile ranks the whole batch.
+                    if len(valid_cifs) >= target_generations and not rank_over_full_batch:
                         break
                         
             except Exception as e:
@@ -253,6 +256,24 @@ def generate_on_gpu(
                 print(f"Error details: {e}")
                 continue
         
+        if need_scores and valid_seqs:
+            # Sequences from different generate() calls may differ in length, pad to stack
+            max_len = max(s.shape[0] for s in valid_seqs)
+            padded = torch.full((len(valid_seqs), max_len), tokenizer.pad_token_id,
+                                dtype=valid_seqs[0].dtype, device=valid_seqs[0].device)
+            for i, s in enumerate(valid_seqs):
+                padded[i, :s.shape[0]] = s
+
+            scores = forward_pass_logp(
+                model=model,
+                full_sequences=padded,
+                input_length=input_ids.shape[1],
+                eos_token_id=tokenizer.eos_token_id,
+                condition_tensor=condition_tensor,
+            )
+            for cif_data, score in zip(valid_cifs, scores):
+                cif_data["score"] = score
+
         # Process results based on scoring mode
         if valid_cifs:
             if not check_validity:

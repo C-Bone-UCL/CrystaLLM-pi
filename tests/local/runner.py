@@ -1,6 +1,8 @@
 """Run the local CrystaLLM-pi test suites.
 
-Tiers select what is run: `--offline` skips anything needing network or secrets and is what CI runs, `--secrets` adds the HF and W&B backed tests, `--full` is the default. Every test is registered by hand below, so a new `test_*` method that is not listed here never runs.
+Tiers select what is run: `--offline` skips anything needing network or secrets and is what CI runs,
+`--secrets` adds the HF and W&B backed tests, `--full` is the default. Every test is registered by
+hand below, so a new `test_*` method that is not listed here never runs.
 
 Usage:
     python -m tests.local.runner --cpu --offline
@@ -114,7 +116,7 @@ def main():
         convention_tests = SourceConventionTests(suite.temp_dir, test_data)
         
         # Execute tests
-        print("Running CrystaLLM-pi Comprehensive Test Suite...")
+        print("Running CrystaLLM-pi test suite")
         print("-" * 50)
         
         # Core component tests
@@ -157,6 +159,9 @@ def main():
         suite.run_test("generation_basic", gen_tests.test_generation_basic)
         suite.run_test("generation_conditional", gen_tests.test_generation_conditional)
         suite.run_test("check_cif", gen_tests.test_check_cif)
+        suite.run_test("screening_profiles", gen_tests.test_screening_profiles)
+        suite.run_test("formula_consistency_tolerates_partial_occupancy", gen_tests.test_formula_consistency_tolerates_partial_occupancy)
+        suite.run_test("formula_consistency_ratio_mismatch", gen_tests.test_formula_consistency_catches_ratio_mismatch)
         suite.run_test("get_model_class", gen_tests.test_get_model_class)
         suite.run_test("parse_condition_vector_nested", gen_tests.test_parse_condition_vector_nested)
         suite.run_test("build_generation_kwargs_modes", gen_tests.test_build_generation_kwargs_modes)
@@ -274,6 +279,7 @@ def main():
         suite.run_test("virtualiser_pair_fractions", virtualiser_tests.test_compute_pair_fractions)
         suite.run_test("virtualiser_pair_fractions_absent", virtualiser_tests.test_compute_pair_fractions_absent_element)
         suite.run_test("virtualiser_virtualise_structure", virtualiser_tests.test_virtualise_structure)
+        suite.run_test("virtualiser_virtualise_ternary", virtualiser_tests.test_virtualise_structure_ternary)
         suite.run_test("virtualiser_preserves_composition", virtualiser_tests.test_virtualise_structure_preserves_composition)
         suite.run_test("virtualiser_promote_symmetry", virtualiser_tests.test_promote_symmetry)
         suite.run_test("virtualiser_load_config", virtualiser_tests.test_load_config)

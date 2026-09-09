@@ -83,6 +83,49 @@ class GenerationTests:
         # Test exception handling
         assert check_cif(None) is False, "None should be handled gracefully"
     
+    def test_screening_profiles(self):
+        """Only the two profile names are accepted, and this repo defaults to application."""
+        import sys
+        from _args import parse_args
+
+        def profile(argv):
+            saved, sys.argv = sys.argv, ["generate"] + argv
+            try:
+                return parse_args().screening_profile
+            finally:
+                sys.argv = saved
+
+        assert profile([]) == "application", "The zoo screens at full strength by default"
+        assert profile(["--screening_profile", "benchmark"]) == "benchmark"
+
+    def test_formula_consistency_tolerates_partial_occupancy(self):
+        """Fractional occupancies must survive screening, virtualiser output above all.
+
+        `reduced_composition` divides out only an integer factor, so this used to fail on scale.
+        """
+        from _utils.validity import is_formula_consistent
+
+        assert is_formula_consistent(self.test_data['partial_occ_valid_cif']) is True, \
+            "Disordered CIF must pass the formula-consistency check"
+
+    def test_formula_consistency_catches_ratio_mismatch(self):
+        """Tolerating fractional occupancies must not weaken the check itself."""
+        from _utils.validity import _compositions_match
+        from pymatgen.core import Composition
+
+        # Scale must cancel, both for supercells and for partial occupancy.
+        assert _compositions_match(Composition({"Si": 1, "O": 2}),
+                                   Composition({"Si": 4, "O": 8})) is True
+        assert _compositions_match(Composition({"Hf": 1, "Ta": 1, "Mo": 1, "W": 1}),
+                                   Composition({"Hf": .5, "Ta": .5, "Mo": .5, "W": .5})) is True
+        # Ratio mismatches must fail. The first is a real CHILI case the old 0.1 accepted.
+        assert _compositions_match(Composition({"Fe": 12, "C": 4}),
+                                   Composition({"Fe": 2, "C": 1})) is False
+        assert _compositions_match(Composition({"Eu": 3, "Au": 1, "O": 6}),
+                                   Composition({"Eu": 2, "Au": 1, "O": 3})) is False
+        assert _compositions_match(Composition({"Hf": 1, "Ta": 1, "Mo": 1, "W": 1}),
+                                   Composition({"Hf": .5, "Ta": .5, "Mo": .5, "W": .25})) is False
+
     def test_get_model_class(self):
         """Test strict model class selection."""
         from _utils._generating.generate_cifs import get_model_class

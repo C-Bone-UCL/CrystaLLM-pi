@@ -12,7 +12,7 @@ Usage:
     # Test locally with FastAPI TestClient (requires fastapi installed)
     python tests/api/suite.py --hf_key YOUR_HF_KEY --wandb_key YOUR_WANDB_KEY
     
-    # Run integration tests (slower, actually executes commands)
+    # Run integration tests (slower, executes real commands)
     conda run -n crystallmv2_venv python tests/api/suite.py --docker_url http://localhost:8000 --integration
     
     # Run integration tests with verbose output (shows sample CIFs, VUN stats, E-hull values)

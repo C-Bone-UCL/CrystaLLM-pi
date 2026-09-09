@@ -1,6 +1,6 @@
 r"""Simulate powder XRD patterns from CIF structures and build XRD condition vectors.
 
-The output uses the condition representation consumed by the XRD-conditioned models, allowing a structural dataset to be prepared for XRD conditioning.
+The output uses the condition representation the XRD-conditioned models consume.
 
 Usage:
     ```bash
@@ -91,21 +91,6 @@ def add_xrd_columns(df, num_workers, column_name='CIF'):
         df.at[idx, 'XRD'] = xrd_pattern
 
     return df
-
-def parse_condition_vector_string(vector_str):
-    """Parse condition vector string back to list of floats."""
-    if vector_str is None or vector_str == "None":
-        return None
-    
-    # Remove brackets and split by comma
-    vector_str = str(vector_str).strip()
-    if vector_str.startswith('[') and vector_str.endswith(']'):
-        vector_str = vector_str[1:-1]
-    
-    try:
-        return [float(x.strip()) for x in vector_str.split(',')]
-    except (ValueError, AttributeError):
-        return None
 
 def compute_one_condition_vector_as_list(xrd):
     """Computes a single condition vector from an XRD pattern and returns as list."""

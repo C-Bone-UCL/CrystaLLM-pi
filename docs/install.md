@@ -26,8 +26,7 @@ pip install -e ".[all]"
 
 ### Choosing what to install
 
-`[all]` installs everything. If you only need part of the toolkit, install just that part
-instead. It is much faster and avoids building DeepSpeed.
+`[all]` installs everything. If you only need part of the toolkit, install just that part instead. It is much faster and avoids building DeepSpeed.
 
 | Command | Gives you |
 |---|---|

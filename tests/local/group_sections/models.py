@@ -575,7 +575,8 @@ class ModelTests:
     def test_muon_routes_wpe_to_adamw_for_context_extension(self):
         """Muon orthogonalizes whole matrices, so extended wpe must sit in the AdamW group.
 
-        Without this the zeroed gradient rows would still be moved by the Muon update, defeating the warmup mask entirely.
+        Without this the zeroed gradient rows would still be moved by the Muon update, defeating the
+        warmup mask entirely.
         """
         from _utils.trainer import setup_scheduler
 

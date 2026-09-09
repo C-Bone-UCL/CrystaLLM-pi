@@ -1,8 +1,11 @@
 r"""Format pre-picked XRD peaks for legacy Slider-family conditioning.
 
-Assumes the input already contains picked peaks rather than a raw diffraction profile, and that secondary radiation peaks such as K-alpha2 have already been stripped. Neither assumption is checked, so feeding a raw scan here produces meaningless conditioning.
+Assumes the input already contains picked peaks rather than a raw diffraction profile, and that
+secondary radiation peaks such as K-alpha2 have already been stripped. Neither assumption is
+checked, so feeding a raw scan here produces meaningless conditioning.
 
-Superseded for current models by `process_exp_xrd_continuous.py`, which keeps the full pattern instead of the top 20 peaks.
+Superseded for current models by `process_exp_xrd_continuous.py`, which keeps the full pattern
+instead of the top 20 peaks.
 
 Usage:
     ```bash

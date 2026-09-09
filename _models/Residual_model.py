@@ -40,7 +40,10 @@ MISSING_CONDITION_VALUE = -100.0
 class ResidualGPT2Config(GPT2Config):
     """Configuration for GPT-2 with residual scalar conditioning.
 
-    `slider_on` enables the conditioning path. `slider_n_variables` specifies the number of scalar properties, `slider_n_hidden` the encoder MLP width, and `slider_n_heads_sharing_slider` the number of attention heads sharing each conditioning projection. The sharing count must divide the number of attention heads.
+    `slider_on` enables the conditioning path. `slider_n_variables` specifies the number of scalar
+    properties, `slider_n_hidden` the encoder MLP width, and `slider_n_heads_sharing_slider` the
+    number of attention heads sharing each conditioning projection. The sharing count must divide
+    the number of attention heads.
     """
 
     def __init__(
@@ -62,7 +65,9 @@ class ResidualGPT2Config(GPT2Config):
 class ResidualEncoder(nn.Module):
     """Encode scalar conditioning values into per-head key-value tensors.
 
-    Each variable has its own encode, upscaling, and downscaling projections. A projection is shared across each group of `slider_n_heads_sharing_slider` attention heads. The learned mixing weight is stored as `attention_factor`.
+    Each variable has its own encode, upscaling, and downscaling projections. A projection is shared
+    across each group of `slider_n_heads_sharing_slider` attention heads. The learned mixing weight
+    is stored as `attention_factor`.
     """
 
     def __init__(self, config: ResidualGPT2Config) -> None:
@@ -662,7 +667,9 @@ class ResidualGPT2Model(ResidualGPT2PreTrainedModel):
 class ResidualGPT(ResidualGPT2PreTrainedModel, GenerationMixin):
     """GPT-2 with scalar conditioning injected into each attention block.
 
-    Conditioning is mixed into attention per layer rather than represented as prefix tokens, so it does not change the text sequence length. Missing properties are handled through the encoder's condition mask.
+    Conditioning is mixed into attention per layer rather than represented as prefix tokens, so it
+    does not change the text sequence length. Missing properties are handled through the encoder's
+    condition mask.
     """
 
     _tied_weights_keys = ["lm_head.weight"]

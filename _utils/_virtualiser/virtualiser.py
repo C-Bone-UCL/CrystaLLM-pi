@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Virtualise selected element pairs in an ordered crystal structure.
+"""Virtualise selected element groups in an ordered crystal structure.
 
-The tool replaces each selected pair on a shared sublattice with fractional mixed occupancy, refines the resulting structure to higher symmetry, and writes the virtual crystal as a CIF. Vacancies are not handled explicitly, and all sites containing members of a pair are assumed to belong to the same sublattice.
+The tool replaces each selected group (two or more elements) on a shared sublattice with fractional
+mixed occupancy, refines the resulting structure to higher symmetry, and writes the virtual crystal
+as a CIF. Vacancies are not handled explicitly, and all sites containing members of a group are
+assumed to belong to the same sublattice.
 
 Contribution by Dr Ricardo Grau-Crespo:
     https://github.com/rgraucrespo
@@ -24,8 +27,9 @@ def load_config(yaml_path: Path) -> dict:
     """Load the virtualiser YAML configuration.
 
     The configuration supplies ``symprec``, ``angle_tolerance``, and the
-    ``virtual_pairs`` list. Element pairs can also be supplied inline on the
-    command line.
+    ``virtual_pairs`` list, whose entries name two or more elements to merge
+    onto one shared sublattice. Element groups can also be supplied inline on
+    the command line.
     """
     with open(yaml_path, "r") as f:
         cfg = yaml.safe_load(f)
@@ -34,55 +38,51 @@ def load_config(yaml_path: Path) -> dict:
     cfg.setdefault("symprec", 0.003)
     cfg.setdefault("angle_tolerance", 0.5)
     cfg.setdefault("virtual_pairs", [])
-    # normalise pairs to tuple(sorted(...))
+    # normalise groups to tuple(sorted(...))
     vpairs = []
-    for pair in cfg["virtual_pairs"]:
-        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
-            raise ValueError(f"virtual_pairs entries must be 2-element lists. Got: {pair}")
-        a, b = pair
-        vpairs.append(tuple(sorted((str(a), str(b)))))
+    for group in cfg["virtual_pairs"]:
+        if not isinstance(group, (list, tuple)) or len(group) < 2:
+            raise ValueError(f"virtual_pairs entries must list at least 2 elements. Got: {group}")
+        vpairs.append(tuple(sorted(str(e) for e in group)))
     cfg["virtual_pairs"] = vpairs
     return cfg
 
 
-def compute_pair_fractions(struct: Structure, pair: tuple[str, str]) -> dict[str, float]:
-    """Fraction of pure-element sites each member of a pair occupies.
+def compute_pair_fractions(struct: Structure, pair: tuple[str, ...]) -> dict[str, float]:
+    """Fraction of pure-element sites each member of a group occupies.
 
-    Only sites holding a single pure element count toward the totals. Already-disordered sites are ignored, since their occupancy is not a clean vote for either member. Returns both fractions keyed by element symbol, or zeros when neither element is present.
+    Only sites holding a single pure element count toward the totals. Already-disordered sites are
+    ignored, since their occupancy is not a clean vote for any member. Returns fractions keyed by
+    element symbol, or zeros when no member is present.
     """
-    a, b = pair
-    count_a = 0
-    count_b = 0
+    counts = {el: 0 for el in pair}
     for site in struct.sites:
-        # Minimal rule: treat a site as belonging to the pair only if it is a *pure* element a or b
+        # Minimal rule: a site belongs to the group only if it is a *pure* member element
         if len(site.species) == 1:
-            el = list(site.species.as_dict().keys())[0]
-            el = str(el)
-            if el == a:
-                count_a += 1
-            elif el == b:
-                count_b += 1
-    total = count_a + count_b
+            el = str(list(site.species.as_dict().keys())[0])
+            if el in counts:
+                counts[el] += 1
+    total = sum(counts.values())
     if total == 0:
-        return {a: 0.0, b: 0.0}
-    fa = count_a / total
-    fb = count_b / total
-    return {a: fa, b: fb}
+        return {el: 0.0 for el in pair}
+    return {el: c / total for el, c in counts.items()}
 
 
-def virtualise_structure(struct: Structure, virtual_pairs: list[tuple[str, str]]) -> Structure:
-    # Build a mapping from elements that are in any pair to their partner-fractions
-    """Merge paired elements onto shared sites with fractional occupancy.
+def virtualise_structure(struct: Structure, virtual_pairs: list[tuple[str, ...]]) -> Structure:
+    # Build a mapping from elements that are in any group to their group-fractions
+    """Merge grouped elements onto shared sites with fractional occupancy.
 
-    Each site containing a member of a selected pair is replaced by a mixed site weighted by the pair fractions. Absent pairs are skipped and existing disordered sites are preserved. Oxidation states are removed from the result before symmetry processing.
+    Each site containing a member of a selected group is replaced by a mixed site weighted by the
+    group fractions. Absent groups are skipped and existing disordered sites are preserved.
+    Oxidation states are removed from the result before symmetry processing.
     """
     replace_map: dict[str, dict[str, float]] = {}
-    for pair in virtual_pairs:
-        fracs = compute_pair_fractions(struct, pair)
-        if fracs[pair[0]] == 0.0 and fracs[pair[1]] == 0.0:
+    for group in virtual_pairs:
+        fracs = compute_pair_fractions(struct, group)
+        if all(f == 0.0 for f in fracs.values()):
             continue
-        replace_map[pair[0]] = fracs
-        replace_map[pair[1]] = fracs
+        for el in group:
+            replace_map[el] = fracs
 
     new_species = []
     new_coords = []
@@ -103,7 +103,7 @@ def virtualise_structure(struct: Structure, virtual_pairs: list[tuple[str, str]]
 
     virt = Structure(struct.lattice, new_species, new_coords, coords_are_cartesian=False,
                      site_properties=struct.site_properties if struct.site_properties else None)
-    virt.remove_oxidation_states()  # ensure clean species for spglib
+    virt.remove_oxidation_states()  # spglib requires species without oxidation states
     return virt
 
 
@@ -121,9 +121,9 @@ def promote_symmetry(struct: Structure, symprec: float, angle_tol: float) -> Str
 
 
 def main() -> None:
-    """Read a CIF, virtualise the requested element pairs, and write the result.
+    """Read a CIF, virtualise the requested element groups, and write the result.
     """
-    ap = argparse.ArgumentParser(description="Virtualise specified element pairs, promote symmetry, and write CIF.")
+    ap = argparse.ArgumentParser(description="Virtualise specified element groups, promote symmetry, and write CIF.")
     ap.add_argument("--in", dest="infile", required=True, help="Input CIF (ordered supercell).")
     ap.add_argument("--config", dest="config", required=True, help="YAML config with symprec/angle_tolerance/virtual_pairs.")
     ap.add_argument("--out", dest="outfile", required=True, help="Output CIF for virtual crystal (refined).")

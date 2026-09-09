@@ -44,7 +44,10 @@ def _is_primary_rank() -> bool:
 class PrefixXRDGPT2Config(PrefixGPT2Config):
     """Configuration for XRD-conditioned prefix GPT-2.
 
-    `perceiver_heads * perceiver_dim_head` must equal `n_hidden_cond`. `skip_xrd_convert_model=False` expects discrete peaks and performs the peak-to-profile conversion internally, while `True` expects a dense profile on the canonical Q grid. `n_input_vector` is fixed at 2 for compatibility with older checkpoints.
+    `perceiver_heads * perceiver_dim_head` must equal `n_hidden_cond`.
+    `skip_xrd_convert_model=False` expects discrete peaks and performs the peak-to-profile
+    conversion internally, while `True` expects a dense profile on the canonical Q grid.
+    `n_input_vector` is fixed at 2 for compatibility with older checkpoints.
     """
 
     def __init__(
@@ -81,7 +84,9 @@ class PrefixXRDGPT2Config(PrefixGPT2Config):
 class XRDPerceiverEncoder(nn.Module):
     """Encode an XRD trace into per-layer prefix key-value tensors.
 
-    Each `[I, Q]` pair is projected before a Perceiver resampler cross-attends fixed latent vectors to the trace. The fixed latent count makes the conditioning representation independent of the input trace length.
+    Each `[I, Q]` pair is projected before a Perceiver resampler cross-attends fixed latent vectors
+    to the trace. The fixed latent count makes the conditioning representation independent of the
+    input trace length.
     """
 
     def __init__(self, config: PrefixXRDGPT2Config) -> None:
@@ -161,7 +166,9 @@ class XRDPerceiverEncoder(nn.Module):
 class PrefixXRDGPT(GPT2LMHeadModel):
     """GPT-2 conditioned on an XRD pattern through a Perceiver prefix encoder.
 
-    The condition representation is either discrete peaks or a dense profile, depending on `config.skip_xrd_convert_model`. Unlike the scalar-conditioned models, this model requires `condition_values` on every forward pass.
+    The condition representation is either discrete peaks or a dense profile, depending on
+    `config.skip_xrd_convert_model`. Unlike the scalar-conditioned models, this model requires
+    `condition_values` on every forward pass.
     """
 
     config_class = PrefixXRDGPT2Config

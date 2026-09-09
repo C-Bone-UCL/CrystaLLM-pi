@@ -199,7 +199,10 @@ class GenerationEndpointTests(IntegrationMixin):
     def _assert_recovers_rutile(self, output_parquet: str):
         """Fail unless the generated structure is rutile TiO2.
 
-        This is the point of the continuous-XRD path: the model must reconstruct the phase that produced the scan, not merely emit a valid TiO2 cell. Matching is done with StructureMatcher against a reference built from published rutile parameters, so an equivalent cell setting or origin choice still passes.
+        This is the point of the continuous-XRD path: the model must reconstruct the phase that
+        produced the scan, not merely emit a valid TiO2 cell. Matching is done with StructureMatcher
+        against a reference built from published rutile parameters, so an equivalent cell setting or
+        origin choice still passes.
         """
         from pymatgen.analysis.structure_matcher import StructureMatcher
         from pymatgen.core import Lattice, Structure
@@ -239,14 +242,16 @@ class GenerationEndpointTests(IntegrationMixin):
     def test_direct_generation_continuous_xrd(self):
         """Continuous-XRD models take a raw scan, sweep Z, and must recover the scanned phase.
 
-        scoring_mode stays unset on purpose: this is the webapp's default request shape, and the CLI must pick PEARSON XRD-fit ranking on its own. LOGP here ranks by fluency and reliably prefers a wrong simple cell over rutile.
+        scoring_mode stays unset on purpose: this is the webapp's default request shape, and the CLI
+        must pick PEARSON XRD-fit ranking on its own. LOGP here ranks by fluency and reliably
+        prefers a wrong simple cell over rutile.
         """
         if self._should_skip_integration():
             return
 
         output_parquet = self._test_output("gen_continuous_xrd.parquet")
         response = self.client.post("/generate/direct", json={
-            "hf_model_path": "c-bone/CrystaLLM-pi_alex_mp_20-cXRD",
+            "hf_model_path": "c-bone/CrystaLLM-cXRD_alex-mp-20",
             "reduced_formula_list": "TiO2",
             "search_zs": True,
             "xrd_files": ["/app/tests/fixtures/Rutile-TiO2-unproc.txt"],
@@ -258,7 +263,7 @@ class GenerationEndpointTests(IntegrationMixin):
         })
         data = self._wait_and_assert(response, job_name="generate_continuous_xrd", timeout=900)
         cmd = data["command"]
-        assert "c-bone/CrystaLLM-pi_alex_mp_20-cXRD" in cmd
+        assert "c-bone/CrystaLLM-cXRD_alex-mp-20" in cmd
         # The raw unprocessed scan goes straight in, conversion happens inside the pipeline.
         assert "--xrd_files /app/tests/fixtures/Rutile-TiO2-unproc.txt" in cmd
         assert "--xrd_wavelength 1.54059" in cmd
@@ -279,7 +284,7 @@ class GenerationEndpointTests(IntegrationMixin):
 
         output_parquet = self._test_output("gen_continuous_xrd_default_wl.parquet")
         response = self.client.post("/generate/direct", json={
-            "hf_model_path": "c-bone/CrystaLLM-pi_alex_mp_20-cXRD",
+            "hf_model_path": "c-bone/CrystaLLM-cXRD_alex-mp-20",
             "reduced_formula_list": "TiO2",
             "z_list": "2",
             "xrd_files": ["/app/tests/fixtures/Rutile-TiO2-unproc.txt"],

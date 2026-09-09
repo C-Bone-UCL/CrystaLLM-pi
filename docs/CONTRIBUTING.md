@@ -27,13 +27,7 @@ To set up the project locally for development:
 
 ## Code and docstring conventions
 
-The [API reference](api/cli.md) pages are the manifest of what counts as public: a symbol is
-public when a `:::` directive names it. Those entries are workflow-level, mostly module
-docstrings carrying a runnable `Usage:` command, plus the classes and predicates a user calls
-directly. Everything else keeps its full `Args:`/`Returns:` docstring (with shapes on tensor
-lines) in source, where contributors and `help()` read it. Module files inside `_utils/` are
-lowercase with no leading underscore. Five registered tests enforce all of it, so a pull request
-that drifts will fail the offline tier rather than wait for review.
+The [API reference](api/cli.md) pages define what counts as public. A symbol is public when a `:::` directive names it. Those entries are workflow-level, mostly module docstrings carrying a runnable `Usage:` command, plus the classes and predicates a user calls directly. Everything else keeps its full `Args:`/`Returns:` docstring (with shapes on tensor lines) in source, where contributors and `help()` read it. Module files inside `_utils/` are lowercase with no leading underscore. Five registered tests enforce all of it, so a pull request that drifts fails the offline tier.
 
 Building the docs site locally:
 

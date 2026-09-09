@@ -1,6 +1,8 @@
 r"""Score generated CIFs for validity, uniqueness, and novelty.
 
-The VUN metrics are computed over generated structures. Compositional novelty requires the training data, supplied through `--huggingface_dataset` or a processed cache loaded with `--load_processed_data`.
+The VUN metrics are computed over generated structures. Compositional novelty requires the training
+data, supplied through `--huggingface_dataset` or a processed cache loaded with
+`--load_processed_data`.
 
 Usage:
     ```bash

@@ -37,8 +37,8 @@ logger = logging.getLogger(__name__)
 def extract_space_group_symbol(cif_str):
     match = re.search(r"_symmetry_space_group_name_H-M\s+('([^']+)'|(\S+))", cif_str)
     if match:
-        # If group(2) exists => it's the content inside single quotes;
-        # otherwise group(3) => unquoted
+        # group(2) contains the quoted name, if present.
+        # Otherwise, group(3) contains the unquoted name.
         # print(f"match.group(2): {match.group(2)}")
         return match.group(2) if match.group(2) else match.group(3)
     raise Exception(f"could not extract space group from:\n{cif_str}")

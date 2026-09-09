@@ -47,14 +47,25 @@ def _configure_pymatgen_warning_filters() -> None:
 
 
 
-def bond_length_reasonableness_score(cif_str: str, tolerance: float=0.32, h_factor: float=2.5) -> float:
+def bond_length_reasonableness_score(cif_str: str, tolerance: float=0.32, h_factor: float=2.5) -> float | None:
     """Score bond lengths against the sum of covalent radii.
 
-    The score is the fraction of bonds whose length lies within `tolerance` of the expected covalent-radii sum. A score of `1.0` means every counted bond passes. Neighbours are obtained with pymatgen's `CrystalNN`. Bonds involving hydrogen use a widened tolerance controlled by `h_factor`.
+    The score is the fraction of bonds whose length lies within `tolerance` of the expected
+    covalent-radii sum. A score of `1.0` means every counted bond passes. Neighbours are obtained
+    with pymatgen's `CrystalNN`. Bonds involving hydrogen use a widened tolerance controlled by
+    `h_factor`.
+
+    Returns `None` for a disordered structure, meaning not checked rather than passed.
     """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=UserWarning)
         structure = Structure.from_str(cif_str, fmt="cif")
+
+    # TODO: make function work for disordered materials. CrystalNN reads site.specie,
+    # which raises on partial occupancies, as do the radii lookups below.
+    if not structure.is_ordered:
+        return None
+
     crystal_nn = CrystalNN()
 
     min_ratio = 1 - tolerance
@@ -95,8 +106,8 @@ def bond_length_reasonableness_score(cif_str: str, tolerance: float=0.32, h_fact
 
             bond_ratio = bond_length / expected_length
 
-            # penalize bond lengths that are too short or too long;
-            #  check if bond involves hydrogen and adjust tolerance accordingly
+            # Penalise bond lengths that are too short or too long.
+            # Hydrogen bonds use a looser tolerance.
             if is_hydrogen_bond:
                 if bond_ratio < h_factor:
                     score += 1
@@ -114,7 +125,8 @@ def bond_length_reasonableness_score(cif_str: str, tolerance: float=0.32, h_fact
 def is_space_group_consistent(cif_str: str, allow_stated_p1_mismatch: bool=False) -> bool:
     """Check whether a CIF's structure matches its declared space group.
 
-    `allow_stated_p1_mismatch` permits a CIF declaring P1 when the detected structure has higher symmetry.
+    `allow_stated_p1_mismatch` permits a CIF declaring P1 when the detected structure has higher
+    symmetry.
     """
     structure = Structure.from_str(cif_str, fmt="cif")
     parser = CifParser.from_str(cif_str)
@@ -139,8 +151,27 @@ def is_space_group_consistent(cif_str: str, allow_stated_p1_mismatch: bool=False
     return is_match
 
 
+def _compositions_match(declared: Composition, geometric: Composition) -> bool:
+    """Compare a declared formula with an atom-site composition, ignoring cell scale.
+
+    `reduced_composition` only divides out an integer factor, so fractional occupancies come
+    back unscaled and fail on scale alone. Mole fractions take over there, at a tolerance
+    tight enough to still reject a CIF declaring Fe12C4 whose sites hold Fe2C.
+    """
+    if all(abs(amount - round(amount)) < 1e-6 for amount in geometric.values()):
+        return declared.reduced_composition.almost_equals(
+            geometric.reduced_composition, rtol=0.1, atol=0.1
+        )
+    return declared.fractional_composition.almost_equals(
+        geometric.fractional_composition, rtol=0.01, atol=0.01
+    )
+
+
 def is_formula_consistent(cif_str: str) -> bool:
-    """Check whether the chemical formula declared by the CIF matches its atom-site composition."""
+    """Check whether the chemical formula declared by the CIF matches its atom-site composition.
+
+    Compared up to cell scale, so a supercell matches the formula it is a supercell of.
+    """
     try:
         parser = CifParser.from_str(cif_str)
         cif_data = parser.as_dict()
@@ -160,15 +191,11 @@ def is_formula_consistent(cif_str: str) -> bool:
                 structure = parser.parse_structures(primitive=False)[0]
         formula_geometry = structure.composition
 
-        return (
+        names_match = (
             formula_data.reduced_formula == formula_sum.reduced_formula ==
-            formula_structural.reduced_formula and
-            formula_sum.fractional_composition.almost_equals(
-                formula_geometry.fractional_composition,
-                rtol=0.1,
-                atol=0.1,
-            )
+            formula_structural.reduced_formula
         )
+        return names_match and _compositions_match(formula_sum, formula_geometry)
 
     except Exception:
         return False
@@ -204,7 +231,9 @@ def is_atom_site_multiplicity_consistent(cif_str: str) -> bool:
 def is_sensible(cif_str: str, length_lo: float=0.5, length_hi: float=1000., angle_lo: float=10., angle_hi: float=170.) -> bool:
     """Check whether the unit-cell dimensions fall within the supplied physical bounds.
 
-    The check uses only cell parameters parsed from the CIF text. All lengths must lie between `length_lo` and `length_hi` in Å, and all angles must lie between `angle_lo` and `angle_hi` in degrees. This check is separate from `is_valid`.
+    The check uses only cell parameters parsed from the CIF text. All lengths must lie between
+    `length_lo` and `length_hi` in Å, and all angles must lie between `angle_lo` and `angle_hi` in
+    degrees. This check is separate from `is_valid`.
     """
     cell_length_pattern = re.compile(r"_cell_length_[abc]\s+([\d\.]+)")
     cell_angle_pattern = re.compile(r"_cell_angle_(alpha|beta|gamma)\s+([\d\.]+)")
@@ -227,7 +256,10 @@ def is_sensible(cif_str: str, length_lo: float=0.5, length_hi: float=1000., angl
 def is_valid(cif_str: str, bond_length_acceptability_cutoff: float=1.0, allow_stated_p1_mismatch: bool=False, debug: bool=False) -> bool:
     """Check whether a generated CIF passes the structural validity checks.
 
-    The checks are applied in order and stop at the first failure. The formula must match the atom sites, atom-site multiplicities must be self-consistent, the bond-length score must reach `bond_length_acceptability_cutoff`, and the detected symmetry must match the declared space group. `allow_stated_p1_mismatch` permits a declared P1 when the structure has higher symmetry.
+    The checks are applied in order and stop at the first failure. The formula must match the atom
+    sites, atom-site multiplicities must be self-consistent, the bond-length score must reach
+    `bond_length_acceptability_cutoff`, and the detected symmetry must match the declared space
+    group. `allow_stated_p1_mismatch` permits a declared P1 when the structure has higher symmetry.
 
     `is_sensible` is not part of this composite check.
     """
@@ -240,7 +272,7 @@ def is_valid(cif_str: str, bond_length_acceptability_cutoff: float=1.0, allow_st
             print(f"Atom site multiplicity is inconsistent for {cif_str}")
         return False
     bond_length_score = bond_length_reasonableness_score(cif_str)
-    if bond_length_score < bond_length_acceptability_cutoff:
+    if bond_length_score is not None and bond_length_score < bond_length_acceptability_cutoff:
         if debug:
             print(f"Bond length is unreasonable for {cif_str}")
         return False
@@ -271,7 +303,8 @@ def _validity_worker(cif_str: str, bond_length_acceptability_cutoff: float, allo
 def get_density(cif: str) -> float:
     """Compute the crystallographic density of a CIF in g/cm³.
 
-    Returns `NaN` when the CIF cannot be parsed or pymatgen reports incorrect stoichiometry, allowing invalid rows to be retained in batch scoring without raising.
+    Returns `NaN` when the CIF cannot be parsed or pymatgen reports incorrect stoichiometry, so
+    batch scoring keeps invalid rows instead of raising.
     """
     try:
         with warnings.catch_warnings(record=True) as w:

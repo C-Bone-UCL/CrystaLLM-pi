@@ -49,13 +49,14 @@ Conditioning information is injected into each attention block through a slider 
 
 ## Available Pre-trained Models
 
-Each released model corresponds to a paper study or tutorial. The table identifies its origin and conditioning setup, so the corresponding training and evaluation details can be found in the relevant material.
+Each released model corresponds to a paper study or tutorial. The table gives its study and conditioning setup. See the corresponding material for training and evaluation details.
 
 | Model | Class | Conditioning | Origin |
 |---|---|---|---|
-| `c-bone/CrystaLLM-pi_ft_alex_mp_20-text` | GPT-2 | unconditional | **Recommended base model**, a LeMat-Bulk pretrained model fine-tuned on Alex-MP-20 CIFs, from [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph) |
-| `c-bone/CrystaLLM-pi_Chili100K-cXRD` | PrefixXRD | continuous XRD profiles | CHILI-100K KD student from [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph), has larger unit cell and experimental structure oriented priors (better for difficult larger structs) |
-| `c-bone/CrystaLLM-pi_alex_mp_20-cXRD` | PrefixXRD | continuous XRD profiles | Alex-MP-20 KD student from [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph), with broader coverage than the CHILI model (better for recovering known structs) |
+| `c-bone/CrystaLLM-pi_ft_alex_mp_20-text` | GPT-2 | unconditional | **Recommended base model**, a LeMat-Bulk pretrained model fine-tuned on Alex-MP-20 CIFs, from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD) |
+| `c-bone/CrystaLLM-cXRD_chili100k` | PrefixXRD | continuous XRD profiles | CHILI-100K model from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD), with larger-cell and experimental-structure priors (better for difficult larger structs) |
+| `c-bone/CrystaLLM-cXRD_alex-mp-20` | PrefixXRD | continuous XRD profiles | Alex-MP-20 bridge model from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD), with broader coverage than the CHILI model (better for recovering known structs) |
+| `c-bone/CrystaLLM-cXRD_mp20` | PrefixXRD | continuous XRD profiles | MP-20 benchmark model from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD), trained from scratch on the PXRDGen splits |
 | `c-bone/CrystaLLM-pi_base` | GPT-2 | unconditional | LeMat-Bulk base model from the first paper |
 | `c-bone/CrystaLLM-pi_mp_20_base` | GPT-2 | unconditional | MP-20 pretraining base from the paper's pretraining studies |
 | `c-bone/CrystaLLM-pi_alex_mp_20_base` | GPT-2 | unconditional | Alex-MP-20 pretraining base from the paper's dataset-size study |

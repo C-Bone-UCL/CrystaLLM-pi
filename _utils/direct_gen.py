@@ -56,7 +56,9 @@ XRD_FORMATS = {"xrd_top20", "xrd_continuous"}
 def get_condition_format(model_path: str) -> str | None:
     """Return the conditioning format a model expects, from the registry.
 
-    One of "scalar", "xrd_top20", "xrd_continuous", or None for unconditional models. Registry entries without an explicit format fall back to treating Slider models as top-20 XRD, matching the released legacy checkpoints.
+    One of "scalar", "xrd_top20", "xrd_continuous", or None for unconditional models. Registry
+    entries without an explicit format fall back to treating Slider models as top-20 XRD, matching
+    the released legacy checkpoints.
     """
     info = MODEL_INFO.get(model_path) or {}
     fmt = info.get("condition_format")
@@ -74,7 +76,10 @@ def is_xrd_model(model_path: str) -> bool:
 def parse_xrd_file_to_condition_vector(file_path: str, wavelength: float = 1.54056) -> list[float]:
     """Parse a raw powder scan into the legacy 40-value condition vector.
 
-    Reads a two-column scan, converts 2theta to Q with `wavelength` (CuKα1 1.54056 Å by default), picks the top peaks and formats them for the Slider-family XRD models. Continuous-XRD models take a different path through `process_exp_xrd_continuous`, which keeps the whole pattern instead of 20 peaks.
+    Reads a two-column scan, converts 2theta to Q with `wavelength` (CuKα1 1.54056 Å by default),
+    picks the top peaks and formats them for the Slider-family XRD models. Continuous-XRD models
+    take a different path through `process_exp_xrd_continuous`, which keeps the whole pattern
+    instead of 20 peaks.
     """
     try:
         processed_peaks = process_and_convert(file_path, xrd_wavelength=wavelength)
@@ -108,7 +113,8 @@ def parse_xrd_file_to_condition_vector(file_path: str, wavelength: float = 1.540
 def validate_model_conditions(model_path: str, condition_lists: list[list[float]] | None) -> None:
     """Check that the supplied condition vectors match what the model expects.
 
-    Raises before any generation starts, so a width mismatch surfaces immediately instead of after a long run.
+    Raises before any generation starts, so a width mismatch surfaces immediately instead of after a
+    long run.
     """
     model_info = MODEL_INFO.get(model_path)
     if not model_info: return
@@ -129,7 +135,8 @@ def validate_model_conditions(model_path: str, condition_lists: list[list[float]
 def get_hf_model_max_length(hf_model_path: str, model_type: str | None = None) -> int:
     """Fetch usable text context length from HF config, falling back to default.
 
-    Cached per (model, type): the Z-search loop asks repeatedly and AutoConfig re-reads the HF cache on every call.
+    Cached per (model, type): the Z-search loop asks repeatedly and AutoConfig re-reads the HF cache
+    on every call.
     """
     try:
         cfg = AutoConfig.from_pretrained(hf_model_path, trust_remote_code=True)
@@ -153,7 +160,8 @@ def get_visible_gpu_count() -> int:
 def resolve_multi_gpu_workers(args: argparse.Namespace, n_prompts: int) -> int:
     """Resolve effective GPU worker count for generation.
 
-    --num_workers_gpu is the single arg: unset uses all visible GPUs, an integer caps the worker count, and 1 forces the single-process path.
+    --num_workers_gpu is the single arg: unset uses all visible GPUs, an integer caps the worker
+    count, and 1 forces the single-process path.
     """
     gpu_count = get_visible_gpu_count()
     if gpu_count < 2 or n_prompts < 1:
@@ -209,7 +217,11 @@ def build_reduced_formula_specs(
 ) -> list[dict]:
     """Build one prompt spec per formula row using strictly parallel lists.
 
-    Each index i in formulas/z_values/properties corresponds to one output spec. properties[i] must be a dict with keys: xrd (file path or None), sg (str or None), cond (condition-vector string or None). With an XRD format set, each spec's condition_vector comes from its raw scan file instead: "xrd_top20" yields the legacy 40-value string, "xrd_continuous" the nested (1000, 2) [Q, I] list.
+    Each index i in formulas/z_values/properties corresponds to one output spec. properties[i] must
+    be a dict with keys: xrd (file path or None), sg (str or None), cond (condition-vector string or
+    None). With an XRD format set, each spec's condition_vector comes from its raw scan file
+    instead: "xrd_top20" yields the legacy 40-value string, "xrd_continuous" the nested (1000, 2)
+    [Q, I] list.
     """
     specs = []
     for prompt_order, (formula, z_val, prop) in enumerate(zip(formulas, z_values, properties), start=1):
@@ -249,7 +261,9 @@ def build_reduced_formula_specs(
 def build_formula_condition_map(formulas: list[str], condition_lists_arg: list[str] | None, model_path: str) -> list[str | None]:
     """Return one normalized condition-vector string per formula, positionally.
 
-    `--condition_lists` accepts either a single string broadcast to every formula or exactly one per formula. The result lines up index by index with the formula list, letting downstream code zip the two without re-checking lengths.
+    `--condition_lists` accepts either a single string broadcast to every formula or exactly one per
+    formula. The result lines up index by index with the formula list, letting downstream code zip
+    the two without re-checking lengths.
     """
     if not condition_lists_arg:
         return [None] * len(formulas)
@@ -319,7 +333,10 @@ def reduce_rows_for_reduced_formula_search(
 ) -> pd.DataFrame:
     """Select the single best generated row for each reduced formula.
 
-    Ranking direction follows the scoring mode: PEARSON sorts descending, since a higher correlation is a better fit, while perplexity-based modes sort ascending. With scoring off, rows keep generation order and the first valid one wins. Ties break on prompt order then generation order, so a run is reproducible.
+    Ranking direction follows the scoring mode: PEARSON sorts descending, since a higher correlation
+    is a better fit, while perplexity-based modes sort ascending. With scoring off, rows keep
+    generation order and the first valid one wins. Ties break on prompt order then generation order,
+    so a run is reproducible.
     """
     if df_generated.empty:
         return pd.DataFrame()

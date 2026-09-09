@@ -1,8 +1,11 @@
 r"""Compute structure-matching metrics for XRD-conditioned generation.
 
-The workflow reports match rate and mean RMS distance over matched pairs using DiffCSP-compliant validity checks. It also reports lattice-parameter differences and matched counts over all generated structures.
+The workflow reports match rate and mean RMS distance over matched pairs using DiffCSP-compliant
+validity checks. It also reports lattice-parameter differences and matched counts over all generated
+structures.
 
-Benchmark metrics are adapted from: https://github.com/jiaor17/DiffCSP/tree/main as well as the original https://github.com/lantunes/CrystaLLM/tree/main repo
+Benchmark metrics are adapted from: https://github.com/jiaor17/DiffCSP/tree/main as well as the
+original https://github.com/lantunes/CrystaLLM/tree/main repo
 
 Usage:
     ```bash
@@ -44,7 +47,8 @@ ANGLE_HI = 170.0
 def smact_validity(comp, count, use_pauling_test=True, include_alloys=True):
     """Check composition validity via charge neutrality and the Pauling electronegativity test.
 
-    Adapted from: https://github.com/jiaor17/DiffCSP/blob/ee131b03a1c6211828e8054d837caa8f1a980c3e/scripts/eval_utils.py
+    Adapted from:
+    https://github.com/jiaor17/DiffCSP/blob/ee131b03a1c6211828e8054d837caa8f1a980c3e/scripts/eval_utils.py
     """
     elem_symbols = tuple([Element.from_Z(elem).symbol for elem in comp])
     space = smact.element_dictionary(elem_symbols)
@@ -86,7 +90,8 @@ def smact_validity(comp, count, use_pauling_test=True, include_alloys=True):
 def structure_validity(crystal, cutoff=0.5):
     """Check structure validity via minimum atom distance, cell volume, and lattice size.
 
-    Adapted from: https://github.com/jiaor17/DiffCSP/blob/ee131b03a1c6211828e8054d837caa8f1a980c3e/scripts/eval_utils.py
+    Adapted from:
+    https://github.com/jiaor17/DiffCSP/blob/ee131b03a1c6211828e8054d837caa8f1a980c3e/scripts/eval_utils.py
     """
     dist_mat = crystal.distance_matrix
     # Pad diagonal with large number to ignore self-distances
@@ -101,7 +106,8 @@ def structure_validity(crystal, cutoff=0.5):
 def is_valid_bench(struct):
     """Check benchmark validity using both composition and structure validity.
 
-    Adapted from: https://github.com/jiaor17/DiffCSP/blob/ee131b03a1c6211828e8054d837caa8f1a980c3e/scripts/compute_metrics.py
+    Adapted from:
+    https://github.com/jiaor17/DiffCSP/blob/ee131b03a1c6211828e8054d837caa8f1a980c3e/scripts/compute_metrics.py
     """
     elem_counter = Counter([specie.Z for specie in struct.species])
     elems = [(elem, elem_counter[elem]) for elem in sorted(elem_counter.keys())]
@@ -311,16 +317,22 @@ def get_match_rate_and_rms(gen_structs, true_structs, matcher, args, score_data:
                            novel_data: dict | None = None, material_ids_order: list | None = None):
     """Compute XRD match rate, RMS distance, and related metrics.
 
-    Only structures passing SMACT and structure-validity checks are considered. The minimum RMS distance among valid matches is used for each material. Match rate is the fraction of materials with at least one valid `StructureMatcher` match. Lattice-parameter matching is used only as an analysis fallback and does not contribute to match rate.
+    Only structures passing SMACT and structure-validity checks are considered. The minimum RMS
+    distance among valid matches is used for each material. Match rate is the fraction of materials
+    with at least one valid `StructureMatcher` match. Lattice-parameter matching is used only as an
+    analysis fallback and does not contribute to match rate.
 
-    Adapted from: https://github.com/jiaor17/DiffCSP/blob/ee131b03a1c6211828e8054d837caa8f1a980c3e/scripts/compute_metrics.py
+    Adapted from:
+    https://github.com/jiaor17/DiffCSP/blob/ee131b03a1c6211828e8054d837caa8f1a980c3e/scripts/compute_metrics.py
 
     Args:
         score_data: Mapping from material id to scores corresponding to generated structures.
         num_workers: Number of parallel workers. Defaults to half the available CPU count.
-        atom_counts: True structure atom counts, one per material in the same order as the generated and reference structures.
+        atom_counts: True structure atom counts, one per material in the same order as the generated
+                     and reference structures.
         novel_data: Additional columns mapped from material id to values.
-        material_ids_order: Material ids in the same order as the generated and reference structures.
+        material_ids_order: Material ids in the same order as the generated and reference
+                            structures.
     """
     if num_workers is None:
         num_workers = max(1, multiprocessing.cpu_count() // 2)
@@ -476,29 +488,6 @@ def _parallel_convert_generated_cif(cif):
         return Structure.from_str(cif, fmt="cif")
     except Exception:
         return None
-
-
-
-def reconstruct_xrd_peaks(condition_vector_str):
-    """Parse XRD peaks from a normalized condition vector string back to (two_theta, intensity) dicts."""
-    try:
-        if isinstance(condition_vector_str, str):
-            vector_str = condition_vector_str.strip().strip("[]")
-            values = [float(x.strip()) for x in vector_str.split(",")]
-        else:
-            values = list(condition_vector_str)
-
-        mid_point = len(values) // 2
-        theta_values = values[:mid_point]
-        intensity_values = values[mid_point:]
-
-        return [
-            {"two_theta": theta_norm * 90.0, "intensity": int_norm * 100.0}
-            for theta_norm, int_norm in zip(theta_values, intensity_values)
-            if theta_norm != -100 and int_norm != -100
-        ]
-    except Exception:
-        return []
 
 
 if __name__ == "__main__":

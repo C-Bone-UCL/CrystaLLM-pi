@@ -83,7 +83,7 @@ class EvaluationPipelineTests:
         a_diffs = [0.05, None, 0.1]
         b_diffs = [0.03, None, 0.08]
         c_diffs = [0.02, None, 0.05]
-        gen_structs_mock = [[1], [2], [3]]  # Just need length
+        gen_structs_mock = [[1], [2], [3]]  # only the length matters
         
         metrics = _calculate_metrics(rms_dists, a_diffs, b_diffs, c_diffs, gen_structs_mock)
         assert "match_rate" in metrics, "Should have match_rate"

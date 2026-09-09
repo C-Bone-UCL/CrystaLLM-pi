@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 r"""Compute energy above hull and formation energy from DFT energies.
 
-Input energies are rescaled against Materials Project reference data so hull distances are comparable with Materials Project entries. Novelty and density can also be reported.
+Input energies are rescaled against Materials Project reference data so hull distances are
+comparable with Materials Project entries. Novelty and density can also be reported.
 
 Usage:
     ```bash

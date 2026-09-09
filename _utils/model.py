@@ -97,7 +97,7 @@ def _parse_condition_columns(args: argparse.Namespace) -> list[str]:
 
 
 def _validate_residual_condition_width(args: argparse.Namespace) -> None:
-    """Ensure Residual uses one slider variable per scalar condition."""
+    """Validate that Residual uses one slider variable per scalar condition."""
     if getattr(args, "activate_conditionality", None) != "Residual":
         return
 
@@ -178,11 +178,18 @@ def _source_checkpoint_is_prefix_family(config_class: type, pretrained_model_dir
 def resize_positional_embeddings(model: torch.nn.Module, new_n_positions: int, shift_right_by: int=0) -> torch.nn.Module:
     """Resize GPT-2 position embeddings, optionally reserving rows at the front.
 
-    Copies the old rows into the new embedding and fills anything new with values drawn to match the old rows' statistics, rather than the default initialization, so the added positions start on the same scale as the trained ones.
+    Copies the old rows into the new embedding and fills anything new with values drawn to match the
+    old rows' statistics, rather than the default initialization, so the added positions start on
+    the same scale as the trained ones.
 
-    `shift_right_by` reserves that many rows at the front and moves the old rows behind them, which is what a Prefix-family conversion needs: the prefix occupies the first positions, and text tokens must keep their learned embeddings. Records what happened in `model.context_extension_metadata`, including the protected row range, so a later context extension can tell trained rows from fresh ones.
+    `shift_right_by` reserves that many rows at the front and moves the old rows behind them, which
+    a Prefix-family conversion needs because the prefix occupies the first positions and text tokens
+    must keep their learned embeddings. Records what happened in `model.context_extension_metadata`,
+    including the protected row range, so a later context extension can tell trained rows from fresh
+    ones.
 
-    Raises ValueError if `shift_right_by` is negative, or if the new size cannot hold the old rows plus the requested shift.
+    Raises ValueError if `shift_right_by` is negative, or if the new size cannot hold the old rows
+    plus the requested shift.
     """
     old_n_positions = model.config.n_positions
     if new_n_positions == old_n_positions:
@@ -259,9 +266,13 @@ def _match_weight_stats(reference_weights: torch.Tensor, num_rows: int, device: 
 def load_pretrained_model(args: argparse.Namespace, tokenizer: "CustomCIFTokenizer") -> torch.nn.Module:
     """Load a checkpoint into the model class selected by `activate_conditionality`.
 
-    The model class is resolved through `MODEL_REGISTRY`. Unknown conditionality values raise rather than falling back to an unconditional GPT-2. Only the intended resize surface, consisting of position embeddings, token embeddings, and the tied head, may have checkpoint shape mismatches. Other mismatches raise.
+    The model class is resolved through `MODEL_REGISTRY`. Unknown conditionality values raise an
+    error. Only the intended resize surface, consisting of position embeddings, token embeddings,
+    and the tied head, may have checkpoint shape mismatches. Other mismatches raise.
 
-    When the target context differs, positions are resized. Converting a non-prefix checkpoint to a Prefix family shifts pretrained position rows by `n_prefix_tokens` so text tokens retain their original positional embeddings.
+    When the target context differs, positions are resized. Converting a non-prefix checkpoint to a
+    Prefix family shifts pretrained position rows by `n_prefix_tokens` so text tokens retain their
+    original positional embeddings.
     """
     print(f"Loading model weights from {args.pretrained_model_dir}")
 
@@ -347,7 +358,7 @@ def load_pretrained_model(args: argparse.Namespace, tokenizer: "CustomCIFTokeniz
 def build_model(args: argparse.Namespace, tokenizer: "CustomCIFTokenizer") -> torch.nn.Module:
     """Build a fresh model using the class selected by `activate_conditionality`.
 
-    Model selection follows `MODEL_REGISTRY`, and unknown conditionality values raise rather than falling back to an unconditional GPT-2.
+    Model selection follows `MODEL_REGISTRY`, and unknown conditionality values raise an error.
     """
     vocab_size = len(tokenizer)
     conditionality = getattr(args, 'activate_conditionality', None)

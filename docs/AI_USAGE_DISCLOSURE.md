@@ -28,5 +28,5 @@ Responsibility for the correctness, scientific validity and stability of this pr
 
 ## 4. Boundaries
 
-*   Agent-driven edits run only under my prompts and review; no AI-generated change lands without my validation.
+*   Agent-driven edits run only under my prompts and review. No AI-generated change lands without my validation.
 *   No reported result, metric or benchmark number is AI-generated. All come from runs I executed and checked.

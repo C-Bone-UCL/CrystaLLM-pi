@@ -1,8 +1,11 @@
 r"""Convert raw experimental powder XRD scans into the continuous `(1000, 2)` condition format.
 
-The pipeline converts 2theta to Q using the supplied wavelength, removes the background with pybaselines SNIP, resamples onto the canonical Q grid, and max-normalises intensity to `[0, 1]`. The resulting `[Q, I]` profile is consumed by `PrefixXRD` with `skip_xrd_convert_model=True`.
+The pipeline converts 2theta to Q using the supplied wavelength, removes the background with
+pybaselines SNIP, resamples onto the canonical Q grid, and max-normalises intensity to `[0, 1]`. The
+resulting `[Q, I]` profile is consumed by `PrefixXRD` with `skip_xrd_convert_model=True`.
 
-This supersedes `process_exp_xrd_inputs.py`, which selected the top 20 peaks in 2theta space for the older XRD models.
+This supersedes `process_exp_xrd_inputs.py`, which selected the top 20 peaks in 2theta space for the
+older XRD models.
 
 Usage:
     ```bash
@@ -188,17 +191,19 @@ def save_pipeline_plot(
 ) -> str:
     """Plot the four stages of experimental XRD preprocessing.
 
-    The figure shows the raw scan, Q-converted pattern, background-subtracted signal, and final resampled profile.
+    The figure shows the raw scan, Q-converted pattern, background-subtracted signal, and final
+    resampled profile.
     """
 
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    # Object-oriented Figure is headless-safe without matplotlib.use("Agg"), which would
+    # kill inline plotting for the rest of the caller's session.
+    from matplotlib.figure import Figure
 
     two_theta, intensity = read_xrd_file(input_data)
     stages = _pipeline_stages(two_theta, intensity, _resolve_wavelength(wavelength, input_data), background_subtract)
 
-    fig, axes = plt.subplots(4, 1, figsize=(7, 11), constrained_layout=True)
+    fig = Figure(figsize=(7, 11), constrained_layout=True)
+    axes = fig.subplots(4, 1)
 
     axes[0].plot(stages["two_theta"], stages["intensity"], lw=0.6, color="black")
     axes[0].set_xlabel(r"2$\theta$ (deg)")
@@ -223,7 +228,6 @@ def save_pipeline_plot(
     save_file_path.parent.mkdir(parents=True, exist_ok=True)
 
     fig.savefig(save_file_path, dpi=200)
-    plt.close(fig)
     return str(save_file_path)
 
 

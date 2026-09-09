@@ -1,6 +1,8 @@
 r"""Clean and normalise CIF data before training.
 
-The pipeline orders disordered structures, normalises property columns, and adds the atomic-properties block expected by the tokenizer. The resulting property scale must match the normalised representation used during model training.
+The pipeline orders disordered structures, normalises property columns, and adds the
+atomic-properties block expected by the tokenizer. The resulting property scale must match the
+normalised representation used during model training.
 
 Usage:
     ```bash

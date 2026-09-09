@@ -1,6 +1,7 @@
 r"""Upload a loadable CrystaLLM-pi checkpoint to the Hugging Face Hub.
 
-The upload includes the checkpoint, configuration, and tokenizer files required by load-and-generate, allowing the repository to be supplied directly as `--hf_model_path`.
+The upload includes the checkpoint, configuration, and tokenizer files required by
+load-and-generate, so the repository can be passed directly as `--hf_model_path`.
 
 Usage:
     ```bash

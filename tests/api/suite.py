@@ -1,6 +1,7 @@
 """Entry point for the API test suite.
 
-Routing tests check that every endpoint responds. The integration tier drives generation and metrics end to end, and takes considerably longer.
+Routing tests check that every endpoint responds. The integration tier drives generation and metrics
+end to end, and takes considerably longer.
 
 Usage:
     python -m tests.api.suite --docker_url http://localhost:8000

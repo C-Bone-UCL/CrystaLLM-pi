@@ -28,7 +28,10 @@ def resolve_tokenizer_dir(pretrained_dir: str) -> str:
 class CustomCIFTokenizer(PreTrainedTokenizer):
     """Hugging Face-compatible tokenizer for CIF text.
 
-    Tokenisation follows CIF structure rather than subwords, keeping element symbols, numbers, and CIF keywords as whole tokens. Space-group tokens receive an internal `_sg` suffix during tokenisation and the suffix is removed during decoding. `from_pretrained` and `save_pretrained` use `vocabulary.json`, `spacegroups.txt`, and `tokenizer_config.json`.
+    Tokenisation follows CIF structure rather than subwords, keeping element symbols, numbers, and
+    CIF keywords as whole tokens. Space-group tokens receive an internal `_sg` suffix during
+    tokenisation and the suffix is removed during decoding. `from_pretrained` and `save_pretrained`
+    use `vocabulary.json`, `spacegroups.txt`, and `tokenizer_config.json`.
     """
     def __init__(
         self,
@@ -125,7 +128,7 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
         )
 
 
-        # here just adding "_sg" to the space group name inside the sample
+        # Add "_sg" to the sample's space-group name.
 
         # Build the tokenization pattern:
         token_pattern = "|".join(self._escaped_tokens)
@@ -182,7 +185,8 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
         return "".join(tokens)
 
     def build_inputs_with_special_tokens(self, token_ids_0: list[int], token_ids_1: list[int] | None=None) -> list[int]:
-        """Add special tokens to a sequence or a pair of sequences. For GPT-2-style models, no additional special tokens are used. either returns token_ids_0 or token_ids_0 + token_ids_1
+        """Add special tokens to a sequence or a pair of sequences. For GPT-2-style models, no additional
+special tokens are used. either returns token_ids_0 or token_ids_0 + token_ids_1
         """
         if token_ids_1 is None:
             return token_ids_0
@@ -204,7 +208,8 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
     def decode(self, token_ids: list[int] | torch.Tensor, skip_special_tokens: bool=False, **kwargs) -> str:
         """Decode token ids into CIF text.
 
-        Internal `_sg` suffixes are removed from space-group tokens so the decoded text uses the external CIF spelling.
+        Internal `_sg` suffixes are removed from space-group tokens so the decoded text uses the
+        external CIF spelling.
         """
         tokens = [self._convert_id_to_token(idx) for idx in token_ids]
         if skip_special_tokens:
@@ -224,7 +229,8 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
     def from_pretrained(cls, pretrained_dir: str, **kwargs) -> "CustomCIFTokenizer":
         """Load a tokenizer from a directory written by `save_pretrained`.
 
-        The directory must contain `vocabulary.json`, `spacegroups.txt`, and `tokenizer_config.json`.
+        The directory must contain `vocabulary.json`, `spacegroups.txt`, and
+        `tokenizer_config.json`.
         """
         pretrained_dir = resolve_tokenizer_dir(pretrained_dir)
         vocab_file = os.path.join(pretrained_dir, "vocabulary.json")
@@ -242,7 +248,8 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
         )
 
     def save_vocabulary(self, save_directory: str, filename_prefix: str | None=None) -> tuple[str, ...]:
-        """Save the base vocabulary (token->ID) to a file. Hugging Face's `save_pretrained` will call this. Returns the path(s) of the saved vocab file(s).
+        """Save the base vocabulary (token->ID) to a file. Hugging Face's `save_pretrained` will call this.
+Returns the path(s) of the saved vocab file(s).
         """
         if not os.path.isdir(save_directory):
             os.makedirs(save_directory)
@@ -279,7 +286,8 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
     def add_custom_tokens(self, tokens: list[str]) -> None:
         """Add tokens to the vocabulary and refresh the tokenisation pattern.
 
-        New tokens are appended so existing token ids retain their meanings and remain compatible with models trained against the previous vocabulary.
+        New tokens are appended so existing token ids retain their meanings and remain compatible
+        with models trained against the previous vocabulary.
         """
         for token in tokens:
             if token not in self.token_to_id:
@@ -299,7 +307,8 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
     def remove_custom_tokens(self, tokens: list[str]) -> None:
         """Remove tokens from the vocabulary.
 
-        This is safe only before training. Removing a token shifts subsequent token ids, which makes models trained against the previous vocabulary incompatible with the tokenizer.
+        This is safe only before training. Removing a token shifts subsequent token ids, which makes
+        models trained against the previous vocabulary incompatible with the tokenizer.
         """
         removed_any = False
         for token in tokens:
@@ -317,7 +326,7 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
                 print(f"Removed token '{token}' (was ID {old_id})")
         
         if removed_any:
-            # Just update the escaped tokens - leave IDs as-is to avoid breaking everything
+            # Update escaped tokens only. Downstream code uses the original IDs.
             self._escaped_tokens = sorted(
                 [re.escape(t) for t in self._tokens],
                 key=len,

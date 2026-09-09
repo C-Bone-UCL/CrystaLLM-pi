@@ -1,5 +1,5 @@
 # Exact versions this project is developed and tested against. pyproject.toml carries the same
-# dependencies as version floors; use that (pip install -e ".[all]") for a normal install and
+# dependencies as version floors. Use that (pip install -e ".[all]") for a normal install and
 # this file when you want to reproduce our environment precisely.
 accelerate==1.2.1
 torch==2.5.1

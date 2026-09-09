@@ -45,15 +45,15 @@ CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> is a Transformer-based sys
 
 ## Statement of need
 
-CrystaLLM-<span style="font-size: 1.2em;">π</span> is a lightweight framework for conditional crystal structure generation. You can fine-tune a pretrained model on numerical properties and generate structures aimed at a target value, or generate directly from one of the open-sourced models.
+CrystaLLM-<span style="font-size: 1.2em;">π</span> is a framework for conditional crystal structure generation. You can fine-tune a pretrained model on numerical properties and generate structures aimed at a target value, or generate directly from one of the open-sourced models.
 
-The framework supports a large range of numerical conditioning variants without requiring a separate generation framework for each application. We have demonstrated the approach for materials discovery with target functional properties and for recovering crystal structures from experimental characterisation data.
+The framework supports numerical conditioning variants without requiring a separate generation framework for each application. We have demonstrated the approach for materials discovery with target functional properties and for recovering crystal structures from experimental characterisation data.
 
 The repository provides the tools needed to apply the method to new problems, including an installable codebase, tutorials, notebooks, documentation, pretrained models on the Hugging Face Hub, a containerised API for model serving, and a web application for interactive generation.
 
 Modern transformers are memory efficient enough that most training and inference runs on a GPU, or on CPU. Most models fit on a 16GB card for training and need 1-2GB for light generation.
 
-Together this keeps the framework within reach of any researcher who wants to work with conditional generative models.
+The framework supports experiments with conditional generative models.
 
 ## Reproducing the paper
 The studies from the ["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299) paper live in the standalone repo [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper) (or [v1.3.0 tag](https://github.com/C-Bone-UCL/CrystaLLM-pi/releases/tag/v1.3.0) of this repository). The next graph-conditioned knowledge distillation paper reproduction code can be accessed in [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph). Otherwise, all models so far are accessible to generate with here.
@@ -125,7 +125,7 @@ Recover a structure from a raw powder pattern, no peak picking needed. The scan 
 
 ```bash
 python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-pi_Chili100K-cXRD" \
+    --hf_model_path "c-bone/CrystaLLM-cXRD_chili100k" \
     --reduced_formula_list "TiO2" \
     --xrd_files tests/fixtures/Rutile-TiO2-unproc.txt \
     --xrd_wavelength 1.54059 \
@@ -142,9 +142,10 @@ Each released model exists because a paper study or tutorial produced it. The ta
 
 | Model | Class | Conditioning | Origin |
 |---|---|---|---|
-| `c-bone/CrystaLLM-pi_ft_alex_mp_20-text` | GPT-2 | unconditional | **Recommended base model**, LeMat-Bulk pretrain finetuned on Alex-MP-20 CIFs, taken from [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph)|
-| `c-bone/CrystaLLM-pi_Chili100K-cXRD` | PrefixXRD | continuous XRD profiles | CHILI-100K KD student from [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph), different priors, in theory better for more experimental structs |
-| `c-bone/CrystaLLM-pi_alex_mp_20-cXRD` | PrefixXRD | continuous XRD profiles | Alex-MP-20 KD student from [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph), in theory more coverage than the chili model |
+| `c-bone/CrystaLLM-pi_ft_alex_mp_20-text` | GPT-2 | unconditional | **Recommended base model**, LeMat-Bulk pretrain finetuned on Alex-MP-20 CIFs, from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD) |
+| `c-bone/CrystaLLM-cXRD_chili100k` | PrefixXRD | continuous XRD profiles | CHILI-100K model from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD), experimental-structure priors, the choice for measured scans |
+| `c-bone/CrystaLLM-cXRD_alex-mp-20` | PrefixXRD | continuous XRD profiles | Alex-MP-20 bridge model from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD), broader coverage than the CHILI model |
+| `c-bone/CrystaLLM-cXRD_mp20` | PrefixXRD | continuous XRD profiles | MP-20 benchmark model from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD), trained from scratch |
 | `c-bone/CrystaLLM-pi_base` | GPT-2 | unconditional | LeMaterial base model from the first paper |
 | `c-bone/CrystaLLM-pi_mp_20_base` | GPT-2 | unconditional | mp-20 pretraining base from the paper's pretraining studies |
 | `c-bone/CrystaLLM-pi_alex_mp_20_base` | GPT-2 | unconditional | alex-mp-20 pretraining base from the paper's dataset-size study |
@@ -173,8 +174,7 @@ Customising the tokenizer is covered on the [tutorials page](https://c-bone-ucl.
 
 ## Citation
 
-Please cite the following when using this work:
-["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299)
+Please cite the following when using this work: ["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299)
 
 ```
 @misc{bone2026discoveryrecoverycrystallinematerials,

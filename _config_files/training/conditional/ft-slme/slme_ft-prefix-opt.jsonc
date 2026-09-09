@@ -38,7 +38,6 @@
   "train_batch_size": 32,
   "eval_batch_size": 32,
   "gradient_accumulation_steps": 1,
-  "auto_find_batch_size": false,
   // Learning Rate and Optimizer
   "learning_rate": 1.0596703391605471e-06,
   "lr_scheduler_type": "cosine_with_min_lr",

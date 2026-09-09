@@ -1,6 +1,9 @@
 """Legacy PKV-conditioned GPT-2, kept load-only so released checkpoints still load.
 
-Deprecated for new training. `Prefix_model` is the current model to use. The two are not interchangeable. A PKV checkpoint loads into `PrefixGPT` with no error and then produces different outputs, because the encoder activation differs (ReLU here, GELU there) and the cached key-values are reshaped differently.
+Deprecated for new training. `Prefix_model` is the current model to use. The two are not
+interchangeable. A PKV checkpoint loads into `PrefixGPT` with no error and then produces different
+outputs, because the encoder activation differs (ReLU here, GELU there) and the cached key-values
+are reshaped differently.
 
 This model is part of the Prefix PKV conditioning family.
 """

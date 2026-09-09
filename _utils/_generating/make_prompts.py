@@ -1,8 +1,12 @@
 r"""Build generation prompts for conditional and unconditional models.
 
-Prompts can be extracted from CIF data or constructed from compositions and target properties. Conditioning levels range from an unconditional prompt to prompts containing composition, atomic information, and space group. Manual mode supports `cartesian`, `paired`, and `broadcast` composition-to-condition mappings.
+Prompts can be extracted from CIF data or constructed from compositions and target properties.
+Conditioning levels range from an unconditional prompt to prompts containing composition, atomic
+information, and space group. Manual mode supports `cartesian`, `paired`, and `broadcast`
+composition-to-condition mappings.
 
-Each `--condition_lists` argument is one complete condition vector for a sample. For example, `"1.8,0.0" "2.0,0.0"` represents two condition vectors, not four.
+Each `--condition_lists` argument is one complete condition vector for a sample. For example,
+`"1.8,0.0" "2.0,0.0"` represents two condition vectors, not four.
 
 Usage:
     ```bash
@@ -103,7 +107,9 @@ def extract_composition_from_cif(cif_content: str) -> str:
 def create_automatic_prompts(df: pd.DataFrame, cif_column: str, level: str, condition_columns: list[str] | None=None) -> pd.DataFrame:
     """Build prompts by extracting them from existing CIF data.
 
-    Each row's CIF is truncated to whatever `level` should reveal, leaving the model to complete the rest. Condition values come from `condition_columns` on the same row, which keeps each prompt paired with the properties that structure actually has.
+    Each row's CIF is truncated to whatever `level` should reveal, leaving the model to complete the
+    rest. Condition values come from `condition_columns` on the same row, which keeps each prompt
+    paired with the properties that structure actually has.
     """
     df = df.copy()
     
@@ -196,7 +202,11 @@ def _format_condition_vectors(condition_lists: list) -> list[str]:
 def create_manual_prompts(compositions: list[str], condition_lists: list, level: str="level_2", spacegroups: list[str] | None=None, mode: str="cartesian") -> pd.DataFrame:
     """Build prompts from compositions and condition values given directly.
 
-    `mode` decides how the two lists pair up: "cartesian" takes every combination, "paired" maps them 1:1 and requires equal lengths, "broadcast" applies a single condition to every composition. `level` controls how much the prompt states, from level_1 (nothing, fully unconditional) through level_2 (composition), level_3 (composition plus atomic information) to level_4 (adding the space group). Spacegroups are only used at level_3 and above.
+    `mode` decides how the two lists pair up: "cartesian" takes every combination, "paired" maps
+    them 1:1 and requires equal lengths, "broadcast" applies a single condition to every
+    composition. `level` controls how much the prompt states, from level_1 (nothing, fully
+    unconditional) through level_2 (composition), level_3 (composition plus atomic information) to
+    level_4 (adding the space group). Spacegroups are only used at level_3 and above.
     """
     # Handle compositions
     if not compositions or compositions == [None]:

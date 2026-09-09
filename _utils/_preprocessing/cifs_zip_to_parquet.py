@@ -1,6 +1,8 @@
 r"""Extract and symmetrise CIFs from tarballs into a parquet dataset.
 
-The CIF tarballs are converted to the parquet layout expected by the package. Split labels are derived from the tarball filenames after removing their extensions, so filenames determine the resulting split names.
+The CIF tarballs are converted to the parquet layout expected by the package. Split labels are
+derived from the tarball filenames after removing their extensions, so filenames determine the
+resulting split names.
 
 From original repo: https://github.com/lantunes/CrystaLLM/blob/main/ARTIFACTS.md
 
@@ -39,7 +41,7 @@ def _process_single_cif(payload):
         parser = CifParser.from_str(cif_string)
         struct = parser.parse_structures()[0]
         
-        # Attempt to standardize spatial configurations, otherwise just use the parsed struct
+        # Use the parsed structure if spatial standardisation fails.
         try:
             sga = SpacegroupAnalyzer(struct)
             symm_struct = sga.get_symmetrized_structure()

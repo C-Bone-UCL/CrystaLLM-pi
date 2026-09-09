@@ -83,7 +83,7 @@ class CIFFormattingTrainer(Trainer):
         # Also shift the attention mask if present
         shift_attention_mask = inputs["attention_mask"][..., 1:].contiguous().float()
 
-        # Ensure fixed_mask is a tensor
+        # fixed_mask must be a tensor
         if not isinstance(fixed_mask, torch.Tensor):
             fixed_mask_tensor = torch.tensor(fixed_mask, device=shift_labels.device)
         else:

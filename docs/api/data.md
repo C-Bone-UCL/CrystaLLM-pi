@@ -20,7 +20,7 @@ Filtering is optional. By default, CIFs longer than the context length are trunc
 
 ## Custom Dataloader for Conditioning
 
-`CustomCIFDataCollator` constructs the batches consumed during training. Understanding its behaviour is therefore important when modifying the training pipeline.
+`CustomCIFDataCollator` constructs the batches consumed during training. Changes to the training pipeline may require changes here.
 
 Every sequence produced by the collator has exactly `context_length` tokens. If a CIF exceeds the context window, it is truncated from the beginning. Shorter CIFs are then packed with tokens from other CIFs, selected round-robin from the remainder of the batch, until the window is filled. This packing keeps the context window occupied by CIF tokens rather than padding, but a single sequence can therefore contain parts of multiple structures.
 

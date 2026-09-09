@@ -13,8 +13,10 @@ _utils/_evaluation_og/lematerial-small-ppo_gen.parquet
 logs/
 # .github/
 notebooks/Z_rsync.ipynb
+notebooks/T6_alloy_XRD_virtualiser.ipynb
 .exclude-rsync.txt
-/data/
+/data/*
+!/data/alloy_xrd/
 /outputs/
 *ignore.txt
 __amil_xrd__/

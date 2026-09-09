@@ -97,7 +97,10 @@ def filter_CIFs_with_unk(tokenized_dataset, tokenizer):
 
 
 def create_fixed_format_mask(text, tokenizer, full_length):
-    """Generate a binary mask for the CIF text: - Tokens not within variable brackets are 1 (fixed). - Tokens inside brackets are 0 (variable). - The bracket tokens "[" and "]" themselves are 1 (fixed).
+    """Generate a binary mask for the CIF text.
+
+    Tokens outside variable brackets are 1 (fixed), tokens inside are 0 (variable), and the bracket
+    tokens "[" and "]" themselves are 1.
     """
     
     tokenized = tokenizer(text, truncation=False)

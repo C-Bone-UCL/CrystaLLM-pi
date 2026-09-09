@@ -6,7 +6,6 @@
   "context_length": 1024,
   "remove_CIFs_above_context": false,
   "remove_CIFs_with_unk": false,
-  "remove_corrupt_graph_embeddings": false,
 
   // Conditioning Arguments
   //#######################

@@ -21,7 +21,8 @@ class LoadAndGenerateTests:
     def test_cli_help_runs(self) -> None:
         """The entrypoint must at least build its parser and exit cleanly.
 
-        Nothing else drives _load_and_generate.py's main(), so a broken argparse or a NameError at import level would otherwise only surface for a user.
+        Nothing else drives _load_and_generate.py's main(), so a broken argparse or a NameError at
+        import level would otherwise only surface for a user.
         """
         result = subprocess.run(
             [sys.executable, os.path.join(script_dir, "_load_and_generate.py"), "--help"],
@@ -214,6 +215,7 @@ class LoadAndGenerateTests:
             max_return_attempts=1,
             max_samples=1,
             scoring_mode="None",
+            screening_profile="application",
             target_valid_cifs=0,
             num_workers=1,
             skip_postprocess=True,
@@ -438,7 +440,9 @@ class LoadAndGenerateTests:
     def test_xrd_fit_scores_discriminate(self):
         """XRD fit scoring must prefer the phase that produced the scan.
 
-        The candidate CIF is a raw model generation: asymmetric unit plus a placeholder operator list. Skipping the symmetry expansion drops its pearson r below 0.3, so the threshold also protects that step.
+        The candidate CIF is a raw model generation: asymmetric unit plus a placeholder operator
+        list. Skipping the symmetry expansion drops its pearson r below 0.3, so the threshold also
+        protects that step.
         """
         import numpy as np
         from pymatgen.core import Lattice, Structure

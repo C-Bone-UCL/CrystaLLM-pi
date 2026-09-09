@@ -8,7 +8,9 @@ from torch import nn
 def reshape_prefix_kv_to_past_key_values(kv_tensor: torch.Tensor, batch_size: int, n_tokens: int, config: "PrefixGPT2Config") -> tuple:
     """Reshape a flat prefix projection into GPT-2 past_key_values tuples.
 
-    The layer axis is permuted ahead of the token axis so each block can take its own slice without extra indexing. Legacy `PKV_model` keeps this layer-major, which is half of why a PKV checkpoint loads into `PrefixGPT` without error and behaves differently.
+    The layer axis is permuted ahead of the token axis so each block can take its own slice without
+    extra indexing. Legacy `PKV_model` keeps this layer-major, which is half of why a PKV checkpoint
+    loads into `PrefixGPT` without error and behaves differently.
 
     Args:
         kv_tensor: [B, n_tokens * n_layer * 2 * hidden_size] - flat encoder output
@@ -50,7 +52,9 @@ def prepend_prefix_attention_mask(attention_mask: torch.Tensor, batch_size: int,
 class PrefixGPT2Config(GPT2Config):
     """Configuration for prefix-conditioned GPT-2.
 
-    `n_input_vector` specifies the number of scalar properties, `n_prefix_tokens` the number of virtual tokens emitted per layer, and `n_hidden_cond` the conditioning encoder width. Cross-attention is disabled because conditioning enters through cached key-values.
+    `n_input_vector` specifies the number of scalar properties, `n_prefix_tokens` the number of
+    virtual tokens emitted per layer, and `n_hidden_cond` the conditioning encoder width.
+    Cross-attention is disabled because conditioning enters through cached key-values.
     """
 
     def __init__(
@@ -72,7 +76,9 @@ class PrefixGPT2Config(GPT2Config):
 class PrefixEncoder(nn.Module):
     """Project a scalar conditioning vector into per-layer prefix key-value tensors.
 
-    The MLP emits one flat tensor per batch item, which is later reshaped into layers, heads, and prefix tokens. This encoder uses GELU, whereas the legacy `PKV_model` uses ReLU, so the two checkpoint families are not interchangeable.
+    The MLP emits one flat tensor per batch item, which is later reshaped into layers, heads, and
+    prefix tokens. This encoder uses GELU, whereas the legacy `PKV_model` uses ReLU, so the two
+    checkpoint families are not interchangeable.
     """
 
     def __init__(self, config: PrefixGPT2Config) -> None:
@@ -124,7 +130,9 @@ class PrefixEncoder(nn.Module):
 class PrefixGPT(GPT2LMHeadModel):
     """GPT-2 conditioned on scalar properties through learned prefix key-values.
 
-    The encoder output occupies `config.n_prefix_tokens` cached positions before the text sequence. Generation must therefore account for the prefix when computing the effective text length and position embeddings.
+    The encoder output occupies `config.n_prefix_tokens` cached positions before the text sequence.
+    Generation must therefore account for the prefix when computing the effective text length and
+    position embeddings.
     """
     config_class = PrefixGPT2Config
 

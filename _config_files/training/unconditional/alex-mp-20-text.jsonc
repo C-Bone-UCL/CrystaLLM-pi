@@ -2,9 +2,8 @@
   // Data Arguments
   //################
   "dataset_HF": "c-bone/alex_mp_20",
-  "pretrained_tokenizer_dir": "HF-cif-tokenizer",
+  "pretrained_tokenizer_dir": "_utils/HF-cif-tokenizer-noprop",  // released checkpoint has vocab 376, the no-<prop> vocabulary
   "context_length": 1024,
-  "dataset_streaming": false,
   // Filters
   "remove_CIFs_above_context": false,
   "remove_CIFs_with_unk": true,

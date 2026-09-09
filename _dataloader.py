@@ -64,9 +64,13 @@ def _pack_condition_values(values_list: list) -> torch.Tensor:
 class CustomCIFDataCollator:
     """Collate tokenized CIF rows into fixed-length training batches.
 
-    Every sequence in a batch is exactly `context_length` tokens. A CIF longer than that is sliced from the beginning, a shorter one is packed with further CIFs taken round-robin from the rest of the batch until the window is full. Packing rather than padding is what keeps the context window carrying real tokens instead of filler.
+    Every sequence in a batch is exactly `context_length` tokens. A CIF longer than that is sliced
+    from the beginning, a shorter one is packed with further CIFs taken round-robin from the rest of
+    the batch until the window is full. Packing keeps the context window full of real tokens instead
+    of padding.
 
-    Conditional mode is detected from the features themselves, by whether `condition_values` is present, so the same collator serves both training modes.
+    Conditional mode is detected from the features themselves, by whether `condition_values` is
+    present, so the same collator serves both training modes.
     """
     def __init__(self, tokenizer: "CustomCIFTokenizer", context_length: int) -> None:
         self.tokenizer = tokenizer
@@ -177,7 +181,7 @@ class CustomCIFDataCollator:
                     # Move to next feature in round-robin
                     current_idx = (current_idx + 1) % len(features)
 
-                # Ensure special_tokens_mask exists
+                # Add special_tokens_mask when missing
                 if len(packed_special_tokens_mask) == 0:
                     packed_special_tokens_mask = [0] * len(packed_input_ids)
 
@@ -232,14 +236,17 @@ def load_data(
 ) -> tuple:
     """Tokenize a CIF dataset and build the collator used by the Hugging Face Trainer.
 
-    Conditional datasets must provide the requested condition columns. CIFs exceeding the context length or containing unknown tokens can be removed instead of being truncated or retained.
+    Conditional datasets must provide the requested condition columns. CIFs exceeding the context
+    length or containing unknown tokens can be removed instead of being truncated or retained.
 
     Args:
         tokenizer: CIF tokenizer used to encode structures and provide the pad token id.
-        dataset: Hugging Face dataset containing CIF text and, for conditional training, the required condition columns.
+        dataset: Hugging Face dataset containing CIF text and, for conditional training, the
+                 required condition columns.
         context_length: Number of tokens in each training sequence.
         mode: Whether training is unconditional or conditional.
-        condition_columns: Dataset columns containing the conditioning values for conditional training.
+        condition_columns: Dataset columns containing the conditioning values for conditional
+                           training.
         remove_CIFs_above_context: Whether to drop CIFs longer than the context length.
         remove_CIFs_with_unk: Whether to drop CIFs containing unknown tokens.
         show_token_stats: Whether to print token-length statistics.

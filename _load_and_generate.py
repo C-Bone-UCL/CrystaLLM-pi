@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 r"""Load a released CrystaLLM-pi model and generate CIF structures.
 
-Prompts can come from a parquet dataset or reduced formulas. Formula mode can search over Z values and either stop at the first valid structure or select the highest-scoring candidate. Generation uses every visible GPU.
+Prompts can come from a parquet dataset or reduced formulas. Formula mode can search over Z values
+and either stop at the first valid structure or select the highest-scoring candidate. Generation
+uses every visible GPU.
 
-`--scoring_mode` supports `LOGP`, `PEARSON`, and `None`. Continuous-XRD Z searches default to `PEARSON`, while `PEARSON` requires a continuous-XRD model. Both scoring modes require `--target_valid_cifs` to be greater than zero.
+`--scoring_mode` supports `LOGP`, `PEARSON`, and `None`. Continuous-XRD Z searches default to
+`PEARSON`, while `PEARSON` requires a continuous-XRD model. Both scoring modes require
+`--target_valid_cifs` to be greater than zero.
 
 Usage:
     ```bash
@@ -33,6 +37,7 @@ from _utils._generating.generate_cifs import (
 from _utils._generating.postprocess import process_dataframe
 from _utils._generating.scoring_methods import XRD_FIT_MODES, score_generated_rows
 from _utils import extract_formula_nonreduced
+from _args import str_to_bool
 from _utils.direct_gen import (
     MODEL_INFO,
     XRD_FORMATS,
@@ -90,7 +95,10 @@ def _postprocess_non_empty_cifs(df: pd.DataFrame, num_workers: int, column_name:
 def generate_prompts_from_specs(specs: list, args: argparse.Namespace) -> pd.DataFrame:
     """Build the prompt DataFrame from expanded formula specs.
 
-    Each spec carries an expanded composition, an optional spacegroup, and an optional condition vector. Nested condition vectors (the continuous-XRD profiles) are passed through untouched rather than parsed from a string, because round-tripping them through `str()` would lose precision. Specs pair 1:1 with prompts. The caller owns the combinatorics, not this function.
+    Each spec carries an expanded composition, an optional spacegroup, and an optional condition
+    vector. Nested condition vectors (the continuous-XRD profiles) are passed through untouched
+    rather than parsed from a string, because round-tripping them through `str()` would lose
+    precision. Specs pair 1:1 with prompts. The caller owns the combinatorics, not this function.
 
     Returns the prompt frame with the per-row metadata from `attach_prompt_metadata` already on it.
     """
@@ -122,7 +130,10 @@ def generate_prompts_from_specs(specs: list, args: argparse.Namespace) -> pd.Dat
 def generate_cifs_with_hf_model(df_prompts: pd.DataFrame, hf_model_path: str, args: argparse.Namespace, worker_count: int = 1) -> pd.DataFrame:
     """Generate CIFs for a prompt frame with one Hub model.
 
-    Looks the model up in the registry, pins the generation length to that model's context window, and hands the work to `run_generation_pool`. `worker_count` above 1 fans generation across that many GPU workers. The seed is fixed at 1, since the CLI exposes no seed flag and every run keeps the historical default.
+    Looks the model up in the registry, pins the generation length to that model's context window,
+    and hands the work to `run_generation_pool`. `worker_count` above 1 fans generation across that
+    many GPU workers. The seed is fixed at 1, since the CLI exposes no seed flag and every run keeps
+    the historical default.
 
     Returns a DataFrame of generated rows, one per returned sequence.
     """
@@ -150,6 +161,7 @@ def generate_cifs_with_hf_model(df_prompts: pd.DataFrame, hf_model_path: str, ar
         worker_count=worker_count,
         initargs_override=(hf_model_path, TOKENIZER_DIR, info["model_type"], base_seed, "hf",
                            info.get("config_overrides")),
+        screening_profile=args.screening_profile,
     )
 
     return pd.DataFrame(generated_rows)
@@ -170,7 +182,9 @@ def _generate_and_score(df_prompts: pd.DataFrame, args: argparse.Namespace, scor
 def run_parquet_mode(args: argparse.Namespace, scoring_mode: str) -> pd.DataFrame:
     """Generate from a parquet of prebuilt prompts.
 
-    The simpler of the two input paths. Prompts are already built, so this only reads them, applies `--max_samples` if given, and generates. Z search belongs to formula mode and does not apply here.
+    The simpler of the two input paths. Prompts are already built, so this only reads them, applies
+    `--max_samples` if given, and generates. Z search belongs to formula mode and does not apply
+    here.
     """
     print(f"\nLoading Prompts\nSource: {args.input_parquet}")
     df_prompts = pd.read_parquet(args.input_parquet)
@@ -238,9 +252,15 @@ def _run_batch_generation(args: argparse.Namespace, canonical_formulas: list, ro
 def run_formula_mode(args: argparse.Namespace, parser: argparse.ArgumentParser, scoring_mode: str, xrd_format: str | None) -> pd.DataFrame:
     """Generate from a list of reduced formulas, expanding each over Z.
 
-    Validates the per-formula CLI lists, which each accept either one value broadcast to every formula or exactly one value per formula, then assembles the per-row conditioning and dispatches to one of two strategies. An unscored `--search_zs` run walks Z values and drops each formula once it yields a valid structure. Everything else generates the full formula-by-Z grid, because ranking needs every candidate present before it can choose.
+    Validates the per-formula CLI lists, which each accept either one value broadcast to every
+    formula or exactly one value per formula, then assembles the per-row conditioning and dispatches
+    to one of two strategies. An unscored `--search_zs` run walks Z values and drops each formula
+    once it yields a valid structure. Everything else generates the full formula-by-Z grid, because
+    ranking needs every candidate present before it can choose.
 
-    Rejects duplicate formulas under `--search_zs`, where completion is tracked by formula name, and rejects a continuous-XRD model with no `--xrd_files`, since that family has no missing-condition mask and would otherwise generate unconditioned.
+    Rejects duplicate formulas under `--search_zs`, where completion is tracked by formula name, and
+    rejects a continuous-XRD model with no `--xrd_files`, since that family has no missing-condition
+    mask and would otherwise generate unconditioned.
     """
     raw_formulas = parse_reduced_formula_list_arg(args.reduced_formula_list)
     canonical_formulas = canonicalize_reduced_formulas(raw_formulas)
@@ -305,7 +325,10 @@ def run_formula_mode(args: argparse.Namespace, parser: argparse.ArgumentParser, 
 def write_outputs(df_final: pd.DataFrame, args: argparse.Namespace) -> None:
     """Write the finished frame as CIF files or as a single parquet.
 
-    `--output_cif_dir` writes one file per structure, named by full non-reduced formula plus Material ID so runs stay distinguishable, skipping rows whose generation came back empty. `--output_parquet` writes everything to one file instead, creating the parent directory if needed.
+    `--output_cif_dir` writes one file per structure, named by full non-reduced formula plus
+    Material ID so runs stay distinguishable, skipping rows whose generation came back empty.
+    `--output_parquet` writes everything to one file instead, creating the parent directory if
+    needed.
     """
     if args.output_cif_dir:
         os.makedirs(args.output_cif_dir, exist_ok=True)
@@ -367,8 +390,11 @@ def main() -> None:
 
     parser.add_argument("--scoring_mode", type=str, default=None, help="Scoring: 'LOGP' (model perplexity), 'PEARSON' (XRD fit, continuous-XRD models only), or 'None'. Unset, a continuous-XRD Z search defaults to PEARSON.")
 
+    parser.add_argument("--screening_profile", type=str, default="application", choices=("benchmark", "application"),
+                        help="How hard to screen generated CIFs. 'application' runs the bond-length check and ranks over the whole generated batch. 'benchmark' skips the bond-length check and ranks a pool truncated at target_valid_cifs, reproducing the screening behind the published MP-20 and CHILI-100K numbers.")
+
     parser.add_argument("--num_workers", type=int, default=4, help="CPU Post-processing workers")
-    parser.add_argument("--num_workers_gpu", type=int, default=None, help="GPU workers for inference (default: all visible GPUs; 1 forces single-GPU)")
+    parser.add_argument("--num_workers_gpu", type=int, default=None, help="GPU workers for inference (defaults to all visible GPUs). Set to 1 for a single GPU.")
     parser.add_argument("--skip_postprocess", action="store_true", help="Skip CIF validation")
 
     args = parser.parse_args()

@@ -33,10 +33,10 @@ class DirectGenerationRequest(BaseModel):
     num_return_sequences: int = Field(1, description="Sequences per sample")
     max_return_attempts: int = Field(1, description="Generation attempts per sample")
     max_samples: int | None = Field(None, description="Max samples to process")
-    scoring_mode: str | None = Field(None, description="Scoring mode for filtering (case-insensitive: LOGP, PEARSON or None; PEARSON ranks by XRD fit and needs a continuous-XRD model). Left unset, continuous-XRD Z searches default to PEARSON.")
+    scoring_mode: str | None = Field(None, description="Scoring mode for filtering (case-insensitive: LOGP, PEARSON or None. PEARSON ranks by XRD fit and needs a continuous-XRD model). Left unset, continuous-XRD Z searches default to PEARSON.")
     target_valid_cifs: int = Field(1, description="Target valid CIFs per prompt (LOGP requires sensibility + formula-structure consistency)")
     multi_gpu: Literal['auto', 'true', 'false'] = Field("auto", description="Deprecated: 'false' translates to --num_workers_gpu 1, other values are ignored. Use nproc_per_node instead")
-    nproc_per_node: int | None = Field(None, description="Max GPU workers (passed as --num_workers_gpu; unset uses all visible GPUs)")
+    nproc_per_node: int | None = Field(None, description="Max GPU workers (passed as --num_workers_gpu, unset uses all visible GPUs)")
     num_workers: int = Field(4, description="Post-processing workers")
     skip_postprocess: bool = Field(False, description="Skip CIF validation/postprocessing")
 
@@ -44,7 +44,8 @@ class DirectGenerationRequest(BaseModel):
 class MakePromptsRequest(BaseModel):
     """Request body for `POST /generate/make-prompts`.
 
-    Manual mode constructs prompts from `compositions` and `condition_lists` according to `mode`. Automatic mode extracts prompts from a dataset. Exactly one mode is used per request.
+    Manual mode constructs prompts from `compositions` and `condition_lists` according to `mode`.
+    Automatic mode extracts prompts from a dataset. Exactly one mode is used per request.
     """
     output_parquet: str = Field(..., description="Output parquet file")
     manual: bool | None = Field(None, description="Manual mode")

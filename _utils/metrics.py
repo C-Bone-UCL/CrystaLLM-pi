@@ -62,7 +62,7 @@ def load_and_process_generated_data(gen_data_path: str, num_workers: int) -> pd.
     
     gen_df = pd.read_parquet(gen_data_path)
     
-    # Ensure condition column exists for downstream sorting
+    # Add the condition column so downstream sorting has it
     if 'condition_vector' not in gen_df.columns and 'Condition Vector' not in gen_df.columns:
         print("No condition column found. Creating 'condition_vector' with value -100.")
         gen_df['condition_vector'] = -100
@@ -104,7 +104,7 @@ def extract_generated_formulas(structures: list) -> list:
     for struct in tqdm(structures, desc="Extracting reduced formulas"):
         if struct is not None:
             try:
-                # Normalize using Composition to ensure consistent formula representation
+                # Normalize through Composition so formulas compare consistently
                 normalized_formula = Composition(struct.composition).reduced_formula
                 formulas.add(normalized_formula)
             except Exception:

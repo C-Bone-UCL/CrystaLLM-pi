@@ -12,8 +12,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 * **New conditional families**: `Prefix`, `PrefixXRD`, and `Residual` have been imported from CrystaLLM-graph, with minor upgrades. They replace `PKV` and `Slider` respectively. New dependency: `einops`.
 * **PKV and Slider are now generation-only**: training either model now raises an error directing users to its successor. All released legacy checkpoints continue to generate identically. T1 and T5 now fine-tune `Prefix`, and `T4_XRD_continuous` is now available for continuous-XRD training. XRD training itself remains in CrystaLLM-graph.
 * **Three new models on the Hub**: `Chili100K-cXRD` and `alex_mp_20-cXRD` are continuous-XRD models and KD students of the graph teacher. `ft_alex_mp_20-text` is a text-only `alex_mp_20` model and the recommended base for new fine-tuning runs.
+* **cXRD models renamed and re-released**: the continuous-XRD checkpoints are now `CrystaLLM-cXRD_chili100k`, `CrystaLLM-cXRD_alex-mp-20` and `CrystaLLM-cXRD_mp20`, trained without distillation in CrystaLLM-cXRD, which is where their configs and benchmarks live. The earlier distilled checkpoints leave the registry until the paper that describes them is out.
+* **Training configs on the Hub**: every released model now carries the `training_config.jsonc` that produced it and the resolved `training_args.json`, the same files new training runs write into their checkpoints.
 * **Generate from raw XRD scans**: `--xrd_files` now accepts raw diffractometer scans for cXRD models, with no peak picking required. The new `process_exp_xrd_continuous.py` converts scans from 2theta to Q, removes the background, resamples the profile, and can plot each stage for inspection. New dependency: `pybaselines`.
 * **XRD-fit ranked Z search**: the new `PEARSON` scoring mode ranks Z-search candidates by fitting each generated candidate's simulated diffraction pattern to the input scan on a 1000-point grid. Initial internal tests suggest that `LOGP` improves RMSD, while `PEARSON` improves match rate.
+* **Breaking: `LOGP` now measures the model rather than the sampler**: perplexity comes from a separate forward pass over the full vocabulary, not from the generation-time scores, which `top_k`, `top_p` and `temperature` have already truncated and sharpened. Absolute values shift by under 1%, but the top-ranked candidate changes for roughly a third of prompts, so `LOGP` rankings from earlier versions are not directly comparable. `scoring_methods.forward_pass_logp` replaces `score_outputs_logp` and `score_output_logp`. Generation no longer retains per-step logits, which lowers peak memory.
+
+### Generation Screening
+
+* **`--screening_profile`**: sets how hard generated CIFs are screened. `application`, the default here, runs the bond-length check and ranks the whole batch that reaches the target rather than the first candidates to arrive. `benchmark` reproduces the screening behind the published MP-20 and CHILI-100K numbers, and is the default in the repositories that produced them.
+* **Disordered structures pass through the bond-length check**: it now reports "not checked" instead of failing on partial occupancies, so virtualiser output can be screened rather than skipped.
+* **Formula consistency handles supercells and partial occupancy**: the declared formula and the atom-site composition are compared up to cell scale, at a tolerance that still rejects a CIF declaring `Fe12C4` whose sites hold `Fe2C`.
+* **Unknown config keys are rejected**: a misspelled or stale key in a `.jsonc` config raises instead of doing nothing.
+
+### Post-processing
+
+* **Virtual crystals from more than two elements**: `virtual_pairs` entries may now list any number of elements to merge onto one sublattice, so an ordered ternary or quaternary alloy cell collapses into a single mixed-occupancy solid solution. Two-element entries behave as before.
 
 ### Repository Split
 

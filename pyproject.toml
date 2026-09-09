@@ -91,7 +91,7 @@ where = ["."]
 include = ["_models*", "_utils*"]
 
 [tool.setuptools.package-data]
-# HF-cif-tokenizer lives under _utils so it ships in the wheel; without it an installed
+# HF-cif-tokenizer lives under _utils so it ships in the wheel. Without it an installed
 # CrystaLLM-pi can only generate when run from the repo root. See resolve_tokenizer_dir.
 "_utils" = ["model_registry.json", "HF-cif-tokenizer/*"]
 

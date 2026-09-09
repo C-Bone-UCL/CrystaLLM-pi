@@ -26,7 +26,10 @@ def condition_vector_to_continuous_xrd(
 ) -> list[list[float]]:
     """Convert a condition vector into the 1000x2 `[Q, I]` form PrefixXRD consumes.
 
-    Accepts either discrete `[Q, I]` peaks, which are broadened, or an already-continuous 1000x2 profile, which is passed through once its Q column is confirmed to match the canonical grid. Broadening here is deterministic: noise, rescaling and masking are all disabled and `fwhm` and `eta` are fixed.
+    Accepts either discrete `[Q, I]` peaks, which are broadened, or an already-continuous 1000x2
+    profile, which is passed through once its Q column is confirmed to match the canonical grid.
+    Broadening here is deterministic: noise, rescaling and masking are all disabled and `fwhm` and
+    `eta` are fixed.
     """
     values = condition_vector.tolist() if hasattr(condition_vector, "tolist") else condition_vector
     if not values:
@@ -71,7 +74,8 @@ def discrete_to_continuous_xrd(
 ) -> dict:
     """Convert discrete XRD peaks into a continuous 1000-point profile.
 
-    During inference, noise, intensity scaling, and peak masking are disabled and the peak-width and pseudo-Voigt parameters are fixed, making the conversion deterministic for a given set of peaks.
+    During inference, noise, intensity scaling, and peak masking are disabled and the peak-width and
+    pseudo-Voigt parameters are fixed, making the conversion deterministic for a given set of peaks.
 
     Args:
         batch_q: Peak positions with shape `[B, N_peaks]` in Å^-1. A value of zero denotes padding.
@@ -87,7 +91,8 @@ def discrete_to_continuous_xrd(
         seed: Seed for augmentation draws.
 
     Returns:
-        A dictionary containing the shared Q grid with shape `[1000]` and max-normalised intensities with shape `[B, 1000]`.
+        A dictionary containing the shared Q grid with shape `[1000]` and max-normalised intensities
+        with shape `[B, 1000]`.
     """
     device = batch_q.device
     generator = None

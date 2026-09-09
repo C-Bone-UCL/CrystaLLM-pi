@@ -8,15 +8,15 @@ CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> is a Transformer-based sys
 
 ## Statement of need
 
-CrystaLLM-<span style="font-size: 1.2em;">π</span> is a lightweight framework for conditional crystal structure generation. You can fine-tune a pretrained model on numerical properties and generate structures aimed at a target value, or generate directly from one of the open-sourced models.
+CrystaLLM-<span style="font-size: 1.2em;">π</span> is a framework for conditional crystal structure generation. You can fine-tune a pretrained model on numerical properties and generate structures aimed at a target value, or generate directly from one of the open-sourced models.
 
-The framework supports a large range of numerical conditioning variants without requiring a separate generation framework for each application. We have demonstrated the approach for materials discovery with target functional properties and for recovering crystal structures from experimental characterisation data.
+The framework supports numerical conditioning variants without requiring a separate generation framework for each application. We have demonstrated the approach for materials discovery with target functional properties and for recovering crystal structures from experimental characterisation data.
 
 The repository provides the tools needed to apply the method to new problems, including an installable codebase, tutorials, notebooks, documentation, pretrained models on the Hugging Face Hub, a containerised API for model serving, and a web application for interactive generation.
 
 Modern transformers are memory efficient enough that most training and inference runs on a GPU, or on CPU. Most models fit on a 16GB card for training and need 1-2GB for light generation.
 
-Together this keeps the framework within reach of any researcher who wants to work with conditional generative models.
+The framework supports experiments with conditional generative models.
 
 ## Key Features
 

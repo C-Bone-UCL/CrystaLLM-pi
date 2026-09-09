@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 
 def setup_notebook_environment():
-    """Automatically navigate to package root and set up Python path. Call this function at the start of any notebook in the notebooks/ folder.
+    """Automatically navigate to package root and set up Python path. Call this function at the start of
+any notebook in the notebooks/ folder.
     """
     current_dir = Path.cwd()
     

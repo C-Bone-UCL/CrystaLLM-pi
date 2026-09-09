@@ -89,7 +89,7 @@ make api-down # Stop and cleanup
 
 ### Running Tests
 
-Ensure your API container is running, then run the test suites to verify the pipeline.
+With the API container running, run the test suites to verify the pipeline.
 
 ```bash
 # Fast Routing Tests (Checks if endpoints respond, 10 secs)
@@ -105,8 +105,6 @@ python -m tests.local.suite --cpu
 ```
 
 ### Quickstart Generation Examples
-
-See the examples below.
 
 For `/generate/direct`, provide exactly one of `output_parquet` or `output_cif_dir`.
 
@@ -188,7 +186,7 @@ curl -X POST "http://localhost:8000/virtualise" \
 ### Troubleshooting (common issues I've seen)
 
 * **API Permission Denied**: Run `chmod 644 API_keys.jsonc` and `chmod -R 775 outputs data`.
-* **Cache Failures**: Ensure `outputs/` and `data/` are owned by the current user: `sudo chown -R $USER:$USER outputs data`.
+* **Cache Failures**: `outputs/` and `data/` must be owned by the current user: `sudo chown -R $USER:$USER outputs data`.
 * **Docs:** Visit `http://localhost:8000/docs` in browser to view the interactive API schema and execute endpoints directly. (needs to be on, or linked to machine where API is running)
 
 ### Cancel a job or check status

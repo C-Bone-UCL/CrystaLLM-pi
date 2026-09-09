@@ -130,7 +130,7 @@ class PreprocessingEndpointTests(IntegrationMixin):
             "test_size": test_size,
             "valid_size": valid_size,
             "HF_username": "test-user",
-            "save_hub": False,  # don't actually push
+            "save_hub": False,  # no real push
             "save_local": True
         })
         data = self._wait_and_assert(response, job_name="save_dataset")

@@ -46,8 +46,7 @@ class GenerationPipelineTests:
             DEFAULT_MAX_LENGTH, TOKENIZER_PAD_TOKEN, DEFAULT_TOKENIZER_DIR
         )
         from _utils._generating.workers import setup_device
-        from _utils._generating.scoring_methods import score_output_logp, score_outputs_logp
-        
+
         # Test constants
         assert DEFAULT_MAX_LENGTH == 1024, "Default max length should be 1024"
         assert TOKENIZER_PAD_TOKEN == "<pad>", "Pad token should be <pad>"
@@ -64,55 +63,50 @@ class GenerationPipelineTests:
         assert device is not None, "Generation device setup failed"
     
     def test_score_output_logp(self):
-        """Test perplexity scoring function."""
-        from _utils._generating.scoring_methods import score_output_logp, score_outputs_logp
+        """forward_pass_logp scores the prompt's continuation up to EOS, and nothing else.
+
+        Counting prompt tokens would drag every candidate toward the same value, and counting
+        past EOS would let padding decide the ranking.
+        """
         import torch
+        from _utils._generating.scoring_methods import forward_pass_logp
+
+        VOCAB, EOS, PAD, K = 100, 99, 0, 4
 
         class MockModel:
-            def __init__(self, transition_scores):
-                self.transition_scores = transition_scores
+            """Spreads all probability evenly over the first K tokens, so log p is -log(K)."""
+
+            def __init__(self):
                 self.calls = 0
 
-            def compute_transition_scores(self, full_sequences, scores, normalize_logits=True):
+            def __call__(self, input_ids, **_kwargs):
                 self.calls += 1
-                return self.transition_scores
-        
-        # Test with None/empty scores
-        result_none = score_output_logp(None, None, None, 0, 0)
-        assert result_none == float('inf'), "None scores should return inf"
-        
-        result_empty = score_output_logp(None, [], None, 0, 0)
-        assert result_empty == float('inf'), "Empty scores should return inf"
+                logits = torch.full((*input_ids.shape, VOCAB), -1e9)
+                logits[..., :K] = 0.0
+                return type("Out", (), {"logits": logits})
 
-        full_sequences = torch.tensor([
-            [10, 11, 12, 99],
-            [20, 21, 99, 0],
+        assert forward_pass_logp(None, None, 0) == [], "No sequences means no scores"
+        assert forward_pass_logp(None, torch.empty(0), 0) == [], "Empty tensor means no scores"
+
+        # Tokens stay under K so perplexity is exactly K at any length. Row 0 scores indices
+        # 2-3 and row 1 only index 2, both stopping before EOS and ignoring the padding.
+        sequences = torch.tensor([
+            [1, 2, 3, 1, EOS, PAD],
+            [2, 3, 2, EOS, PAD, PAD],
         ])
-        transition_scores = torch.tensor([
-            [0.0, -0.2, -0.4, -0.8],
-            [0.0, -0.5, -1.0, -2.0],
-        ])
-        mock_model = MockModel(transition_scores)
-        batch_scores = score_outputs_logp(
-            mock_model,
-            scores=[torch.tensor([0.0])],
-            full_sequences=full_sequences,
-            input_length=1,
-            eos_token_id=99,
-        )
+        model = MockModel()
+        scores = forward_pass_logp(model, sequences, input_length=2, eos_token_id=EOS)
 
-        assert mock_model.calls == 1, "Batch scoring should compute transition scores once"
-        assert len(batch_scores) == 2, "Batch scoring should return one score per sequence"
+        assert model.calls == 1, "One forward pass for the whole batch"
+        assert len(scores) == 2, "One score per sequence"
+        for score in scores:
+            assert abs(score - K) < 1e-3, \
+                f"uniform over {K} tokens gives perplexity {K} at any length, got {score}"
 
-        single_score = score_output_logp(
-            mock_model,
-            scores=[torch.tensor([0.0])],
-            full_sequences=full_sequences,
-            sequence_idx=1,
-            input_length=1,
-            eos_token_id=99,
-        )
-        assert single_score == batch_scores[1], "Single score helper should match batch scoring"
+        # A sequence with no scoreable token is inf, not a silently good score.
+        only_eos = torch.tensor([[1, 2, EOS, PAD]])
+        assert forward_pass_logp(model, only_eos, input_length=2, eos_token_id=EOS)[0] == float('inf'), \
+            "Nothing generated before EOS must not rank first"
     
     def test_generation_kwargs_edge_cases(self):
         """Test generation kwargs with edge cases."""
@@ -198,7 +192,8 @@ class GenerationPipelineTests:
                     assert abs(r - e) < 1e-6, f"Value mismatch for {input_val}"
 
     def test_generation_mode_resolution(self):
-        """None scoring should validate when target_valid_cifs is positive, but return all rows when it is zero."""
+        """None scoring should validate when target_valid_cifs is positive, but return all rows when it is
+zero."""
         from _utils._generating.generate_cifs import resolve_generation_plan
 
         validate_only = resolve_generation_plan(

@@ -1,6 +1,7 @@
 r"""Evaluate generated CIFs for validity, consistency, and crystallographic sanity.
 
-Generated CIFs can be evaluated directly without postprocessing. The valid subset can optionally be written to a new parquet.
+Generated CIFs can be evaluated directly without postprocessing. The valid subset can optionally be
+written to a new parquet.
 
 From original repo: https://github.com/lantunes/CrystaLLM/blob/main/bin/evaluate_cifs.py
 

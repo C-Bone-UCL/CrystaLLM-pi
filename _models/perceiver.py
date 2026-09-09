@@ -118,7 +118,8 @@ class PerceiverAttention(nn.Module):
 class PerceiverResampler(nn.Module):
     """Perceiver resampler that maps variable-length inputs to a fixed number of latent vectors.
 
-    Learnable latent queries cross-attend to the input embeddings, producing a fixed-size representation regardless of input length.
+    Learnable latent queries cross-attend to the input embeddings, producing a fixed-size
+    representation regardless of input length.
 
     Args:
         dim: Hidden dimension of the resampler.

@@ -15,7 +15,7 @@ The script automatically:
 4. **Generates structures** using the appropriate conditional model architecture.
 5. **Validates & Ranks** outputs based on structural integrity and optional perplexity (`LOGP`) scoring, or Pearson correlation of generated to input XRD profiles (`PEARSON`), which is available for the continuous-XRD models only.
 
-Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). XRD-conditioned models take raw scan files via `--xrd_files`: the continuous-XRD models (`Chili100K-cXRD` or `alex_mp_20-cXRD`) convert full diffractometer scans automatically, while the older `Mattergen-XRD` and `Chili100K-XRD` models use a top-20 pre-picked-peak pipeline and can also run without `--xrd_files` using missing conditioning values. cXRD-model *training* happens in [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph), this is because they also incorporate knowledge distillation steps.
+Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). XRD-conditioned models take raw scan files via `--xrd_files`: the continuous-XRD models (`CrystaLLM-cXRD_chili100k` or `CrystaLLM-cXRD_alex-mp-20`) convert full diffractometer scans automatically, while the older `Mattergen-XRD` and `Chili100K-XRD` models use a top-20 pre-picked-peak pipeline and can also run without `--xrd_files` using missing conditioning values. cXRD-model *training* happens in [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD), which also carries the benchmark scorers and every training config.
 
 ## Generation Examples
 
@@ -52,7 +52,7 @@ Recover a structure from a raw powder pattern, no peak picking needed. The scan 
 
 ```bash
 python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-pi_Chili100K-cXRD" \
+    --hf_model_path "c-bone/CrystaLLM-cXRD_chili100k" \
     --reduced_formula_list "TiO2" \
     --xrd_files tests/fixtures/Rutile-TiO2-unproc.txt \
     --xrd_wavelength 1.54059 \
@@ -67,7 +67,7 @@ Sweep Z values and rank every valid candidate by agreement between its simulated
 
 ```bash
 python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-pi_alex_mp_20-cXRD" \
+    --hf_model_path "c-bone/CrystaLLM-cXRD_alex-mp-20" \
     --reduced_formula_list "TiO2" \
     --search_zs \
     --scoring_mode "PEARSON" \
@@ -164,7 +164,7 @@ python _load_and_generate.py \
 
 **XRD-Fit Scoring (`--scoring_mode "PEARSON"`)**
 
-* `PEARSON` is supported only by the continuous-XRD models `c-bone/CrystaLLM-pi_Chili100K-cXRD` and `c-bone/CrystaLLM-pi_alex_mp_20-cXRD`. Ranking requires the per-row `(1000, 2)` `[Q, I]` conditioning profile, so passing `PEARSON` to any other model raises an error.
+* `PEARSON` is supported only by the continuous-XRD models `c-bone/CrystaLLM-cXRD_chili100k`, `c-bone/CrystaLLM-cXRD_alex-mp-20` and `c-bone/CrystaLLM-cXRD_mp20`. Ranking requires the per-row `(1000, 2)` `[Q, I]` conditioning profile, so passing `PEARSON` to any other model raises an error.
 
 * For each generated structure that passes the validity checks, its powder diffraction pattern is simulated with pymatgen, broadened onto the model's 1000-point Q grid using the same peak shape as the conditioning profile, and compared with the input scan using the Pearson correlation coefficient. Higher Pearson correlation is better. As with `LOGP`, `PEARSON` requires `--target_valid_cifs` to be greater than 0. It is also the default for the cXRD models.
 

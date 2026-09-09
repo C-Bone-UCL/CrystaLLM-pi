@@ -99,10 +99,50 @@ class VirtualiserTests:
                 f"Composition mismatch for {el}: {orig_comp[el]} vs {virt_comp[el]}"
             )
 
+    def _make_ordered_bcc_alloy(self):
+        """Build an ordered Mo2Ta2W2 stack of three conventional bcc cells."""
+        from pymatgen.core import Structure, Lattice
+
+        lattice = Lattice.orthorhombic(3.2, 3.2, 9.6)
+        species = ["Mo", "Ta", "W", "Mo", "Ta", "W"]
+        coords = [
+            [0.0, 0.0, 0.0],
+            [0.5, 0.5, 1 / 6],
+            [0.0, 0.0, 1 / 3],
+            [0.5, 0.5, 0.5],
+            [0.0, 0.0, 2 / 3],
+            [0.5, 0.5, 5 / 6],
+        ]
+        return Structure(lattice, species, coords)
+
+    def test_virtualise_structure_ternary(self):
+        """A ternary group merges every member site into a 3-component mixed site."""
+        from _utils._virtualiser import virtualise_structure, promote_symmetry
+        from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
+
+        struct = self._make_ordered_bcc_alloy()
+        virt = virtualise_structure(struct, [("Mo", "Ta", "W")])
+
+        for site in virt.sites:
+            occ = site.species.as_dict()
+            assert len(occ) == 3, "every alloy site should hold all three elements"
+            assert all(abs(v - 1 / 3) < 1e-9 for v in occ.values())
+        orig_comp = struct.composition.fractional_composition
+        virt_comp = virt.composition.fractional_composition
+        for el in ("Mo", "Ta", "W"):
+            assert abs(orig_comp[el] - virt_comp[el]) < 1e-6
+
+        # The ordered bcc stack must collapse to the disordered bcc parent.
+        refined = promote_symmetry(virt, symprec=0.003, angle_tol=0.5)
+        assert SpacegroupAnalyzer(refined, symprec=0.003).get_space_group_number() == 229, "expected Im-3m"
+
     def test_promote_symmetry(self):
         """promote_symmetry rebuilds the virtualised cell in its conventional setting.
 
-        Asserting only that a Structure with sites comes back is satisfied by returning the input untouched, which is the one failure worth catching in a function whose whole job is to change the cell. The ordered Mg/Zn cell is Cm, virtualising the pair raises it to R3m, and symmetrising then expands the primitive 6-site cell into the 18-site conventional one.
+        Asserting only that a Structure with sites comes back is satisfied by returning the input
+        untouched, which is the one failure worth catching in a function whose whole job is to
+        change the cell. The ordered Mg/Zn cell is Cm, virtualising the pair raises it to R3m, and
+        symmetrising then expands the primitive 6-site cell into the 18-site conventional one.
         """
         from pymatgen.core import Structure
         from pymatgen.symmetry.analyzer import SpacegroupAnalyzer

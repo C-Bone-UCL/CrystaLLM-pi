@@ -9,6 +9,7 @@ be loaded for generation but are not trainable. Unsupported values of
 import argparse
 import commentjson
 
+
 def str_to_bool(value: str | bool) -> bool:
     """Parse booleans from CLI flags or config-provided strings."""
     if isinstance(value, bool):
@@ -26,7 +27,11 @@ def str_to_bool(value: str | bool) -> bool:
 def parse_args() -> argparse.Namespace:
     """Build the training and generation config from a JSONC file plus command-line overrides.
 
-    `--config` supplies the base values and any remaining flag overrides them. One config file can therefore be reused with a single setting changed on the command line. Normalizes `activate_conditionality` against `MODEL_REGISTRY` and raises on an unknown family rather than falling back to an unconditional model, which would otherwise train silently without conditioning.
+    `--config` supplies the base values and any remaining flag overrides them. One config file can
+    therefore be reused with a single setting changed on the command line. Normalizes
+    `activate_conditionality` against `MODEL_REGISTRY` and raises on an unknown family rather than
+    falling back to an unconditional model, which would otherwise train silently without
+    conditioning.
     """
 
     parser = argparse.ArgumentParser(description="CrystaLLM_pi Training Script")
@@ -143,7 +148,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_samples", type=int, default=None, help="Maximum number of prompts to process from the input parquet file.")
     parser.add_argument("--output_parquet", type=str, default=None, help="Output parquet file to save generated CIF structures.")
     parser.add_argument("--max_return_attempts", type=int, default=1, help="Number of generation batches per prompt. In validation-targeted modes, generation stops when target_valid_cifs is reached or max_return_attempts is hit. In raw mode, returns max_return_attempts * num_return_sequences CIFs per prompt.")
-    parser.add_argument("--scoring_mode", type=str, default="None", help="Scoring mode for generated structures: 'logp' validates and ranks CIFs by perplexity. 'None' disables ranking, and either validates until target_valid_cifs valid CIFs are found or returns all raw generations when target_valid_cifs is 0.")
+    parser.add_argument("--scoring_mode", type=str, default="None", help="Scoring mode for generated structures: 'logp' validates and ranks CIFs by perplexity, 'pearson' ranks by XRD profile fit (continuous-XRD models only). 'None' disables ranking, and either validates until target_valid_cifs valid CIFs are found or returns all raw generations when target_valid_cifs is 0.")
+
+    parser.add_argument("--screening_profile", type=str, default="application", choices=("benchmark", "application"),
+                        help="How hard to screen generated CIFs. 'application' runs the bond-length check and ranks over the whole generated batch. 'benchmark' skips the bond-length check and ranks a pool truncated at target_valid_cifs, reproducing the screening behind the published MP-20 and CHILI-100K numbers.")
 
     # If scoring_mode is 'logp', the model will compute log-perplexity scores for target_valid_cifs valid generated CIFs to rank them.
     parser.add_argument("--target_valid_cifs", type=int, default=1, help="Target number of valid CIFs per prompt. With scoring_mode='logp', valid CIFs are ranked by perplexity. With scoring_mode='None', target_valid_cifs > 0 enables validation-only early stop, while 0 returns all generated CIFs without validation.")
@@ -163,6 +171,13 @@ def parse_args() -> argparse.Namespace:
         with open(args.config, "r") as f:
             config_data = commentjson.load(f)
         
+        # set_defaults accepts keys matching no argument, so a typo or a key carried
+        # over from a sibling repo would silently do nothing. Reject them instead.
+        known = {a.dest for a in parser._actions}
+        unknown = set(config_data) - known
+        if unknown:
+            raise ValueError(f"{args.config}: unknown config keys {sorted(unknown)}")
+
         # Set config values as new defaults and re-parse to let CLI take precedence
         parser.set_defaults(**config_data)
         args = parser.parse_args()

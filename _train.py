@@ -1,6 +1,7 @@
 """Train or finetune a CrystaLLM-pi model, conditionally or unconditionally.
 
-Conditional runs require `condition_columns` and an `activate_conditionality` model family. Unconditional runs use plain GPT-2. Under `torchrun`, rank 0 handles logging and checkpoint writes.
+Conditional runs require `condition_columns` and an `activate_conditionality` model family.
+Unconditional runs use plain GPT-2. Under `torchrun`, rank 0 handles logging and checkpoint writes.
 
 Usage:
     ```bash
@@ -70,6 +71,9 @@ def main() -> None:
     global process_socket, process_port
 
     # Setting up environment
+    ## Parse first: argparse serves --help here, and a fresh clone has no API_keys.jsonc.
+    args = parse_args()
+
     ## Load API keys
     data = load_api_keys(API_KEY_PATH)
     hf_key_json = str(data['HF_key'])
@@ -78,8 +82,6 @@ def main() -> None:
     ## Acquire and hold an unused port
     process_socket, process_port = acquire_port()
 
-    ## Parse arguments
-    args = parse_args()
     print("Arguments:")
     for arg in vars(args):
         print(f"\t{arg}: {getattr(args, arg)}")

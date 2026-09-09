@@ -1,6 +1,8 @@
 r"""Convert a DataFrame into a Hugging Face dataset with train, validation, and test splits.
 
-Splitting is material-based, so all rows for one material remain in the same split. `--test_size 0.2 --valid_size 0.2` therefore produces 60/20/20 proportions, while setting both values to zero places all rows in the training split.
+Splitting is material-based, so all rows for one material remain in the same split. `--test_size 0.2
+--valid_size 0.2` therefore produces 60/20/20 proportions, while setting both values to zero places
+all rows in the training split.
 
 Usage:
     ```bash
@@ -32,7 +34,7 @@ def create_dataset_splits(df, test_size, valid_size, duplicates_mode=False):
         if 'Material ID' not in df.columns:
             raise ValueError("When using duplicates mode, the 'Material ID' column must be present")
         
-        print("Duplicates mode enabled: ensuring materials are not split across train/val/test sets")
+        print("Duplicates mode enabled: keeping each material in one split")
         unique_materials = df['Material ID'].unique()
         np.random.seed(1)
         np.random.shuffle(unique_materials)
@@ -79,7 +81,7 @@ def create_dataset_splits(df, test_size, valid_size, duplicates_mode=False):
     elif 'Split' in df.columns:
         print("Splitting dataset according to the 'Split' column")
         
-        # Check which splits are actually present
+        # Check which splits are present
         available_splits = df['Split'].unique()
         
         splits = {}
