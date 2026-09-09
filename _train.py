@@ -15,7 +15,6 @@ import atexit
 import torch
 import torch.distributed as dist
 import numpy as np
-import wandb
 from transformers import TrainingArguments
 from datasets import load_dataset
 from huggingface_hub import login
@@ -88,6 +87,7 @@ def main() -> None:
     print()
 
     ## Setup wandb and HF login
+    import wandb  # local: --help must work without the optional train extra installed
     login(token=hf_key_json)
     wandb.login(key=wandb_key)
     if args.wandb_project_folder and args.report_to == "wandb":
