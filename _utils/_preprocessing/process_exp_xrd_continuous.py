@@ -1,8 +1,8 @@
-r"""Convert raw experimental powder XRD scans into the continuous `(1000, 2)` condition format.
+r"""Convert experimental powder XRD scans to continuous `(1000, 2)` conditions.
 
-The pipeline converts 2theta to Q using the supplied wavelength, removes the background with
-pybaselines SNIP, resamples onto the canonical Q grid, and max-normalises intensity to `[0, 1]`. The
-resulting `[Q, I]` profile is consumed by `PrefixXRD` with `skip_xrd_convert_model=True`.
+Convert 2theta to Q using the supplied wavelength, resample onto the canonical Q grid, subtract the
+background with pybaselines SNIP, and max-normalise intensity to `[0, 1]`. `PrefixXRD` consumes the
+resulting `[Q, I]` profile with `skip_xrd_convert_model=True`.
 
 This supersedes `process_exp_xrd_inputs.py`, which selected the top 20 peaks in 2theta space for the
 older XRD models.
@@ -170,14 +170,14 @@ def convert_to_continuous_profile(
     background_subtract: bool = True,
     snip_half_window: int = SNIP_HALF_WINDOW,
 ) -> list[list[float]]:
-    """Convert 2theta and intensity arrays to the canonical continuous-XRD profile.
+    """Convert 2theta and intensity arrays to a continuous XRD condition.
 
-    The supplied wavelength is used to convert 2theta to Q. Unless disabled,
-    background is removed with pybaselines SNIP. The intensity is then resampled
-    onto the 1000-point canonical grid and max-normalised to ``[0, 1]``.
+    Use the supplied wavelength to convert 2theta to Q, then resample onto the canonical 1000-point
+    grid. Apply pybaselines SNIP background subtraction unless disabled, then max-normalise
+    intensity to ``[0, 1]``.
 
     Returns:
-        A nested ``(1000, 2)`` list containing ``[Q, I]`` pairs.
+        A nested ``(1000, 2)`` list of ``[Q, I]`` pairs.
     """
     stages = _pipeline_stages(two_theta, intensity, wavelength, background_subtract, snip_half_window)
     return np.column_stack([stages["grid"], stages["iq_final"]]).tolist()
@@ -236,13 +236,13 @@ def process_exp_file_to_continuous(
     wavelength: float | None = None,
     background_subtract: bool = True,
 ) -> list[list[float]]:
-    """Convert one raw XRD scan into the continuous condition representation.
+    """Read a raw XRD scan and convert it to a continuous XRD condition.
 
-    The scan is read, converted from 2theta to Q, background-corrected, resampled
-    onto the canonical grid, and normalised.
+    Convert 2theta to Q, resample onto the canonical grid, apply the configured background
+    correction, and normalise intensity.
 
     Returns:
-        A nested ``(1000, 2)`` ``[Q, I]`` condition vector.
+        A nested ``(1000, 2)`` list of ``[Q, I]`` pairs.
     """
 
     two_theta, intensity = read_xrd_file(input_data)

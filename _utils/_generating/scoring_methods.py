@@ -104,7 +104,6 @@ def simulate_profile(cif_str: str, wavelength: float = DEFAULT_WAVELENGTH) -> np
         fwhm_range=(SIM_FWHM, SIM_FWHM),
         eta_range=(SIM_ETA, SIM_ETA),
         noise_range=None,
-        intensity_scale_range=None,
         seed=1,
     )
     return broadened["iq"][0].numpy().astype(np.float64)
@@ -133,6 +132,18 @@ def pearson_score(input_iq: np.ndarray, sim_iq: np.ndarray) -> float:
         return 0.0
 
     return float(np.corrcoef(obs, calc)[0, 1])
+
+
+def rwp_score(input_iq: np.ndarray, sim_iq: np.ndarray) -> float:
+    """Compute the profile residual over the measured window, with lower values better.
+
+    Use deCIFer's Rwp definition with unit weights: the L2 norm of the residual divided by the input
+    profile's L2 norm. This follows `bin/collect_evaluations.py` in the deCIFer repository (Johansen
+    et al.). Use the same window as `pearson_score` so both metrics compare the same points.
+    """
+    window = _measured_window(input_iq)
+    obs, calc = input_iq[window], sim_iq[window]
+    return float(np.sqrt(np.sum(np.square(obs - calc)) / np.sum(np.square(obs))))
 
 
 def score_generated_rows(df, wavelength: float = None) -> list:

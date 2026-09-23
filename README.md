@@ -43,7 +43,7 @@ CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> is a Transformer-based sys
 <img src="docs/images/Framework_github.png" width="75%" style="background-color:white;"/>
 </div>
 
-## Statement of need
+## Overview
 
 CrystaLLM-<span style="font-size: 1.2em;">π</span> is a framework for conditional crystal structure generation. You can fine-tune a pretrained model on numerical properties and generate structures aimed at a target value, or generate directly from one of the open-sourced models.
 

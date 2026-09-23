@@ -24,12 +24,11 @@ def condition_vector_to_continuous_xrd(
     fwhm: float = 0.05,
     eta: float = 0.5,
 ) -> list[list[float]]:
-    """Convert a condition vector into the 1000x2 `[Q, I]` form PrefixXRD consumes.
+    """Convert a condition vector to the ``(1000, 2)`` ``[Q, I]`` profile PrefixXRD consumes.
 
-    Accepts either discrete `[Q, I]` peaks, which are broadened, or an already-continuous 1000x2
-    profile, which is passed through once its Q column is confirmed to match the canonical grid.
-    Broadening here is deterministic: noise, rescaling and masking are all disabled and `fwhm` and
-    `eta` are fixed.
+    Broaden discrete peaks deterministically with fixed ``fwhm`` and ``eta``, with noise and masking
+    disabled. Pass through an existing continuous profile after checking that its Q column matches
+    the canonical grid.
     """
     values = condition_vector.tolist() if hasattr(condition_vector, "tolist") else condition_vector
     if not values:
@@ -51,7 +50,6 @@ def condition_vector_to_continuous_xrd(
         fwhm_range=(fwhm, fwhm),
         eta_range=(eta, eta),
         noise_range=None,
-        intensity_scale_range=None,
         mask_prob=None,
         seed=seed,
     )
@@ -67,32 +65,31 @@ def discrete_to_continuous_xrd(
     fwhm_range: tuple[float, float] = FWHM_RANGE,
     eta_range: tuple[float, float] = ETA_RANGE,
     noise_range: tuple[float, float] | None = (0.001, 0.05),
-    intensity_scale_range: tuple[float, float] | None = (0.95, 1.0),
     mask_prob: float | None = None,
     seed: int | None = None,
     **kwargs,
 ) -> dict:
-    """Convert discrete XRD peaks into a continuous 1000-point profile.
+    """Broaden discrete XRD peaks into a continuous 1000-point profile.
 
-    During inference, noise, intensity scaling, and peak masking are disabled and the peak-width and
-    pseudo-Voigt parameters are fixed, making the conversion deterministic for a given set of peaks.
+    Training augmentation varies peak widths and mixing parameters, with optional noise and peak
+    masking. During inference, fixed broadening parameters and disabled noise and masking make the
+    conversion deterministic.
 
     Args:
-        batch_q: Peak positions with shape `[B, N_peaks]` in Å^-1. A value of zero denotes padding.
-        batch_iq: Peak intensities with shape `[B, N_peaks]`.
-        qmin: Lower bound of the Q grid in Å^-1.
-        qmax: Upper bound of the Q grid in Å^-1.
+        batch_q: Peak positions of shape ``[B, N_peaks]`` in Å^-1, with zero padding.
+        batch_iq: Peak intensities of shape ``[B, N_peaks]``.
+        qmin: Lower Q-grid bound in Å^-1.
+        qmax: Upper Q-grid bound in Å^-1.
         qstep: Q-grid spacing in Å^-1.
-        fwhm_range: Peak-width range in Å^-1 used for training augmentation.
-        eta_range: Pseudo-Voigt mixing range, from Gaussian (`0`) to Lorentzian (`1`).
-        noise_range: Noise amplitude range. `None` disables noise.
-        intensity_scale_range: Random intensity-rescaling range. `None` disables scaling.
-        mask_prob: Per-peak masking probability. `None` disables masking.
+        fwhm_range: Peak-width range in Å^-1 for training augmentation.
+        eta_range: Pseudo-Voigt mixing range, from Gaussian (0) to Lorentzian (1).
+        noise_range: Noise amplitude range, or ``None`` to disable noise.
+        mask_prob: Per-peak masking probability, or ``None`` to disable masking.
         seed: Seed for augmentation draws.
 
     Returns:
-        A dictionary containing the shared Q grid with shape `[1000]` and max-normalised intensities
-        with shape `[B, 1000]`.
+        A dictionary containing the shared Q grid of shape ``[1000]`` and max-normalised intensities
+        of shape ``[B, 1000]``.
     """
     device = batch_q.device
     generator = None
@@ -109,10 +106,6 @@ def discrete_to_continuous_xrd(
 
     fwhm = sample((batch_size, 1, 1), fwhm_range)
     eta = sample((batch_size, 1, 1), eta_range)
-
-    if intensity_scale_range is not None:
-        intensity_scale = sample((batch_size, 1), intensity_scale_range)
-        batch_iq = batch_iq * intensity_scale
 
     sigma_gauss = fwhm / (2 * torch.sqrt(2 * torch.log(torch.tensor(2.0, device=device))))
     gamma_lorentz = fwhm / 2
