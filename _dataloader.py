@@ -31,8 +31,6 @@ def _pack_condition_values(values_list: list) -> torch.Tensor:
     at the front to the tallest sample because variable row counts would otherwise
     produce an object array that PyTorch cannot tensorise. Padding uses
     ``MISSING_CONDITION_VALUE``.
-
-    Ported from CrystaLLM-graph.
     """
     first_cond = values_list[0]
 

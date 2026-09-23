@@ -56,7 +56,7 @@ Modern transformers are memory efficient enough that most training and inference
 The framework supports experiments with conditional generative models.
 
 ## Reproducing the paper
-The studies from the ["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299) paper live in the standalone repo [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper) (or [v1.3.0 tag](https://github.com/C-Bone-UCL/CrystaLLM-pi/releases/tag/v1.3.0) of this repository). The next graph-conditioned knowledge distillation paper reproduction code can be accessed in [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph). Otherwise, all models so far are accessible to generate with here.
+The studies from the ["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299) paper live in the standalone repo [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper) (or [v1.3.0 tag](https://github.com/C-Bone-UCL/CrystaLLM-pi/releases/tag/v1.3.0) of this repository). Otherwise, all models so far are accessible to generate with here.
 
 This repository stays the maintained package and is still under active development.
 

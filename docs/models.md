@@ -16,7 +16,7 @@ CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> provides two mechanisms fo
 
 `--activate_conditionality="Prefix"`
 
-Property information is injected into the attention mechanism through its past key-values. Conditional embeddings are added at each transformer layer, allowing generation to be guided towards specified properties. The approach is based on ghost tokens from the [Prefix Tuning Paper](https://arxiv.org/abs/2101.00190). The model implementation is based on [CrystaLLM-graph](https://github.com/C-Bone-UCL/CrystaLLM-graph).
+Property information is injected into the attention mechanism through its past key-values. Conditional embeddings are added at each transformer layer, allowing generation to be guided towards specified properties. The approach is based on ghost tokens from the [Prefix Tuning Paper](https://arxiv.org/abs/2101.00190).
 
 <div align="center" markdown>
 ![Prefix attention conditioning](images/Prefix_github.png){ width="75%" style="background-color:white" }

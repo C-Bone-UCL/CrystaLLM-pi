@@ -3,8 +3,6 @@
 PKV and Slider are legacy load-and-generate-only families retained for released
 checkpoints. New training uses Prefix, PrefixXRD, or Residual, with Prefix and
 Residual serving as successors to PKV and Slider respectively.
-
-The Prefix, PrefixXRD, and Residual families are ported from CrystaLLM-graph.
 """
 
 import argparse
@@ -30,7 +28,7 @@ MODEL_REGISTRY = {
     # Legacy families
     "PKV": (PKVGPT2Config, PKVGPT),
     "Slider": (SliderGPT2Config, SliderGPT),
-    # New generation, from CrystaLLM-graph
+    # New generation
     "Prefix": (PrefixGPT2Config, PrefixGPT),
     "PrefixXRD": (PrefixXRDGPT2Config, PrefixXRDGPT),
     "Residual": (ResidualGPT2Config, ResidualGPT),

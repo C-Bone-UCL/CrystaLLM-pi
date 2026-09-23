@@ -1,8 +1,5 @@
 """Prefix-conditioned GPT-2 model for XRD spectra.
 
-The XRD conditioning implementation is ported from
-CrystaLLM-graph's ``_models/Prefix_perceiver_model.py``.
-
 XRD processing inspired by: https://github.com/FrederikLizakJohansen/deCIFer/tree/main
 """
 
