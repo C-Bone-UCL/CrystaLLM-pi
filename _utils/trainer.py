@@ -439,8 +439,8 @@ def setup_scheduler(args, model):
         cond_params = [] # Conditioning module params (AdamW with cond_lr)
 
         # Keywords that identify conditioning module parameters
-        cond_keywords = ["slider", "conditioning", "prefix_embedding", "perceiver"]
-        use_cond_separation = args.activate_conditionality in ["Prefix", "PrefixXRD", "Residual"]
+        cond_keywords = ["slider", "conditioning", "prefix_embedding"]
+        use_cond_separation = args.activate_conditionality in ["Prefix", "Residual"]
         context_extension_wpe_weight = _context_extension_wpe_weight(model)
 
         for name, param in model.named_parameters():
@@ -511,12 +511,12 @@ def setup_scheduler(args, model):
         )
         return optimizer, lr_scheduler
 
-    if args.activate_conditionality in ["Prefix", "PrefixXRD", "Residual"]:
+    if args.activate_conditionality in ["Prefix", "Residual"]:
         base_params, cond_params = [], []
         for n, p in model.named_parameters():
             if not p.requires_grad:
                 continue
-            if any(k in n.lower() for k in ["slider", "conditioning", "perceiver"]):
+            if any(k in n.lower() for k in ["slider", "conditioning"]):
                 cond_params.append(p)
             else:
                 base_params.append(p)

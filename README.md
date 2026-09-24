@@ -37,7 +37,7 @@
 
 ## Overview
 
-CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> is a Transformer-based system for generating crystalline structures as CIF files. It supports both unconditional generation and several conditional architectures that can generate structures based on target properties like bandgap, density, photovoltaic efficiency and XRD patterns, including raw experimental powder scans.
+CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> is a Transformer-based system for generating crystalline structures as CIF files. It supports both unconditional generation and several conditional architectures that can generate structures based on target properties like bandgap, density, photovoltaic efficiency and XRD patterns.
 
 <div align="center">
 <img src="docs/images/Framework_github.png" width="75%" style="background-color:white;"/>
@@ -64,7 +64,7 @@ This repository stays the maintained package and is still under active developme
 
 - **Unconditional Generation**: Generate crystal structures from structural/composition priors
 - **Property-Guided Generation**: Generate crystal structures conditioned on target properties + structural priors
-- **Multiple Architectures**: Two conditioning mechanisms, prefix and residual, plus the unconditional base model. Prefix conditioning also takes full XRD patterns through a Perceiver resampler.
+- **Multiple Architectures**: Two conditioning mechanisms, prefix and residual, plus the unconditional base model.
 - **Flexible Conditioning**: You can use any set of numerical properties to condition and one of the models handles heterogeneous datasets (some properties are missing in the dataset but not others...)
 - **Evaluation of output structures**: Scripts for validity, uniqueness, novelty and stability metrics
 - **HuggingFace Integration**: Pre-trained models available on HF Hub
@@ -119,22 +119,7 @@ python _load_and_generate.py \
     --output_parquet generated_structures.parquet
 ```
 
-**Raw Experimental Scan Conditioning (Continuous XRD)**
-
-Recover a structure from a raw powder pattern, no peak picking needed. The scan is converted to the model's continuous `[Q, I]` profile automatically.
-
-```bash
-python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-cXRD_chili100k" \
-    --reduced_formula_list "TiO2" \
-    --xrd_files tests/fixtures/Rutile-TiO2-unproc.txt \
-    --xrd_wavelength 1.54059 \
-    --level level_3 \
-    --target_valid_cifs 1 \
-    --output_cif_dir outputs/cxrd_demo
-```
-
-Mapped condition lists, Z-searches, perplexity and XRD-fit ranking and every configuration option are on the [quickstart page](https://c-bone-ucl.github.io/CrystaLLM-pi/quickstart/).
+Mapped condition lists, Z-searches, perplexity ranking and every configuration option are on the [quickstart page](https://c-bone-ucl.github.io/CrystaLLM-pi/quickstart/).
 
 ## Available Pre-trained Models
 
@@ -142,10 +127,7 @@ Each released model exists because a paper study or tutorial produced it. The ta
 
 | Model | Class | Conditioning | Origin |
 |---|---|---|---|
-| `c-bone/CrystaLLM-pi_ft_alex_mp_20-text` | GPT-2 | unconditional | **Recommended base model**, LeMat-Bulk pretrain finetuned on Alex-MP-20 CIFs, from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD) |
-| `c-bone/CrystaLLM-cXRD_chili100k` | PrefixXRD | continuous XRD profiles | CHILI-100K model from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD), experimental-structure priors, the choice for measured scans |
-| `c-bone/CrystaLLM-cXRD_alex-mp-20` | PrefixXRD | continuous XRD profiles | Alex-MP-20 bridge model from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD), broader coverage than the CHILI model |
-| `c-bone/CrystaLLM-cXRD_mp20` | PrefixXRD | continuous XRD profiles | MP-20 benchmark model from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD), trained from scratch |
+| `c-bone/CrystaLLM-pi_ft_alex_mp_20-text` | GPT-2 | unconditional | **Recommended base model**, LeMat-Bulk pretrain finetuned on Alex-MP-20 CIFs |
 | `c-bone/CrystaLLM-pi_base` | GPT-2 | unconditional | LeMaterial base model from the first paper |
 | `c-bone/CrystaLLM-pi_mp_20_base` | GPT-2 | unconditional | mp-20 pretraining base from the paper's pretraining studies |
 | `c-bone/CrystaLLM-pi_alex_mp_20_base` | GPT-2 | unconditional | alex-mp-20 pretraining base from the paper's dataset-size study |
@@ -160,12 +142,11 @@ The conditioning mechanism behind each class is described on the [models page](h
 
 ## Tutorial Notebooks
 
-Five notebooks in [`notebooks/`](notebooks/) cover the maintained workflows end to end:
+Four notebooks in [`notebooks/`](notebooks/) cover the maintained workflows end to end:
 
 * [`T1_finetune_density_example.ipynb`](notebooks/T1_finetune_density_example.ipynb): finetune a base model on your own property dataset, push it to the Hub, register it, and generate with it
 * [`T2_load_and_generate.ipynb`](notebooks/T2_load_and_generate.ipynb): generate structures with the released Hub models (courtesy of [Joley Lin](https://github.com/yhjollin/))
 * [`T3_API_density_example.ipynb`](notebooks/T3_API_density_example.ipynb): predict density for a composition through the containerised API
-* [`T4_XRD_continuous.ipynb`](notebooks/T4_XRD_continuous.ipynb): recover a structure from a raw experimental XRD scan with the continuous-XRD model
 * [`T5_SLME.ipynb`](notebooks/T5_SLME.ipynb): discover a material with a target photovoltaic efficiency
 
 The paper studies are not here, they live in [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper) (see [Reproducing the paper](#reproducing-the-paper)).

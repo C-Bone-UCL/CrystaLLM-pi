@@ -1,7 +1,7 @@
 # Quick Start
 
 !!! tip "Run it in a notebook"
-    [`T2_load_and_generate.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T2_load_and_generate.ipynb) walks through everything on this page with a released Hub model. For the XRD side, [`T4_XRD_continuous.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T4_XRD_continuous.ipynb) recovers a structure from a raw experimental scan.
+    [`T2_load_and_generate.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T2_load_and_generate.ipynb) walks through everything on this page with a released Hub model.
 
 Use with pre-trained models from HuggingFace Hub for direct crystal structure generation. The `_load_and_generate.py` script handles downloading models and generating valid CIF structures with desired properties.
 
@@ -13,9 +13,9 @@ The script automatically:
 2. **Normalizes property values**: provide standard unit values (e.g., bandgap in eV, density in g/cm3).
 3. **Creates prompts** at different detail levels using explicitly mapped Z-values or automated Z-searches (Z being stoichiometry number).
 4. **Generates structures** using the appropriate conditional model architecture.
-5. **Validates & Ranks** outputs based on structural integrity and optional perplexity (`LOGP`) scoring, or Pearson correlation of generated to input XRD profiles (`PEARSON`), which is available for the continuous-XRD models only.
+5. **Validates & Ranks** outputs based on structural integrity and optional perplexity (`LOGP`) scoring.
 
-Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). XRD-conditioned models take raw scan files via `--xrd_files`: the continuous-XRD models (`CrystaLLM-cXRD_chili100k` or `CrystaLLM-cXRD_alex-mp-20`) convert full diffractometer scans automatically, while the older `Mattergen-XRD` and `Chili100K-XRD` models use a top-20 pre-picked-peak pipeline and can also run without `--xrd_files` using missing conditioning values. cXRD-model *training* happens in [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD), which also carries the benchmark scorers and every training config.
+Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). XRD-conditioned models take scan files via `--xrd_files`: the `Mattergen-XRD` and `Chili100K-XRD` models use a top-20 pre-picked-peak pipeline and can also run without `--xrd_files` using missing conditioning values.
 
 ## Generation Examples
 
@@ -44,38 +44,6 @@ python _load_and_generate.py \
     --num_return_sequences 5 \
     --max_return_attempts 2 \
     --output_parquet generated_structures.parquet
-```
-
-**Raw Experimental Scan Conditioning (Continuous XRD)**
-
-Recover a structure from a raw powder pattern, no peak picking needed. The scan is converted to the model's continuous `[Q, I]` profile automatically.
-
-```bash
-python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-cXRD_chili100k" \
-    --reduced_formula_list "TiO2" \
-    --xrd_files tests/fixtures/Rutile-TiO2-unproc.txt \
-    --xrd_wavelength 1.54059 \
-    --level level_3 \
-    --target_valid_cifs 1 \
-    --output_cif_dir outputs/cxrd_demo
-```
-
-**XRD-Fit Ranked Z-Search (Continuous XRD, recommended)**
-
-Sweep Z values and rank every valid candidate by agreement between its simulated pattern and the input scan (Pearson correlation on the model's Q grid). This is the default when `--search_zs` is used with a continuous-XRD model and no `--scoring_mode` is given.
-
-```bash
-python _load_and_generate.py \
-    --hf_model_path "c-bone/CrystaLLM-cXRD_alex-mp-20" \
-    --reduced_formula_list "TiO2" \
-    --search_zs \
-    --scoring_mode "PEARSON" \
-    --xrd_files tests/fixtures/Rutile-TiO2-unproc.txt \
-    --xrd_wavelength 1.54059 \
-    --level level_3 \
-    --num_return_sequences 10 \
-    --output_parquet xrd_fit_ranked.parquet
 ```
 
 **Mapped Lists (Bandgap Conditioning)**
@@ -156,18 +124,10 @@ python _load_and_generate.py \
 * `--search_zs`: Trigger an automated sweep over Z=1, 2, 3, 4 and 6 for each formula.
 
 !!! tip
-    Combine `--search_zs` with `--target_valid_cifs X` and it will loop through Z until it finds a valid CIF. If on top of that you add the `LOGP` or `PEARSON` scoring, it will generate for each Z. Across all the Zs that gave a valid CIF, it returns the model's single most confident prediction for the reduced formula.
+    Combine `--search_zs` with `--target_valid_cifs X` and it will loop through Z until it finds a valid CIF. If on top of that you add the `LOGP` scoring, it will generate for each Z. Across all the Zs that gave a valid CIF, it returns the model's single most confident prediction for the reduced formula.
 
 **Perplexity Scoring (`--scoring_mode "LOGP"`)**
 
 * For each generation which passes basic chemical validity checks, we compute transition scores for the token sequence to the perplexity score. Lower perplexity values indicate higher model confidence in the generated sequence according to its learned probability distribution. [See Blog Post for more info](https://apxml.com/courses/how-to-build-a-large-language-model/chapter-21-intrinsic-evaluation-metrics/interpreting-perplexity-scores)
-
-**XRD-Fit Scoring (`--scoring_mode "PEARSON"`)**
-
-* `PEARSON` is supported only by the continuous-XRD models `c-bone/CrystaLLM-cXRD_chili100k`, `c-bone/CrystaLLM-cXRD_alex-mp-20` and `c-bone/CrystaLLM-cXRD_mp20`. Ranking requires the per-row `(1000, 2)` `[Q, I]` conditioning profile, so passing `PEARSON` to any other model raises an error.
-
-* For each generated structure that passes the validity checks, its powder diffraction pattern is simulated with pymatgen, broadened onto the model's 1000-point Q grid using the same peak shape as the conditioning profile, and compared with the input scan using the Pearson correlation coefficient. Higher Pearson correlation is better. As with `LOGP`, `PEARSON` requires `--target_valid_cifs` to be greater than 0. It is also the default for the cXRD models.
-
-Generally, the perplexity scoring has given me better RMSD to input target, and the pearson is new but seems to match to target XRDs better since we have moved to the cXRD models.
 
 <br>

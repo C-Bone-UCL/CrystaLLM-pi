@@ -237,7 +237,7 @@ python _utils/_generating/generate_cifs.py \
 
 * **Temperature:** Controls randomness (default ~1.0, higher is more exploratory but higher chance of gibberish)
 * **Top-p/Top-k:** Sampling parameters (typical: 0.95, 50)
-* **scoring_mode:** if set to `None` and `target_valid_cifs = 0`, then we generate `max_return_attempts * num_return_sequences` CIFs per Prompt/Condition pair without validation. If set to `None` and `target_valid_cifs > 0`, then we validate generated CIFs and stop once that many valid CIFs are found, without ranking. If set to `LOGP`, we validate and rank using a perplexity based scoring method. `PEARSON` (continuous-XRD models only) validates and ranks by agreement between each candidate's simulated diffraction pattern and the input scan. A continuous-XRD `--search_zs` run defaults to `PEARSON` when no mode is given.
+* **scoring_mode:** if set to `None` and `target_valid_cifs = 0`, then we generate `max_return_attempts * num_return_sequences` CIFs per Prompt/Condition pair without validation. If set to `None` and `target_valid_cifs > 0`, then we validate generated CIFs and stop once that many valid CIFs are found, without ranking. If set to `LOGP`, we validate and rank using a perplexity based scoring method.
 * **num_return_sequences:** Batch size for generation (adjust for GPU mem.)
 * **max_return_attempts:** In raw mode, total generation for each Prompt/Condition pair = `max_return_attempts * num_return_sequences`. In validation-targeted modes, generation stops when `target_valid_cifs` valid CIFs are found or `max_return_attempts` is reached.
 

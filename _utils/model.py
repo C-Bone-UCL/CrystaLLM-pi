@@ -1,7 +1,7 @@
 """Provide utilities for loading and building CrystaLLM GPT models.
 
 PKV and Slider are legacy load-and-generate-only families retained for released
-checkpoints. New training uses Prefix, PrefixXRD, or Residual, with Prefix and
+checkpoints. New training uses Prefix or Residual, with Prefix and
 Residual serving as successors to PKV and Slider respectively.
 """
 
@@ -17,8 +17,6 @@ from _models import (
     SliderGPT2Config,
     PrefixGPT,
     PrefixGPT2Config,
-    PrefixXRDGPT,
-    PrefixXRDGPT2Config,
     ResidualGPT,
     ResidualGPT2Config,
 )
@@ -30,12 +28,11 @@ MODEL_REGISTRY = {
     "Slider": (SliderGPT2Config, SliderGPT),
     # New generation
     "Prefix": (PrefixGPT2Config, PrefixGPT),
-    "PrefixXRD": (PrefixXRDGPT2Config, PrefixXRDGPT),
     "Residual": (ResidualGPT2Config, ResidualGPT),
     None: (GPT2Config, GPT2LMHeadModel),
 }
 
-PREFIX_ARCHITECTURE_NAMES = {"PrefixGPT", "PrefixXRDGPT", "PrefixPerceiverGPT"}
+PREFIX_ARCHITECTURE_NAMES = {"PrefixGPT"}
 
 LEGACY_FAMILIES = ("PKV", "Slider")
 
@@ -72,17 +69,6 @@ def _resolve_model_entry(conditionality: str | None) -> dict:
             f"Valid: {sorted(k for k in MODEL_REGISTRY if k)} or None"
         )
     return MODEL_REGISTRY[conditionality]
-
-
-def configure_runtime_model_flags(model: torch.nn.Module, args: argparse.Namespace) -> None:
-    """Apply debug-only runtime flags to a built or loaded model.
-
-    These switches, such as XRD debug plotting, are not saved in the checkpoint
-    configuration, so debug and normal runs use the same model weights.
-    """
-    if getattr(args, 'activate_conditionality', None) == "PrefixXRD" and hasattr(model, "set_debug"):
-        model.set_debug(getattr(args, 'xrd_debug', False))
-    return model
 
 
 def _parse_condition_columns(args: argparse.Namespace) -> list[str]:
@@ -124,7 +110,7 @@ def _get_n_positions(args: argparse.Namespace, conditionality: str | None) -> in
     # Prefix families prepend n_prefix_tokens as past_key_values, so GPT-2 position
     # IDs are offset and wpe must cover the extended length. Residual (like Slider)
     # injects conditioning inside attention and needs no extra positions.
-    if conditionality in ("PKV", "Prefix", "PrefixXRD"):
+    if conditionality in ("PKV", "Prefix"):
         return args.context_length + args.n_prefix_tokens
     return args.context_length
 
@@ -292,18 +278,6 @@ def load_pretrained_model(args: argparse.Namespace, tokenizer: "CustomCIFTokeniz
             n_hidden_cond=args.n_hidden_cond,
         )
 
-    elif conditionality == "PrefixXRD":
-        config = config_class.from_pretrained(
-            args.pretrained_model_dir,
-            n_prefix_tokens=args.n_prefix_tokens,
-            n_hidden_cond=args.n_hidden_cond,
-            perceiver_depth=args.perceiver_depth,
-            perceiver_heads=args.perceiver_n_heads,
-            perceiver_dim_head=args.perceiver_dim_head,
-            perceiver_ff_mult=args.perceiver_ff_mult,
-            skip_xrd_convert_model=getattr(args, 'skip_xrd_convert_model', False),
-        )
-
     elif conditionality == "Residual":
         _validate_residual_condition_width(args)
         config = config_class.from_pretrained(
@@ -339,7 +313,7 @@ def load_pretrained_model(args: argparse.Namespace, tokenizer: "CustomCIFTokeniz
         # Converting a non-prefix checkpoint into a Prefix-family model must shift the
         # pretrained position rows right so text tokens keep their learned embeddings
         # behind the new prefix slots.
-        target_is_prefix_family = conditionality in ("Prefix", "PrefixXRD")
+        target_is_prefix_family = conditionality == "Prefix"
         source_is_prefix_family = _source_checkpoint_is_prefix_family(
             config_class, args.pretrained_model_dir
         )
@@ -350,7 +324,7 @@ def load_pretrained_model(args: argparse.Namespace, tokenizer: "CustomCIFTokeniz
             model, target_n_positions, shift_right_by=shift_right_by
         )
 
-    return configure_runtime_model_flags(model, args)
+    return model
 
 
 def build_model(args: argparse.Namespace, tokenizer: "CustomCIFTokenizer") -> torch.nn.Module:
@@ -379,20 +353,6 @@ def build_model(args: argparse.Namespace, tokenizer: "CustomCIFTokenizer") -> to
             **base_config
         )
 
-    elif conditionality == "PrefixXRD":
-        config = config_class(
-            n_prefix_tokens=args.n_prefix_tokens,
-            n_hidden_cond=args.n_hidden_cond,
-            perceiver_depth=args.perceiver_depth,
-            perceiver_heads=args.perceiver_n_heads,
-            perceiver_dim_head=args.perceiver_dim_head,
-            perceiver_ff_mult=args.perceiver_ff_mult,
-            skip_xrd_convert_model=getattr(args, 'skip_xrd_convert_model', False),
-            dropout=args.cond_dropout,
-            n_positions=target_n_positions,
-            **base_config
-        )
-
     elif conditionality == "Residual":
         _validate_residual_condition_width(args)
         config = config_class(
@@ -409,4 +369,4 @@ def build_model(args: argparse.Namespace, tokenizer: "CustomCIFTokenizer") -> to
     print(f"Built {conditionality or 'GPT2'} model with n_positions={target_n_positions}")
 
     model.resize_token_embeddings(vocab_size)
-    return configure_runtime_model_flags(model, args)
+    return model

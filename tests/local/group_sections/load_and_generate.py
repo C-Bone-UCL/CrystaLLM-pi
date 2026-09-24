@@ -65,9 +65,9 @@ class LoadAndGenerateTests:
             assert not missing, f"{path} missing keys: {missing}"
             unknown = set(info) - required - optional
             assert not unknown, f"{path} unknown keys: {unknown}"
-            assert info["model_type"] in {"Base", "PKV", "Slider", "Prefix", "PrefixXRD", "Residual"}, \
+            assert info["model_type"] in {"Base", "PKV", "Slider", "Prefix", "Residual"}, \
                 f"{path}: unknown model_type {info['model_type']!r}"
-            assert info["condition_format"] in {None, "scalar", "xrd_top20", "xrd_continuous"}, \
+            assert info["condition_format"] in {None, "scalar", "xrd_top20"}, \
                 f"{path}: unknown condition_format {info['condition_format']!r}"
             if "config_overrides" in info:
                 assert isinstance(info["config_overrides"], dict), \
@@ -415,60 +415,6 @@ class LoadAndGenerateTests:
         si_row = out_logp[out_logp["reduced_formula_target"] == "SiO2"].iloc[0]
         assert si_row["Generated CIF"] == "cif_good_b"
 
-    def test_reduced_formula_selection_xrd_fit_direction(self):
-        """pearson keeps the highest score per formula, unlike lower-better logp."""
-        from _utils import direct_gen
-
-        df_prompts = pd.DataFrame([
-            {"Material ID": "TiO2_Z1", "reduced_formula_target": "TiO2", "Z_search": 1, "prompt_order": 1},
-            {"Material ID": "TiO2_Z2", "reduced_formula_target": "TiO2", "Z_search": 2, "prompt_order": 2},
-        ])
-        df_generated = pd.DataFrame([
-            {"Material ID": "TiO2_Z1_1", "Generated CIF": "cif_low", "score": 0.1, "is_valid": True},
-            {"Material ID": "TiO2_Z2_1", "Generated CIF": "cif_high", "score": 0.9, "is_valid": True},
-        ])
-
-        out = direct_gen.reduce_rows_for_reduced_formula_search(
-            df_generated=df_generated,
-            df_prompts=df_prompts,
-            formulas_in_order=["TiO2"],
-            scoring_mode="pearson",
-        )
-        assert len(out) == 1
-        assert out.iloc[0]["Generated CIF"] == "cif_high", "pearson must keep the highest score"
-
-    def test_xrd_fit_scores_discriminate(self):
-        """XRD fit scoring must prefer the phase that produced the scan.
-
-        The candidate CIF is a raw model generation: asymmetric unit plus a placeholder operator
-        list. Skipping the symmetry expansion drops its pearson r below 0.3, so the threshold also
-        protects that step.
-        """
-        import numpy as np
-        from pymatgen.core import Lattice, Structure
-        from _utils._generating.scoring_methods import pearson_score, simulate_profile
-        from _utils._preprocessing.process_exp_xrd_continuous import process_exp_file_to_continuous
-
-        scan = os.path.join(fixtures_dir, "Rutile-TiO2-unproc.txt")
-        raw_cif = os.path.join(fixtures_dir, "raw_gen_rutile.cif")
-
-        profile = np.asarray(process_exp_file_to_continuous(scan, 1.54059, True))
-        input_iq = profile[:, 1]
-
-        with open(raw_cif, encoding="utf-8") as fh:
-            rutile_sim = simulate_profile(fh.read())
-
-        # Wrong-phase contrast: fluorite-structured TiO2, same formula, different pattern.
-        fluorite = Structure.from_spacegroup(
-            "Fm-3m", Lattice.cubic(4.8), ["Ti", "O"], [[0, 0, 0], [0.25, 0.25, 0.25]],
-        )
-        wrong_sim = simulate_profile(fluorite.to(fmt="cif"))
-
-        rutile_r, wrong_r = pearson_score(input_iq, rutile_sim), pearson_score(input_iq, wrong_sim)
-
-        assert rutile_r > 0.3, f"raw generated rutile should fit its own scan, got r={rutile_r:.3f}"
-        assert rutile_r > wrong_r, f"pearson ranked the wrong phase over rutile ({wrong_r:.3f} vs {rutile_r:.3f})"
-
     def test_reduced_formula_selection_uses_provided_cif_text(self):
         """Selection should validate the CIF text as provided when consistency flags are absent."""
         from _utils import direct_gen
@@ -645,31 +591,6 @@ class LoadAndGenerateTests:
             assert get_condition_format("overlay/legacy-slider") == "xrd_top20"
         finally:
             del direct_gen.MODEL_INFO["overlay/legacy-slider"]
-
-    def test_continuous_xrd_spec_building(self) -> None:
-        """build_reduced_formula_specs converts a raw scan to a nested (1000, 2) profile."""
-        import numpy as np
-        from _utils import direct_gen
-
-        # Synthetic gaussian scan (the tiny fixtures fail MIN_POINTS_ON_GRID by design)
-        two_theta = np.linspace(10.0, 80.0, 3000)
-        intensity = 50.0 + 1000.0 * np.exp(-0.5 * ((two_theta - 27.4) / 0.15) ** 2)
-        scan_path = os.path.join(self.temp_dir, "synthetic_gaussian.xy")
-        with open(scan_path, "w", encoding="utf-8") as fh:
-            fh.write("Wavelength = 1.54059\n")
-            fh.writelines(f"{t:.6f} {i:.6f}\n" for t, i in zip(two_theta, intensity))
-
-        canonical = direct_gen.canonicalize_reduced_formulas(["TiO2"])
-        specs = direct_gen.build_reduced_formula_specs(
-            canonical, [2], [{"xrd": scan_path, "sg": None, "cond": None}],
-            xrd_format="xrd_continuous", xrd_wavelength=1.54059,
-        )
-
-        cond = specs[0]["condition_vector"]
-        assert isinstance(cond, list) and len(cond) == 1000
-        assert all(len(pair) == 2 for pair in cond)
-        assert cond[0][0] == 0.0, "Q grid must start at 0.0"
-        assert abs(max(pair[1] for pair in cond) - 1.0) < 1e-9, "intensity must be max-normalized"
 
     def test_condition_lists_uneven_input_rejected(self) -> None:
         """Ragged --condition_lists strings raise instead of silently dropping values."""

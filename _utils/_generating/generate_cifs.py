@@ -117,7 +117,7 @@ def get_model_max_length(model_ckpt_dir: str, activate_conditionality: str | Non
         with open(config_path, "r") as f:
             config = json.load(f)
         n_positions = config.get("n_positions", DEFAULT_MAX_LENGTH)
-        if activate_conditionality in ("Prefix", "PrefixXRD"):
+        if activate_conditionality == "Prefix":
             # Prefix families extend wpe by n_prefix_tokens, so the text budget excludes them.
             # PKV is deliberately NOT subtracted so legacy hub models generate identically.
             return max(n_positions - config.get("n_prefix_tokens", 0), 1)
@@ -499,7 +499,7 @@ def run_generation_pool(
         base_seed: worker N seeds with base_seed + N so GPUs do not duplicate samples
         worker_count: GPU workers, clamped to visible devices (None uses all)
         initargs_override: replaces the defaults passed to init_worker, used to load from the Hub
-                           and carry config_overrides such as skip_xrd_convert_model
+                           and carry config_overrides
         screening_profile: 'benchmark' or 'application', see the --screening_profile help in
                            _args.py
 

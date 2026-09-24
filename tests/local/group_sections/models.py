@@ -14,7 +14,6 @@ class ModelTests:
         from _models.PKV_model import PKVGPT
         from _models.Slider_model import SliderGPT
         from _models.Prefix_model import PrefixGPT
-        from _models.PrefixXRD_model import PrefixXRDGPT
         from _models.Residual_model import ResidualGPT
         from transformers import GPT2LMHeadModel
         
@@ -36,7 +35,6 @@ class ModelTests:
         assert PKVGPT is not None, "PKV model import failed"
         assert SliderGPT is not None, "Slider model import failed"
         assert PrefixGPT is not None, "Prefix model import failed"
-        assert PrefixXRDGPT is not None, "PrefixXRD model import failed"
         assert ResidualGPT is not None, "Residual model import failed"
     
     def test_model_forward(self):
@@ -201,98 +199,6 @@ class ModelTests:
             )
 
         assert outputs.logits.shape == (batch_size, seq_len, 1000), f"Residual output shape mismatch: {outputs.logits.shape}"
-
-    def _xrd_config(self, n_heads=2, n_prefix=4, hidden=64, n_hidden_cond=64):
-        from _models.PrefixXRD_model import PrefixXRDGPT2Config
-        # perceiver_heads * perceiver_dim_head must == n_hidden_cond
-        return PrefixXRDGPT2Config(
-            vocab_size=1000,
-            n_positions=256,
-            n_embd=hidden,
-            n_layer=2,
-            n_head=n_heads,
-            n_prefix_tokens=n_prefix,
-            n_hidden_cond=n_hidden_cond,
-            perceiver_depth=1,
-            perceiver_heads=2,
-            perceiver_dim_head=n_hidden_cond // 2,
-            perceiver_ff_mult=2,
-            dropout=0.0,
-            skip_xrd_convert_model=False,
-        )
-
-    def test_prefix_xrd_discrete_forward(self):
-        """PrefixXRDGPT: discrete peaks path produces correct logit shape."""
-        from _models.PrefixXRD_model import PrefixXRDGPT
-        config = self._xrd_config()
-        model = PrefixXRDGPT(config)
-        model.eval()
-
-        B, S, P = 2, 10, 3
-        input_ids = torch.randint(0, 1000, (B, S))
-        attn_mask = torch.ones(B, S)
-        # discrete [Q, I] peaks, Q must be > 0 for non-padding
-        peaks = torch.rand(B, P, 2).clamp(min=0.01)
-
-        with torch.no_grad():
-            out = model(input_ids=input_ids, attention_mask=attn_mask, condition_values=peaks)
-
-        assert out.logits.shape == (B, S, 1000), f"Unexpected shape: {out.logits.shape}"
-        assert not torch.isnan(out.logits).any(), "NaN in XRD logits"
-
-    def test_prefix_xrd_continuous_forward(self):
-        """PrefixXRDGPT: skip_xrd_convert_model=True accepts (B, 1000, 2) [Q, I] input."""
-        from _models.PrefixXRD_model import PrefixXRDGPT
-        from _models.xrd_utils import QMIN, QMAX, QSTEP, NUM_Q_POINTS
-        config = self._xrd_config()
-        config.skip_xrd_convert_model = True
-        model = PrefixXRDGPT(config)
-        model.eval()
-
-        B, S = 2, 10
-        input_ids = torch.randint(0, 1000, (B, S))
-        attn_mask = torch.ones(B, S)
-        q_grid = torch.arange(QMIN, QMAX, QSTEP).unsqueeze(0).expand(B, -1)   # (B, 1000)
-        iq = torch.rand(B, NUM_Q_POINTS)
-        cond = torch.stack([q_grid, iq], dim=-1)   # (B, 1000, 2) as [Q, I]
-
-        with torch.no_grad():
-            out = model(input_ids=input_ids, attention_mask=attn_mask, condition_values=cond)
-
-        assert out.logits.shape == (B, S, 1000), f"Unexpected shape: {out.logits.shape}"
-
-    def test_prefix_xrd_continuous_wrong_grid_raises(self):
-        """A continuous profile off the canonical Q grid is rejected, not silently encoded."""
-        from _models.PrefixXRD_model import PrefixXRDGPT
-        from _models.xrd_utils import QMIN, QMAX, QSTEP, NUM_Q_POINTS
-        config = self._xrd_config()
-        config.skip_xrd_convert_model = True
-        model = PrefixXRDGPT(config)
-        model.eval()
-
-        # Same 1000 points, wrong spacing: a 0..20 grid instead of the canonical 0..10.
-        bad_q = torch.arange(QMIN, QMAX, QSTEP).mul(2.0).unsqueeze(0)
-        cond = torch.stack([bad_q, torch.rand(1, NUM_Q_POINTS)], dim=-1)
-
-        try:
-            with torch.no_grad():
-                model(input_ids=torch.randint(0, 1000, (1, 5)), condition_values=cond)
-            assert False, "Expected ValueError for an off-grid continuous profile"
-        except ValueError as err:
-            assert "Q grid" in str(err), f"Unexpected error: {err}"
-
-    def test_prefix_xrd_no_condition_raises(self):
-        """PrefixXRDGPT raises ValueError when condition_values is None."""
-        from _models.PrefixXRD_model import PrefixXRDGPT
-        config = self._xrd_config()
-        model = PrefixXRDGPT(config)
-        model.eval()
-
-        try:
-            model(input_ids=torch.randint(0, 1000, (1, 5)))
-            assert False, "Expected ValueError"
-        except ValueError:
-            pass
 
     def test_positional_embedding_resize_shift_right(self):
         """Test positional embedding resize shifts pretrained rows right for Prefix-style loads."""
@@ -461,11 +367,14 @@ class ModelTests:
         """Loading a checkpoint with mismatched conditioning widths raises instead of silently re-initializing."""
         import os
         from types import SimpleNamespace
-        from _models.PrefixXRD_model import PrefixXRDGPT
+        from _models.Prefix_model import PrefixGPT, PrefixGPT2Config
         from _utils.model import load_pretrained_model
 
-        ckpt_dir = os.path.join(self.temp_dir, "tiny_prefixxrd_ckpt")
-        model = PrefixXRDGPT(self._xrd_config())  # n_hidden_cond=64 (2 heads x 32)
+        ckpt_dir = os.path.join(self.temp_dir, "tiny_prefix_ckpt")
+        model = PrefixGPT(PrefixGPT2Config(
+            vocab_size=1000, n_positions=256, n_embd=64, n_layer=2, n_head=2,
+            n_input_vector=2, n_prefix_tokens=4, n_hidden_cond=64, dropout=0.0,
+        ))
         model.save_pretrained(ckpt_dir)
 
         class DummyTokenizer:
@@ -478,15 +387,11 @@ class ModelTests:
 
         args = SimpleNamespace(
             pretrained_model_dir=ckpt_dir,
-            activate_conditionality="PrefixXRD",
+            activate_conditionality="Prefix",
+            condition_columns="['a', 'b']",
             context_length=252,        # + n_prefix_tokens = checkpoint's 256, so no wpe resize
             n_prefix_tokens=4,
             n_hidden_cond=32,          # checkpoint used 64 -> conditioning shapes mismatch
-            perceiver_depth=1,
-            perceiver_n_heads=2,
-            perceiver_dim_head=16,     # heads * dim_head must equal the mutated n_hidden_cond
-            perceiver_ff_mult=2,
-            skip_xrd_convert_model=False,
             cond_dropout=0.0,
         )
 
@@ -649,7 +554,7 @@ class ModelTests:
         )
 
         # Every trainable family must reach the conditional dataloader. Before this guard,
-        # _train.py listed PKV/Slider by hand, so Prefix, PrefixXRD and Residual matched no
+        # _train.py listed PKV/Slider by hand, so Prefix and Residual matched no
         # branch and training died on an unassigned tokenized_dataset.
         for family in TRAINABLE_CONDITIONAL_FAMILIES:
             mode = resolve_data_mode(family)

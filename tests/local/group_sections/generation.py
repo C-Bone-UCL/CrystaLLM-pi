@@ -129,14 +129,13 @@ class GenerationTests:
     def test_get_model_class(self):
         """Test strict model class selection."""
         from _utils._generating.generate_cifs import get_model_class
-        from _models import PKVGPT, SliderGPT, PrefixGPT, PrefixXRDGPT, ResidualGPT
+        from _models import PKVGPT, SliderGPT, PrefixGPT, ResidualGPT
         from transformers import GPT2LMHeadModel
 
         # Test each conditionality type
         assert get_model_class("PKV") == PKVGPT, "PKV should return PKVGPT"
         assert get_model_class("Slider") == SliderGPT, "Slider should return SliderGPT"
         assert get_model_class("Prefix") == PrefixGPT, "Prefix should return PrefixGPT"
-        assert get_model_class("PrefixXRD") == PrefixXRDGPT, "PrefixXRD should return PrefixXRDGPT"
         assert get_model_class("Residual") == ResidualGPT, "Residual should return ResidualGPT"
 
         # Base/None aliases still map to plain GPT2

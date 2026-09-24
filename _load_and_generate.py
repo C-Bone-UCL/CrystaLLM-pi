@@ -5,9 +5,8 @@ Prompts can come from a parquet dataset or reduced formulas. Formula mode can se
 and either stop at the first valid structure or select the highest-scoring candidate. Generation
 uses every visible GPU.
 
-`--scoring_mode` supports `LOGP`, `PEARSON`, and `None`. Continuous-XRD Z searches default to
-`PEARSON`, while `PEARSON` requires a continuous-XRD model. Both scoring modes require
-`--target_valid_cifs` to be greater than zero.
+`--scoring_mode` supports `LOGP` and `None`. `LOGP` requires `--target_valid_cifs` to be greater
+than zero.
 
 Usage:
     ```bash
@@ -35,7 +34,6 @@ from _utils._generating.generate_cifs import (
     _normalize_scoring_mode,
 )
 from _utils._generating.postprocess import process_dataframe
-from _utils._generating.scoring_methods import XRD_FIT_MODES, score_generated_rows
 from _utils import extract_formula_nonreduced
 from _args import str_to_bool
 from _utils.direct_gen import (
@@ -168,15 +166,9 @@ def generate_cifs_with_hf_model(df_prompts: pd.DataFrame, hf_model_path: str, ar
 
 
 def _generate_and_score(df_prompts: pd.DataFrame, args: argparse.Namespace, scoring_mode: str) -> pd.DataFrame:
-    """Resolve GPU workers, run one generation pass, and score rows when an XRD-fit mode is active."""
+    """Resolve GPU workers and run one generation pass."""
     worker_count = resolve_multi_gpu_workers(args, len(df_prompts))
-    df_gen = generate_cifs_with_hf_model(df_prompts, args.hf_model_path, args, worker_count)
-
-    if scoring_mode in XRD_FIT_MODES and not df_gen.empty:
-        print(f"\nScoring {len(df_gen)} candidates by XRD fit ({scoring_mode})")
-        df_gen["score"] = score_generated_rows(df_gen, args.xrd_wavelength)
-
-    return df_gen
+    return generate_cifs_with_hf_model(df_prompts, args.hf_model_path, args, worker_count)
 
 
 def run_parquet_mode(args: argparse.Namespace, scoring_mode: str) -> pd.DataFrame:
@@ -207,7 +199,7 @@ def _run_early_stop_search(args: argparse.Namespace, canonical_formulas: list, r
         active_fs = [f for f, _ in active_rows]
         active_ps = [p for _, p in active_rows]
         print(f"\nSearching Z={z} for {len(active_rows)} formulas...")
-        specs = build_reduced_formula_specs(active_fs, [z] * len(active_rows), active_ps, xrd_format, args.xrd_wavelength, not args.xrd_no_background_subtract)
+        specs = build_reduced_formula_specs(active_fs, [z] * len(active_rows), active_ps, xrd_format, args.xrd_wavelength)
         df_prompts = generate_prompts_from_specs(specs, args)
         # Early stop implies scoring "none" (enforced by the dispatch condition).
         df_gen = _generate_and_score(df_prompts, args, "none")
@@ -240,7 +232,7 @@ def _run_batch_generation(args: argparse.Namespace, canonical_formulas: list, ro
         formulas, properties = canonical_formulas, row_properties
         z_values = z_list if z_list else [1] * len(canonical_formulas)
 
-    specs = build_reduced_formula_specs(formulas, z_values, properties, xrd_format, args.xrd_wavelength, not args.xrd_no_background_subtract)
+    specs = build_reduced_formula_specs(formulas, z_values, properties, xrd_format, args.xrd_wavelength)
     df_prompts = generate_prompts_from_specs(specs, args)
     df_gen = _generate_and_score(df_prompts, args, scoring_mode)
 
@@ -258,9 +250,7 @@ def run_formula_mode(args: argparse.Namespace, parser: argparse.ArgumentParser, 
     once it yields a valid structure. Everything else generates the full formula-by-Z grid, because
     ranking needs every candidate present before it can choose.
 
-    Rejects duplicate formulas under `--search_zs`, where completion is tracked by formula name, and
-    rejects a continuous-XRD model with no `--xrd_files`, since that family has no missing-condition
-    mask and would otherwise generate unconditioned.
+    Rejects duplicate formulas under `--search_zs`, where completion is tracked by formula name.
     """
     raw_formulas = parse_reduced_formula_list_arg(args.reduced_formula_list)
     canonical_formulas = canonicalize_reduced_formulas(raw_formulas)
@@ -286,23 +276,17 @@ def run_formula_mode(args: argparse.Namespace, parser: argparse.ArgumentParser, 
         if len(z_list) != n_formulas:
             parser.error(f"Expected {n_formulas} Z integers, got {len(z_list)}.")
 
-    # The registry tags each model "scalar", "xrd_top20", "xrd_continuous" or None.
+    # The registry tags each model "scalar", "xrd_top20" or None.
     # XRD_FORMATS membership keeps scalar PKV models out of the XRD input path.
     is_xrd = xrd_format in XRD_FORMATS
 
     if is_xrd and not args.xrd_files:
-        if xrd_format == "xrd_continuous":
-            # PrefixXRD requires condition_values at every forward pass and has no
-            # missing-conditioning mask, so fail before any generation attempt.
-            parser.error("This continuous-XRD model requires --xrd_files (a raw powder pattern).")
         print("\nWarning: Slider XRD model selected without --xrd_files. "
               "Generation will run with missing conditioning values.")
     if args.xrd_files and args.xrd_wavelength is None:
         print("\nWarning: --xrd_wavelength not given, assuming CuKa1 1.54056 A. "
               "Specify it explicitly for non-CuKa data.")
         args.xrd_wavelength = 1.54056  # set once here so the parsing module doesn't warn again per file
-    if xrd_format == "xrd_continuous" and args.level != "level_3":
-        print("\nWarning: continuous-XRD models were benchmarked with level_3 prompts")
 
     # XRD models take conditioning from scan files, so scalar condition lists only apply otherwise.
     if args.condition_lists and not is_xrd:
@@ -381,14 +365,13 @@ def main() -> None:
 
     parser.add_argument("--xrd_files", nargs='+', help="Raw XRD scan files (.csv, .xy, .dat, .txt) mapped to formulas")
     parser.add_argument("--xrd_wavelength", type=float, default=None, help="Wavelength in Angstrom of the provided XRD data (default: CuKa1 1.54056, assumed with a warning)")
-    parser.add_argument("--xrd_no_background_subtract", action="store_true", help="Continuous-XRD models: skip background removal")
 
     parser.add_argument("--temperature", type=float, default=1.0, help="Sampling temperature")
     parser.add_argument("--num_return_sequences", type=int, default=1, help="Sequences per sample")
     parser.add_argument("--max_return_attempts", type=int, default=1, help="Generation attempts per sample")
     parser.add_argument("--target_valid_cifs", type=int, default=1, help="Number of valid CIFs to target per prompt. If no scoring mode, we can also specify 0 to return all generated CIFs regardless of validity.")
 
-    parser.add_argument("--scoring_mode", type=str, default=None, help="Scoring: 'LOGP' (model perplexity), 'PEARSON' (XRD fit, continuous-XRD models only), or 'None'. Unset, a continuous-XRD Z search defaults to PEARSON.")
+    parser.add_argument("--scoring_mode", type=str, default="None", help="Scoring: 'LOGP' (model perplexity) or 'None'.")
 
     parser.add_argument("--screening_profile", type=str, default="application", choices=("benchmark", "application"),
                         help="How hard to screen generated CIFs. 'application' runs the bond-length check and ranks over the whole generated batch. 'benchmark' skips the bond-length check and ranks a pool truncated at target_valid_cifs, reproducing the screening behind the published MP-20 and CHILI-100K numbers.")
@@ -422,25 +405,9 @@ def main() -> None:
 
     xrd_format = get_condition_format(args.hf_model_path)
 
-    # The argparse default is None so an explicit 'None' (early-stop Z search) stays
-    # distinguishable from not choosing at all. A continuous-XRD Z search ranked by
-    # perplexity or first-valid picks fluent simple cells over the phase that made the
-    # scan, so when nothing was chosen it defaults to XRD-fit ranking instead.
-    if args.scoring_mode is None:
-        is_cxrd_z_search = (args.search_zs and args.target_valid_cifs > 0
-                            and xrd_format == "xrd_continuous")
-        args.scoring_mode = "PEARSON" if is_cxrd_z_search else "None"
-        if is_cxrd_z_search:
-            print("\nNo scoring mode given, ranking the Z search by PEARSON XRD fit.")
-
     scoring_mode = _normalize_scoring_mode(args.scoring_mode)
-    if scoring_mode in ("logp",) + XRD_FIT_MODES and args.target_valid_cifs == 0:
+    if scoring_mode == "logp" and args.target_valid_cifs == 0:
         parser.error(f"scoring_mode={args.scoring_mode} requires --target_valid_cifs > 0.")
-
-    # XRD fit scoring needs a per-row (1000, 2) conditioning profile to compare against,
-    # which only the continuous-XRD models carry.
-    if scoring_mode in XRD_FIT_MODES and xrd_format != "xrd_continuous":
-        parser.error(f"scoring_mode={args.scoring_mode} requires a continuous-XRD model.")
 
     # Level 1 is unconditional generation, so a placeholder formula stands in for real input.
     if not args.input_parquet and not args.reduced_formula_list:

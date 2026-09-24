@@ -1,6 +1,6 @@
 # CrystaLLM-<span style="font-size: 1.2em;">&pi;</span>
 
-CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> is a Transformer-based system for generating crystalline structures as CIF files. It supports both unconditional generation and several conditional architectures that can generate structures based on target properties like bandgap, density, photovoltaic efficiency and XRD patterns, including raw experimental powder scans.
+CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> is a Transformer-based system for generating crystalline structures as CIF files. It supports both unconditional generation and several conditional architectures that can generate structures based on target properties like bandgap, density, photovoltaic efficiency and XRD patterns.
 
 <div align="center" markdown>
 ![CrystaLLM-pi framework overview](images/Framework_github.png){ width="75%" style="background-color:white" }
@@ -22,7 +22,7 @@ The framework supports experiments with conditional generative models.
 
 - **Unconditional Generation**: Generate crystal structures from structural/composition priors
 - **Property-Guided Generation**: Generate crystal structures conditioned on target properties + structural priors
-- **Multiple Architectures**: Two conditioning mechanisms, prefix and residual, plus the unconditional base model. Prefix conditioning also takes full XRD patterns through a Perceiver resampler. 
+- **Multiple Architectures**: Two conditioning mechanisms, prefix and residual, plus the unconditional base model. 
 - **Flexible Conditioning**: You can use any set of numerical properties to condition, and the Residual conditioning natively handles heterogeneous datasets (some properties are missing in the dataset but not others...)
 - **Evaluation of output structures**: Scripts for validity, uniqueness, novelty and stability metrics
 - **HuggingFace Integration**: Pre-trained models available on HF Hub

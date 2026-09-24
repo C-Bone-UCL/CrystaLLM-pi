@@ -124,7 +124,7 @@
     "condition_format": "xrd_top20"
   },
   "c-bone/CrystaLLM-pi_ft_alex_mp_20-text": {
-    "description": "Unconditional generation, Alex-MP-20 finetune of CrystaLLM-pi_base, from CrystaLLM-cXRD. Recommended base for new finetunes",
+    "description": "Unconditional generation, Alex-MP-20 finetune of CrystaLLM-pi_base. Recommended base for new finetunes",
     "conditions": 0,
     "example_conditions": null,
     "max": null,
@@ -132,44 +132,5 @@
     "normalization": null,
     "model_type": "Base",
     "condition_format": null
-  },
-  "c-bone/CrystaLLM-cXRD_chili100k": {
-    "description": "Continuous-XRD conditioned generation (PrefixXRD), CHILI-100K, from CrystaLLM-cXRD. The application model",
-    "conditions": 0,
-    "example_conditions": "Pass a raw powder pattern via --xrd_files (see _utils/_preprocessing/process_exp_xrd_continuous.py)",
-    "max": null,
-    "min": null,
-    "normalization": null,
-    "model_type": "PrefixXRD",
-    "condition_format": "xrd_continuous",
-    "config_overrides": {
-      "skip_xrd_convert_model": true
-    }
-  },
-  "c-bone/CrystaLLM-cXRD_alex-mp-20": {
-    "description": "Continuous-XRD conditioned generation (PrefixXRD), Alex-MP-20 bridge, from CrystaLLM-cXRD",
-    "conditions": 0,
-    "example_conditions": "Pass a raw powder pattern via --xrd_files (see _utils/_preprocessing/process_exp_xrd_continuous.py)",
-    "max": null,
-    "min": null,
-    "normalization": null,
-    "model_type": "PrefixXRD",
-    "condition_format": "xrd_continuous",
-    "config_overrides": {
-      "skip_xrd_convert_model": true
-    }
-  },
-  "c-bone/CrystaLLM-cXRD_mp20": {
-    "description": "Continuous-XRD conditioned generation (PrefixXRD), MP-20 benchmark model, from CrystaLLM-cXRD",
-    "conditions": 0,
-    "example_conditions": "Pass a raw powder pattern via --xrd_files (see _utils/_preprocessing/process_exp_xrd_continuous.py)",
-    "max": null,
-    "min": null,
-    "normalization": null,
-    "model_type": "PrefixXRD",
-    "condition_format": "xrd_continuous",
-    "config_overrides": {
-      "skip_xrd_convert_model": true
-    }
   }
 }

@@ -37,7 +37,7 @@ def _load_worker_model(model_class: type, model_source_path: str, model_source: 
     """Load worker model from local checkpoint or HuggingFace source."""
     extra_kwargs = {"trust_remote_code": True} if model_source == "hf" else {}
     if config_overrides:
-        # Registry-supplied config overrides (e.g. skip_xrd_convert_model) go straight into
+        # Registry-supplied config overrides go straight into
         # from_pretrained so the model's own config class applies them. Do NOT pre-fetch an
         # AutoConfig here, it resolves plain GPT2Config and bypasses conditional defaults.
         extra_kwargs.update(config_overrides)
@@ -136,13 +136,9 @@ def generate_on_gpu(
     need_scores = (scoring_mode == "logp")
     check_validity = need_scores or (target_valid_cifs > 0)
 
-    # XRD fit scoring ranks after generation in _load_and_generate, so workers hand
-    # back every valid candidate. Truncating here would rank on first-come order.
-    keep_all_valid = scoring_mode == "pearson"
-
     # Keep the batch that meets the target whole so ranking sees it all. The published
     # benchmarks ranked a pool truncated at the target, so 'benchmark' keeps truncating.
-    rank_over_full_batch = keep_all_valid or (need_scores and screening_profile == "application")
+    rank_over_full_batch = need_scores and screening_profile == "application"
     
     # Process each prompt individually
     for idx in range(start_idx, end_idx):
@@ -166,7 +162,7 @@ def generate_on_gpu(
         
         # Hoisted out of the loop because the scoring pass below needs it. A nested (1000, 2)
         # profile becomes a (1, 1000, 2) tensor, a flat PKV list stays (1, n).
-        if activate_conditionality in ["PKV", "Slider", "Prefix", "PrefixXRD", "Residual"]:
+        if activate_conditionality in ["PKV", "Slider", "Prefix", "Residual"]:
             values = parse_condition_vector(row.get("condition_vector"))
             if values is not None:
                 condition_tensor = torch.tensor([values], device=device, dtype=model.dtype)
@@ -176,7 +172,7 @@ def generate_on_gpu(
 
             try:
                 # Handle different conditionality types
-                if activate_conditionality in ["PKV", "Slider", "Prefix", "PrefixXRD", "Residual"]:
+                if activate_conditionality in ["PKV", "Slider", "Prefix", "Residual"]:
                     with torch.inference_mode():
                         outputs = model.generate(
                             input_ids=input_ids,
@@ -288,7 +284,7 @@ def generate_on_gpu(
                 else:
                     ranked_cifs = valid_cifs
 
-                best_cifs = ranked_cifs if keep_all_valid else ranked_cifs[:target_generations]
+                best_cifs = ranked_cifs[:target_generations]
                 for rank, cif_data in enumerate(best_cifs, 1):
                     cif_data["rank"] = rank
                 results.extend(best_cifs)

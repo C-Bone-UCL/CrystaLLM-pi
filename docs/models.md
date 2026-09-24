@@ -22,15 +22,7 @@ Property information is injected into the attention mechanism through its past k
 ![Prefix attention conditioning](images/Prefix_github.png){ width="75%" style="background-color:white" }
 </div>
 
-#### b. PrefixXRD-GPT (Perceiver Prefix Attention)
-
-`--activate_conditionality="PrefixXRD"`
-
-This model uses the same prefix conditioning mechanism, preceded by a Perceiver Resampler module. Scalar properties contain only a small number of values, whereas a diffraction pattern may contain thousands of measurements. The resampler maps the large incoming information dense tensor to a fixed number of latent vectors, which are then used as the prefix key-values. This allows compression to filter out noise and keep only relevant conditioning information, and also allows us to feed varying length inputs into the prefix model, which normally cannot handle heterogeneous data.
-
-During training, discrete `[Q, I]` peak lists are synthetically broadened and noised on the fly. During inference, continuous, unprocessed XRD profiles can be used directly as conditioning input. This avoids peak selection and trimming, and does not impose restrictions on the incident angle range compared to the old XRD conditioning model we had.
-
-#### c. Residual-GPT (Residual Attention)
+#### b. Residual-GPT (Residual Attention)
 
 `--activate_conditionality="Residual"`
 
@@ -53,10 +45,7 @@ Each released model corresponds to a paper study or tutorial. The table gives it
 
 | Model | Class | Conditioning | Origin |
 |---|---|---|---|
-| `c-bone/CrystaLLM-pi_ft_alex_mp_20-text` | GPT-2 | unconditional | **Recommended base model**, a LeMat-Bulk pretrained model fine-tuned on Alex-MP-20 CIFs, from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD) |
-| `c-bone/CrystaLLM-cXRD_chili100k` | PrefixXRD | continuous XRD profiles | CHILI-100K model from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD), with larger-cell and experimental-structure priors (better for difficult larger structs) |
-| `c-bone/CrystaLLM-cXRD_alex-mp-20` | PrefixXRD | continuous XRD profiles | Alex-MP-20 bridge model from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD), with broader coverage than the CHILI model (better for recovering known structs) |
-| `c-bone/CrystaLLM-cXRD_mp20` | PrefixXRD | continuous XRD profiles | MP-20 benchmark model from [CrystaLLM-cXRD](https://github.com/C-Bone-UCL/CrystaLLM-cXRD), trained from scratch on the PXRDGen splits |
+| `c-bone/CrystaLLM-pi_ft_alex_mp_20-text` | GPT-2 | unconditional | **Recommended base model**, a LeMat-Bulk pretrained model fine-tuned on Alex-MP-20 CIFs |
 | `c-bone/CrystaLLM-pi_base` | GPT-2 | unconditional | LeMat-Bulk base model from the first paper |
 | `c-bone/CrystaLLM-pi_mp_20_base` | GPT-2 | unconditional | MP-20 pretraining base from the paper's pretraining studies |
 | `c-bone/CrystaLLM-pi_alex_mp_20_base` | GPT-2 | unconditional | Alex-MP-20 pretraining base from the paper's dataset-size study |

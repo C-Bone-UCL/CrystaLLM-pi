@@ -22,7 +22,6 @@ from transformers import AutoConfig
 from _utils import is_valid, normalize_values_with_method
 from _utils._generating.generate_cifs import DEFAULT_MAX_LENGTH
 from _utils._preprocessing.process_exp_xrd_inputs import process_and_convert
-from _utils._preprocessing.process_exp_xrd_continuous import process_exp_file_to_continuous
 
 # XRD normalization constants
 XRD_TOP_K_PEAKS = 20
@@ -50,13 +49,13 @@ def _as_list(value: object, fallback: list) -> list:
         return [fallback]
     return [value]
 
-XRD_FORMATS = {"xrd_top20", "xrd_continuous"}
+XRD_FORMATS = {"xrd_top20"}
 
 
 def get_condition_format(model_path: str) -> str | None:
     """Return the conditioning format a model expects, from the registry.
 
-    One of "scalar", "xrd_top20", "xrd_continuous", or None for unconditional models. Registry
+    One of "scalar", "xrd_top20", or None for unconditional models. Registry
     entries without an explicit format fall back to treating Slider models as top-20 XRD, matching
     the released legacy checkpoints.
     """
@@ -68,7 +67,7 @@ def get_condition_format(model_path: str) -> str | None:
 
 
 def is_xrd_model(model_path: str) -> bool:
-    """Return True when the model takes XRD conditioning in either format.
+    """Return True when the model takes XRD conditioning.
     """
     # Path substring kept only for overlay registry entries missing condition_format.
     return get_condition_format(model_path) in XRD_FORMATS or "xrd" in model_path.lower()
@@ -77,9 +76,7 @@ def parse_xrd_file_to_condition_vector(file_path: str, wavelength: float = 1.540
     """Parse a raw powder scan into the legacy 40-value condition vector.
 
     Reads a two-column scan, converts 2theta to Q with `wavelength` (CuKα1 1.54056 Å by default),
-    picks the top peaks and formats them for the Slider-family XRD models. Continuous-XRD models
-    take a different path through `process_exp_xrd_continuous`, which keeps the whole pattern
-    instead of 20 peaks.
+    picks the top peaks and formats them for the Slider-family XRD models.
     """
     try:
         processed_peaks = process_and_convert(file_path, xrd_wavelength=wavelength)
@@ -143,7 +140,7 @@ def get_hf_model_max_length(hf_model_path: str, model_type: str | None = None) -
         for attr in ("n_positions", "max_position_embeddings", "n_ctx"):
             val = getattr(cfg, attr, None)
             if isinstance(val, int) and val > 0:
-                if model_type in ("Prefix", "PrefixXRD"):
+                if model_type == "Prefix":
                     # Prefix families extend wpe by n_prefix_tokens, so the text budget
                     # excludes them. PKV is deliberately NOT subtracted so legacy hub models
                     # generate identically.
@@ -212,16 +209,14 @@ def build_reduced_formula_specs(
     z_values: list[int],
     properties: list[dict],
     xrd_format: str | None = None,
-    xrd_wavelength: float | None = None,
-    xrd_background_subtract: bool = True
+    xrd_wavelength: float | None = None
 ) -> list[dict]:
     """Build one prompt spec per formula row using strictly parallel lists.
 
     Each index i in formulas/z_values/properties corresponds to one output spec. properties[i] must
     be a dict with keys: xrd (file path or None), sg (str or None), cond (condition-vector string or
     None). With an XRD format set, each spec's condition_vector comes from its raw scan file
-    instead: "xrd_top20" yields the legacy 40-value string, "xrd_continuous" the nested (1000, 2)
-    [Q, I] list.
+    instead: "xrd_top20" yields the legacy 40-value string.
     """
     specs = []
     for prompt_order, (formula, z_val, prop) in enumerate(zip(formulas, z_values, properties), start=1):
@@ -233,8 +228,6 @@ def build_reduced_formula_specs(
             cond_str = ", ".join(
                 str(v) for v in parse_xrd_file_to_condition_vector(xrd_source, legacy_wavelength)
             )
-        elif xrd_source and xrd_format == "xrd_continuous":
-            cond_str = process_exp_file_to_continuous(xrd_source, xrd_wavelength, xrd_background_subtract)
 
         sg = prop.get("sg")
 
@@ -333,9 +326,8 @@ def reduce_rows_for_reduced_formula_search(
 ) -> pd.DataFrame:
     """Select the single best generated row for each reduced formula.
 
-    Ranking direction follows the scoring mode: PEARSON sorts descending, since a higher correlation
-    is a better fit, while perplexity-based modes sort ascending. With scoring off, rows keep
-    generation order and the first valid one wins. Ties break on prompt order then generation order,
+    Scored rows sort by ascending perplexity. With scoring off, rows keep generation order and the
+    first valid one wins. Ties break on prompt order then generation order,
     so a run is reproducible.
     """
     if df_generated.empty:
@@ -363,15 +355,11 @@ def reduce_rows_for_reduced_formula_search(
     if valid_subset.empty:
         return pd.DataFrame()
 
-    if scoring_mode in ("logp", "pearson"):
+    if scoring_mode == "logp":
         valid_subset["score"] = pd.to_numeric(valid_subset.get("score"), errors="coerce")
         valid_subset = valid_subset[np.isfinite(valid_subset["score"])]
-        # logp (perplexity) is lower-better, pearson r is higher-better.
-        score_ascending = scoring_mode != "pearson"
-        sorted_subset = valid_subset.sort_values(
-            ["score", "prompt_order", "_generation_order"],
-            ascending=[score_ascending, True, True],
-        )
+        # logp (perplexity) is lower-better.
+        sorted_subset = valid_subset.sort_values(["score", "prompt_order", "_generation_order"])
     else:
         sorted_subset = valid_subset.sort_values(["prompt_order", "_generation_order"])
 

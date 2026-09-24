@@ -24,12 +24,6 @@ Prepare datasets through the preprocessing pipeline.
 ::: _utils._preprocessing.deduplicate
 ::: _utils._preprocessing.cleaning
 ::: _utils._preprocessing.calculate_theor_xrd
-::: _utils._preprocessing.process_exp_xrd_continuous
-
-Experimental XRD conversion can be checked visually before the resulting profiles are used for conditioning.
-
-::: _utils._preprocessing.process_exp_xrd_continuous.save_pipeline_plot
-
 ::: _utils._preprocessing.save_dataset_to_hf
 ::: _utils._preprocessing.save_model_to_hf
 ::: _utils._preprocessing.save_tokenizer_to_hf

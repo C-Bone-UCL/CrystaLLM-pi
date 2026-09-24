@@ -2,8 +2,6 @@
 
 CrystaLLM-pi supports two conditioning mechanisms for crystal structure generation: prefix conditioning and residual conditioning. The tokenizer and datasets used to train these models are documented on the [Data](data.md) page.
 
-Prefix conditioning has two variants that use the same underlying mechanism. `Prefix` accepts scalar properties directly, while `PrefixXRD` uses a Perceiver resampler to encode a full diffraction pattern before passing it to the model.
-
 Each conditional model family includes a configuration, an encoder that maps the conditioning inputs to the representation expected by the transformer, and a GPT-2 model that applies the conditioning.
 
 Tensor shapes and `forward()` behaviour are documented in the source docstrings and are available through the linked source or `help()`.
@@ -18,20 +16,6 @@ Prefix conditioning represents scalar properties as prefix key-values for GPT-2.
 ::: _models.Prefix_model.PrefixEncoder
 ::: _models.Prefix_model.PrefixGPT
 
-## PrefixXRD
-
-PrefixXRD conditions GPT-2 on XRD data using a Perceiver resampler.
-
-The model accepts either discrete `[Q, I]` peaks or a continuous 1000-point `[Q, I]` profile. The input representation is determined by `skip_xrd_convert_model`.
-
-::: _models.PrefixXRD_model.PrefixXRDGPT2Config
-::: _models.PrefixXRD_model.XRDPerceiverEncoder
-::: _models.PrefixXRD_model.PrefixXRDGPT
-
-Discrete peaks can be converted to the continuous profile expected by the encoder with:
-
-::: _models.xrd_utils.discrete_to_continuous_xrd
-
 ## Residual
 
 Residual conditioning adds the conditioning signal to the attention blocks as a residual contribution.
@@ -42,12 +26,6 @@ Residual conditioning adds the conditioning signal to the attention blocks as a 
 ::: _models.Residual_model.ResidualGPT2Block
 ::: _models.Residual_model.ResidualGPT2Model
 ::: _models.Residual_model.ResidualGPT
-
-## Perceiver resampler
-
-The Perceiver resampler is used by the XRD encoder to compress variable-length inputs into a fixed number of latent vectors.
-
-::: _models.perceiver.PerceiverResampler
 
 ## Loading and building
 

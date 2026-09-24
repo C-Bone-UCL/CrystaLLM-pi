@@ -150,8 +150,7 @@ class SourceConventionTests:
     def test_module_names_follow_the_house_convention(self):
         """Module files under `_utils/` are lowercase, unprefixed and free of a `_utils` suffix.
 
-        `_models/` is exempt: its filenames track the checkpoint families they load (`PKV_model.py`,
-        `PrefixXRD_model.py`), which is worth more than PEP 8 casing. Root scripts are exempt too,
+        `_models/` is exempt: its filenames track the checkpoint families they load (`PKV_model.py`), which is worth more than PEP 8 casing. Root scripts are exempt too,
         since the leading underscore there marks the package's own entry points.
         """
         utils = REPO_ROOT / "_utils"

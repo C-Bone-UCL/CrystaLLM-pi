@@ -75,8 +75,6 @@ def _run_smoke_tests(suite: APITestSuite, test_data: dict, include_command_tests
     suite.run_test("evaluate_cifs", gen_tests.test_evaluate_cifs)
     suite.run_test("postprocess", gen_tests.test_postprocess)
     suite.run_test("direct_generation_raw_xrd_conversion", gen_tests.test_direct_generation_raw_xrd_conversion)
-    suite.run_test("direct_generation_continuous_xrd", gen_tests.test_direct_generation_continuous_xrd)
-    suite.run_test("direct_generation_continuous_xrd_default_wavelength", gen_tests.test_direct_generation_continuous_xrd_default_wavelength)
     suite.run_test("direct_generation_search_zs_all_rows_mode", gen_tests.test_direct_generation_search_zs_all_rows_mode)
 
     # Metrics endpoint tests
@@ -191,7 +189,6 @@ def run_all_tests(
             suite.run_test("integration_direct_generation_chili_xrd_early_stop", int_gen_tests.test_direct_generation_chili_xrd_early_stop)
             suite.run_test("integration_direct_generation_mattergen_xrd_logp", int_gen_tests.test_direct_generation_mattergen_xrd_logp)
             suite.run_test("integration_direct_generation_raw_xrd_conversion", int_gen_tests.test_direct_generation_raw_xrd_conversion)
-            suite.run_test("integration_direct_generation_continuous_xrd", int_gen_tests.test_direct_generation_continuous_xrd)
             
             # Parquet, Config, and conflict handling (Now safe to run)
             suite.run_test("integration_direct_generation_input_parquet_mode", int_gen_tests.test_direct_generation_input_parquet_mode)

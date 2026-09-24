@@ -1,7 +1,7 @@
 """Parse training and generation arguments from JSONC configuration and CLI flags.
 
-CLI flags override values from the configuration file. Supports the Prefix,
-PrefixXRD, and Residual architectures. The legacy PKV and Slider families can
+CLI flags override values from the configuration file. Supports the Prefix
+and Residual architectures. The legacy PKV and Slider families can
 be loaded for generation but are not trainable. Unsupported values of
 ``activate_conditionality`` raise an error.
 """
@@ -51,25 +51,18 @@ def parse_args() -> argparse.Namespace:
     # Conditional Arguments
     #######################
     parser.add_argument("--condition_columns", type=str, default=None, help="Comma-separated dataset column names to condition on (e.g., 'bandgap,density'). Must match exact column names in dataset. Values should be pre-normalized.")
-    parser.add_argument("--n_prefix_tokens", type=int, default=None, help="Number of conditioning tokens. Prefix and PrefixXRD prepend this many ghost tokens as past_key_values and extend n_positions by the same amount. Residual reads it as the number of slider variables, which must equal the number of condition columns.")
-    parser.add_argument("--n_hidden_cond", type=int, default=None, help="Hidden dimension for property embedding projections (Prefix, PrefixXRD and Residual).")
-    parser.add_argument("--cond_dropout", type=float, default=None, help="Dropout rate applied to conditional embeddings during training (Prefix, PrefixXRD and Residual).")
+    parser.add_argument("--n_prefix_tokens", type=int, default=None, help="Number of conditioning tokens. Prefix prepends this many ghost tokens as past_key_values and extends n_positions by the same amount. Residual reads it as the number of slider variables, which must equal the number of condition columns.")
+    parser.add_argument("--n_hidden_cond", type=int, default=None, help="Hidden dimension for property embedding projections (Prefix and Residual).")
+    parser.add_argument("--cond_dropout", type=float, default=None, help="Dropout rate applied to conditional embeddings during training (Prefix and Residual).")
     parser.add_argument("--n_heads_sharing_slider", type=int, default=None, help="Number of attention heads that use shared conditioning weights (Residual-GPT only). Must be less or equal to n_head.")
     parser.add_argument("--cond_lr", type=float, default=None, help="Learning rate for conditional parameters. Separate from main model learning rate.")
     parser.add_argument("--cond_wd", type=float, default=None, help="Weight decay for conditional parameters.")
-    parser.add_argument("--skip_xrd_convert_model", nargs="?", const=True, default=False, type=str_to_bool, help="Skip PrefixXRD's discrete peak broadening and expect 1000x2 continuous [Q, I] inputs instead.")
-
-    # Perceiver arguments (PrefixXRD)
-    parser.add_argument("--perceiver_n_heads", type=int, default=8, help="Number of attention heads in the Perceiver Resampler. Keep perceiver_n_heads * perceiver_dim_head equal to the Perceiver width.")
-    parser.add_argument("--perceiver_depth", type=int, default=1, help="Number of Perceiver Resampler layers.")
-    parser.add_argument("--perceiver_dim_head", type=int, default=64, help="Dimension of each attention head in the Perceiver Resampler. Keep perceiver_n_heads * perceiver_dim_head equal to the Perceiver width.")
-    parser.add_argument("--perceiver_ff_mult", type=int, default=2, help="Feedforward network expansion multiplier in Perceiver Resampler.")
     parser.add_argument("--context_extension_warmup_steps", type=int, default=0, help="Number of initial optimizer steps that keep checkpoint-copied positional embedding rows frozen after extending context length.")
 
     # Model Arguments
     #######################
     # Model Depth
-    parser.add_argument("--activate_conditionality", type=str, default=None, help="Select conditioning architecture: 'Prefix' (PKV successor), 'PrefixXRD' (continuous/discrete XRD conditioning), 'Residual' (Slider successor), or None for unconditional model. 'PKV' and 'Slider' are legacy generation-only families, training them raises error. Default None loads base unconditional model.")
+    parser.add_argument("--activate_conditionality", type=str, default=None, help="Select conditioning architecture: 'Prefix' (PKV successor), 'Residual' (Slider successor), or None for unconditional model. 'PKV' and 'Slider' are legacy generation-only families, training them raises error. Default None loads base unconditional model.")
     # parser.add_argument("--n_positions", type=int, default=1024, help="Model context size")
     parser.add_argument("--n_embd", type=int, default=256, help="Transformer embedding dimension size.")
     parser.add_argument("--n_layer", type=int, default=4, help="Number of Transformer layers in the model.")
@@ -148,7 +141,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_samples", type=int, default=None, help="Maximum number of prompts to process from the input parquet file.")
     parser.add_argument("--output_parquet", type=str, default=None, help="Output parquet file to save generated CIF structures.")
     parser.add_argument("--max_return_attempts", type=int, default=1, help="Number of generation batches per prompt. In validation-targeted modes, generation stops when target_valid_cifs is reached or max_return_attempts is hit. In raw mode, returns max_return_attempts * num_return_sequences CIFs per prompt.")
-    parser.add_argument("--scoring_mode", type=str, default="None", help="Scoring mode for generated structures: 'logp' validates and ranks CIFs by perplexity, 'pearson' ranks by XRD profile fit (continuous-XRD models only). 'None' disables ranking, and either validates until target_valid_cifs valid CIFs are found or returns all raw generations when target_valid_cifs is 0.")
+    parser.add_argument("--scoring_mode", type=str, default="None", help="Scoring mode for generated structures: 'logp' validates and ranks CIFs by perplexity. 'None' disables ranking, and either validates until target_valid_cifs valid CIFs are found or returns all raw generations when target_valid_cifs is 0.")
 
     parser.add_argument("--screening_profile", type=str, default="application", choices=("benchmark", "application"),
                         help="How hard to screen generated CIFs. 'application' runs the bond-length check and ranks over the whole generated batch. 'benchmark' skips the bond-length check and ranks a pool truncated at target_valid_cifs, reproducing the screening behind the published MP-20 and CHILI-100K numbers.")
