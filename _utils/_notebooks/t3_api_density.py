@@ -119,7 +119,9 @@ def plot_density_results(true_parquet: str, gen_parquets: dict[str, tuple[str, s
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches="tight")
         print(f"saved {save_path}")
-    plt.show()
+        plt.close()
+    else:
+        plt.show()
 
 __all__ = [
     "calculate_metrics",
