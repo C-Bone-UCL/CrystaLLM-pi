@@ -50,6 +50,23 @@ class DataPipelineTests:
         except ImportError as e:
             print(f"Cleaning imports not available (acceptable): {e}")
     
+    def test_float_occupancies(self):
+        """Full occupancies become 1.0; partial ones and other loops are left alone."""
+        from _utils._preprocessing.cleaning import float_occupancies
+
+        cif = (
+            "loop_\n _atom_type_symbol\n _atom_type_radius\n  Na  1\n"
+            "loop_\n _symmetry_equiv_pos_site_id\n _symmetry_equiv_pos_as_xyz\n  1  'x, y, z'\n"
+            "loop_\n _atom_site_occupancy\n"
+            "  Na  Na0  4  0.0000  0.0000  0.0000  1\n"
+            "  Cl  Cl1  4  0.5000  -0.5000  0.5000  1.0\n"
+            "  Fe  Fe2  2  0.2500  0.2500  0.2500  0.5\n"
+        )
+        out = float_occupancies(cif)
+        assert "  Na  Na0  4  0.0000  0.0000  0.0000  1.0\n" in out
+        assert out.replace("0.0000  1.0\n", "0.0000  1\n", 1) == cif, "only the Na site should change"
+        assert float_occupancies(out) == out, "should be idempotent"
+
     def test_xrd_calculation(self):
         """Test XRD pattern calculation with actual structure."""
         try:

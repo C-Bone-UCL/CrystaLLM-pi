@@ -1,7 +1,7 @@
 {
   // Data Arguments
   //################
-  "dataset_HF": "c-bone/mp_20",
+  "dataset_HF": "c-bone/mp_20_pxrd",
   "pretrained_tokenizer_dir": "HF-cif-tokenizer",
   "context_length": 1024,
   "remove_CIFs_above_context": false,
@@ -28,11 +28,11 @@
   "learning_rate": 0.002,
   "lr_scheduler_type": "cosine_with_min_lr",
   "lr_scheduler_kwargs": {
-    "min_lr_rate": 0.001
+    "min_lr_rate": 0.01
   },
   "warmup_ratio": 0.0,
   "adam_beta1": 0.9,
-  "adam_beta2": 0.98,
+  "adam_beta2": 0.995,
   "grad_clip": 1.0,
   "weight_decay": 0.1,
   // optimizer
