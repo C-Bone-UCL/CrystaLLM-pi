@@ -5,22 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
-## [Unreleased]
+## [v2.0.0] - YYYY-MM-DD
 
-### New Model Generation
+### Models
 
-* **New conditional families**: `Prefix`, `PrefixXRD`, and `Residual` have been imported from CrystaLLM-graph, with minor upgrades. They replace `PKV` and `Slider` respectively. New dependency: `einops`.
-* **PKV and Slider are now generation-only**: training either model now raises an error directing users to its successor. All released legacy checkpoints continue to generate identically. T1 and T5 now fine-tune `Prefix`, and `T4_XRD_continuous` is now available for continuous-XRD training. XRD training itself remains in CrystaLLM-graph.
-* **Three new models on the Hub**: `Chili100K-cXRD` and `alex_mp_20-cXRD` are continuous-XRD models and KD students of the graph teacher. `ft_alex_mp_20-text` is a text-only `alex_mp_20` model and the recommended base for new fine-tuning runs.
-* **cXRD models renamed and re-released**: the continuous-XRD checkpoints are now `CrystaLLM-cXRD_chili100k`, `CrystaLLM-cXRD_alex-mp-20` and `CrystaLLM-cXRD_mp20`, trained without distillation in CrystaLLM-cXRD, which is where their configs and benchmarks live. The earlier distilled checkpoints leave the registry until the paper that describes them is out.
+* **Prefix and Residual replace PKV and Slider for training**: `Prefix` succeeds `PKV` and `Residual` succeeds `Slider`. Training a PKV or Slider model now raises an error naming its successor. Released PKV and Slider checkpoints still generate identically. The T1 and T5 tutorials now fine-tune `Prefix`.
+* **New text base model on the Hub**: `CrystaLLM-pi_ft_alex_mp_20-text` is `CrystaLLM-pi_base` fine-tuned on `alex_mp_20` with no conditioning, and is the recommended base for new fine-tuning runs. It trains from `_config_files/training/unconditional/ft-alex-mp-20-text.jsonc`.
 * **Training configs on the Hub**: every released model now carries the `training_config.jsonc` that produced it and the resolved `training_args.json`, the same files new training runs write into their checkpoints.
-* **Generate from raw XRD scans**: `--xrd_files` now accepts raw diffractometer scans for cXRD models, with no peak picking required. The new `process_exp_xrd_continuous.py` converts scans from 2theta to Q, removes the background, resamples the profile, and can plot each stage for inspection. New dependency: `pybaselines`.
-* **XRD-fit ranked Z search**: the new `PEARSON` scoring mode ranks Z-search candidates by fitting each generated candidate's simulated diffraction pattern to the input scan on a 1000-point grid. Initial internal tests suggest that `LOGP` improves RMSD, while `PEARSON` improves match rate.
 * **Breaking: `LOGP` now measures the model rather than the sampler**: perplexity comes from a separate forward pass over the full vocabulary, not from the generation-time scores, which `top_k`, `top_p` and `temperature` have already truncated and sharpened. Absolute values shift by under 1%, but the top-ranked candidate changes for roughly a third of prompts, so `LOGP` rankings from earlier versions are not directly comparable. `scoring_methods.forward_pass_logp` replaces `score_outputs_logp` and `score_output_logp`. Generation no longer retains per-step logits, which lowers peak memory.
 
 ### Generation Screening
 
-* **`--screening_profile`**: sets how hard generated CIFs are screened. `application`, the default here, runs the bond-length check and ranks the whole batch that reaches the target rather than the first candidates to arrive. `benchmark` reproduces the screening behind the published MP-20 and CHILI-100K numbers, and is the default in the repositories that produced them.
+* **`--screening_profile`**: sets how hard generated CIFs are screened. `application`, the default here, runs the bond-length check and ranks the whole batch that reaches the target rather than the first candidates to arrive. `benchmark` reproduces the screening behind the published MP-20 and CHILI-100K numbers, and is the default in the paper reproduction repository.
 * **Disordered structures pass through the bond-length check**: it now reports "not checked" instead of failing on partial occupancies, so virtualiser output can be screened rather than skipped.
 * **Formula consistency handles supercells and partial occupancy**: the declared formula and the atom-site composition are compared up to cell scale, at a tolerance that still rejects a CIF declaring `Fe12C4` whose sites hold `Fe2C`.
 * **Unknown config keys are rejected**: a misspelled or stale key in a `.jsonc` config raises instead of doing nothing.
@@ -31,26 +27,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Repository Split
 
-* **Paper content moved out**: the paper notebooks and the Prepend/Raw baseline families now live in the standalone reproduction repository [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper). This repository retains the PKV, Slider, and unconditional models, together with new tutorial notebooks covering the fine-tuning pipeline, loading and generation, the API, and SLME. All paper configurations now live in the reproduction repository.
+* **Paper content moved out**: the paper notebooks and the Prepend/Raw baseline families now live in the standalone reproduction repository [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper), along with all paper configurations. This repository keeps the Prefix, Residual, PKV, Slider and unconditional models, with new tutorial notebooks covering fine-tuning, loading and generation, the API, and SLME.
 * **ALIGNN removed**: the separate `alignn_env` environment used for bandgap predictions in some paper studies has been removed, leaving a single repository environment. Bandgap generation remains supported, as does evaluation of the density property when required.
-* **Breaking: file and folder renames**: standardized names for JOSS.
+* **Breaking: module renames**: scripts and modules under `_utils/` drop their leading underscore and use lowercase names (`_cleaning.py` is now `cleaning.py`, `generate_CIFs.py` is now `generate_cifs.py`). `_utils/_metrics/` is now `_utils/_scoring/`, `_utils/_api_utils/` is now `_utils/_api/`, `_utils/_tokenizer_utils/` is now `_utils/_tokenizer/`, and the `_*_utils.py` modules lose the suffix (`_processing_utils.py` is now `processing.py`). The tokenizer moved from `HF-cif-tokenizer/` to `_utils/HF-cif-tokenizer/`.
 
 ### Documentation
 
-* **Docstrings standardised**: every module and every public function exposed through the documentation now follows a standardised format, with registered tests enforcing the format.
-* **Docs site**: the full documentation is now available at [c-bone-ucl.github.io/CrystaLLM-pi](https://c-bone-ucl.github.io/CrystaLLM-pi/), built with MkDocs Material and an API reference generated from the docstrings.
+* **Docstrings standardised**: every module and every public function exposed through the documentation follows one format, and registered tests enforce it.
+* **Docs site**: the full documentation is now at [c-bone-ucl.github.io/CrystaLLM-pi](https://c-bone-ucl.github.io/CrystaLLM-pi/), built with MkDocs Material, with an API reference generated from the docstrings.
+* **AI usage disclosure**: `docs/AI_USAGE_DISCLOSURE.md` records how generative AI was used to build and maintain this codebase.
 
 ### Packaging
 
-* **New installation method**: the package can now be installed with `pip install -e ".[all]"`, with optional extras for just the training, the API, metrics, notebooks, and documentation deps. 
+* **pip install**: the package now installs with `pip install -e ".[all]"`. The `train`, `api`, `metrics`, `notebooks` and `docs` extras install only what each part needs.
 
 ### Licensing
 
 * **`LICENSE` now carries a copyright notice**: the MIT permission notice referred to "the above copyright notice" when the file contained none. It also now retains the notice for [CrystaLLM](https://github.com/lantunes/CrystaLLM) (Copyright (c) 2023 Luis M. Antunes), from which parts of this codebase are derived.
-
-### JOSS
-* **New documents**: Released necessary documents and files for JOSS submission
-* **JOSS paper**: Also added the paper.
 
 ## [v1.3.2] - 2026-07-20
 
