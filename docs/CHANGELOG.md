@@ -9,15 +9,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Models
 
-* **Prefix and Residual replace PKV and Slider for training**: `Prefix` succeeds `PKV` and `Residual` succeeds `Slider`. Training a PKV or Slider model now raises an error naming its successor. Released PKV and Slider checkpoints still generate identically. The T1 and T5 tutorials now fine-tune `Prefix`.
+* **Prefix and Residual replace PKV and Slider for training**: `Prefix` succeeds `PKV` and `Residual` succeeds `Slider`. Training a PKV or Slider model now raises an error naming its successor. Released PKV and Slider can still generate identically. The T1 and T4 tutorials now fine-tune `Prefix`.
 * **New text base model on the Hub**: `CrystaLLM-pi_ft_alex_mp_20-text` is `CrystaLLM-pi_base` fine-tuned on `alex_mp_20` with no conditioning, and is the recommended base for new fine-tuning runs. It trains from `_config_files/training/unconditional/ft-alex-mp-20-text.jsonc`.
 * **Training configs on the Hub**: every released model now carries the `training_config.jsonc` that produced it and the resolved `training_args.json`, the same files new training runs write into their checkpoints.
-* **Breaking: `LOGP` now measures the model rather than the sampler**: perplexity comes from a separate forward pass over the full vocabulary, not from the generation-time scores, which `top_k`, `top_p` and `temperature` have already truncated and sharpened. Absolute values shift by under 1%, but the top-ranked candidate changes for roughly a third of prompts, so `LOGP` rankings from earlier versions are not directly comparable. `scoring_methods.forward_pass_logp` replaces `score_outputs_logp` and `score_output_logp`. Generation no longer retains per-step logits, which lowers peak memory.
 
 ### Generation Screening
 
-* **`--screening_profile`**: sets how hard generated CIFs are screened. `application`, the default here, runs the bond-length check and ranks the whole batch that reaches the target rather than the first candidates to arrive. `benchmark` reproduces the screening behind the published MP-20 and CHILI-100K numbers, and is the default in the paper reproduction repository.
-* **Disordered structures pass through the bond-length check**: it now reports "not checked" instead of failing on partial occupancies, so virtualiser output can be screened rather than skipped.
+* **`--screening_profile`**: sets how hard generated CIFs are screened. `application`, the default here, runs the bond-length check and ranks the whole batch that reaches the target rather than the first candidates to arrive. `benchmark` reproduces the screening behind the published MP-20 and numbers, and is the default in the paper reproduction repository.
 * **Formula consistency handles supercells and partial occupancy**: the declared formula and the atom-site composition are compared up to cell scale, at a tolerance that still rejects a CIF declaring `Fe12C4` whose sites hold `Fe2C`.
 * **Unknown config keys are rejected**: a misspelled or stale key in a `.jsonc` config raises instead of doing nothing.
 
@@ -29,12 +27,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 * **Paper content moved out**: the paper notebooks and the Prepend/Raw baseline families now live in the standalone reproduction repository [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper), along with all paper configurations. This repository keeps the Prefix, Residual, PKV, Slider and unconditional models, with new tutorial notebooks covering fine-tuning, loading and generation, the API, and SLME.
 * **ALIGNN removed**: the separate `alignn_env` environment used for bandgap predictions in some paper studies has been removed, leaving a single repository environment. Bandgap generation remains supported, as does evaluation of the density property when required.
-* **Breaking: module renames**: scripts and modules under `_utils/` drop their leading underscore and use lowercase names (`_cleaning.py` is now `cleaning.py`, `generate_CIFs.py` is now `generate_cifs.py`). `_utils/_metrics/` is now `_utils/_scoring/`, `_utils/_api_utils/` is now `_utils/_api/`, `_utils/_tokenizer_utils/` is now `_utils/_tokenizer/`, and the `_*_utils.py` modules lose the suffix (`_processing_utils.py` is now `processing.py`). The tokenizer moved from `HF-cif-tokenizer/` to `_utils/HF-cif-tokenizer/`.
+* **Breaking: module renames**: scripts and modules under `_utils/` drop their leading underscore and use lowercase names. The tokenizer was moved from `HF-cif-tokenizer/` to `_utils/HF-cif-tokenizer/`.
 
 ### Documentation
 
-* **Docstrings standardised**: every module and every public function exposed through the documentation follows one format, and registered tests enforce it.
-* **Docs site**: the full documentation is now at [c-bone-ucl.github.io/CrystaLLM-pi](https://c-bone-ucl.github.io/CrystaLLM-pi/), built with MkDocs Material, with an API reference generated from the docstrings.
+* **Docstrings standardised**: every module and every public function exposed through the documentation follows one format, and tests now enforce it.
+* **Docs site**: the full documentation is now at [c-bone-ucl.github.io/CrystaLLM-pi](https://c-bone-ucl.github.io/CrystaLLM-pi/), built with MkDocs Material.
 * **AI usage disclosure**: `docs/AI_USAGE_DISCLOSURE.md` records how generative AI was used to build and maintain this codebase.
 
 ### Packaging
@@ -43,7 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Licensing
 
-* **`LICENSE` now carries a copyright notice**: the MIT permission notice referred to "the above copyright notice" when the file contained none. It also now retains the notice for [CrystaLLM](https://github.com/lantunes/CrystaLLM) (Copyright (c) 2023 Luis M. Antunes), from which parts of this codebase are derived.
+* **`LICENSE` now carries a copyright notice**: it also now retains the notice for [CrystaLLM](https://github.com/lantunes/CrystaLLM) (Copyright (c) 2023 Luis M. Antunes), from which parts of this codebase are derived.
 
 ## [v1.3.2] - 2026-07-20
 

@@ -6,9 +6,7 @@ CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> generates crystal structur
 ![CrystaLLM-pi framework overview](images/Framework_github.png){ width="75%" style="background-color:white" }
 </div>
 
-The same training and generation workflow supports different numerical properties. To work with a new property, prepare a dataset with the corresponding values and fine-tune a model.
-
-This repo includes the package, tutorials, documentation and a containerised API, with pretrained models available on Hugging Face. The API also powers the [CrystaLLM-π web application](https://crystallm-pi.psdi.ac.uk/). Most models fit on a 16 GB GPU for training and need 1–2 GB for generation. Generation also runs on CPU.
+This repo includes the package, tutorials, documentation and a containerised API, with pretrained models available on Hugging Face. The API also powers the [CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> web application](https://crystallm-pi.psdi.ac.uk/). Most models fit on a 16 GB GPU for training and need 1–2 GB for generation. Generation also runs on CPU.
 
 ## Key Features
 
@@ -16,7 +14,7 @@ This repo includes the package, tutorials, documentation and a containerised API
 - **Property targets**: guide generation with one or more numerical properties.
 - **Fine-tuning**: train Prefix or Residual models on your own data. Residual models also support missing property values.
 - **Evaluation**: check validity, uniqueness, novelty and stability.
-- **Released models**: download pretrained models from Hugging Face.
+- **Released models**: download pretrained models from Hugging Face and run them yourself.
 
 ## Where to start
 
@@ -28,9 +26,13 @@ This repo includes the package, tutorials, documentation and a containerised API
 | Finetune on your own property | [Training from scratch](training.md) | [T1](tutorials.md) |
 | Recover a structure from XRD peaks | [Quickstart](quickstart.md) | |
 | Run it as an HTTP service | [API service](api-service.md) | [T3](tutorials.md) |
-| Screen for a target property | [Training from scratch](training.md) | [T5](tutorials.md) |
+| Screen for a target property | [Training from scratch](training.md) | [T4](tutorials.md) |
 | Look up a function | [API reference](api/cli.md) | |
 
 ## Reproducing the paper
 
-The notebooks and configs for ["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299) are in [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper). Use this repo for current development and generation with any released model.
+The notebooks and configs for ["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299) are in the repository made to reproduce our paper: [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper).
+
+Use this repo for up to date training, generation, and access to models from our other CrystaLLM-<span style="font-size: 1.2em;">&pi;</span>  projects as they come out!
+
+> In the reproduce paper code, the `Residual` model goes buy `Slider`, and the `Prefix` model goes by `PKV`. This is legacy naming and has been updated across this codebase.

@@ -5,9 +5,7 @@ Four notebooks in [`notebooks/`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob
 * [`T1_finetune_density_example.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T1_finetune_density_example.ipynb): finetune a base model on your own property dataset, push it to the Hub, register it, and generate with it
 * [`T2_load_and_generate.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T2_load_and_generate.ipynb): generate structures with the released Hub models (courtesy of [Joley Lin](https://github.com/yhjollin/))
 * [`T3_API_density_example.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T3_API_density_example.ipynb): predict density for a composition through the containerised API
-* [`T5_SLME.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T5_SLME.ipynb): discover a material with a target photovoltaic efficiency
-
-The paper studies are not here, they live in [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper).
+* [`T4_SLME.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T4_SLME.ipynb): discover a material with a target photovoltaic efficiency
 
 ## Customising the tokenizer
 

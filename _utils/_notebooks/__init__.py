@@ -1,6 +1,6 @@
 """Notebook-scoped helper package."""
 
-from _utils._notebooks.t6_slme import (
+from _utils._notebooks.t4_slme import (
     extract_formula,
     build_novelty_tag,
     parse_novelty_from_tag,

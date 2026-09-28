@@ -41,19 +41,19 @@ Conditioning information is injected into each attention block through a slider 
 
 ## Available Pre-trained Models
 
-Each released model corresponds to a paper study or tutorial. The table gives its study and conditioning setup. See the corresponding material for training and evaluation details.
+Each released model exists because a paper study or tutorial produced it. This table keeps track of all available models in the zoo as they come out. 
 
 | Model | Class | Conditioning | Origin |
 |---|---|---|---|
 | `c-bone/CrystaLLM-pi_ft_alex_mp_20-text` | GPT-2 | unconditional | **Recommended base model**, a LeMat-Bulk pretrained model fine-tuned on Alex-MP-20 CIFs |
 | `c-bone/CrystaLLM-pi_base` | GPT-2 | unconditional | LeMat-Bulk base model from the first paper |
-| `c-bone/CrystaLLM-pi_mp_20_base` | GPT-2 | unconditional | MP-20 pretraining base from the paper's pretraining studies |
-| `c-bone/CrystaLLM-pi_alex_mp_20_base` | GPT-2 | unconditional | Alex-MP-20 pretraining base from the paper's dataset-size study |
-| `c-bone/CrystaLLM-pi_SLME` | Prefix (legacy `PKV`) | solar efficiency (SLME), 0-33% | SLME discovery study, maintained in [`T5_SLME`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T5_SLME.ipynb) |
-| `c-bone/CrystaLLM-pi_bandgap` | Prefix (legacy `PKV`) | bandgap + stability, 0-18 eV / 0-5 eV/atom | Pretraining-benefits study ([B1a notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/B1a_Pretrain_benefits.ipynb) in the paper repository) |
-| `c-bone/CrystaLLM-pi_density` | Prefix (legacy `PKV`) | density + stability, 0-25 g/cm3 / 0-0.1 eV/atom | Dataset-size study ([B2 notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/B2_Dataset_size_study.ipynb) in the paper repository) |
-| `c-bone/CrystaLLM-pi_Mattergen-XRD` | Residual (legacy `Slider`, top-20 peaks) | XRD peaks (theoretical patterns, fully ordered bias) | XRD recovery studies ([X_XRD notebooks](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/tree/main/notebooks) in the paper repository) |
-| `c-bone/CrystaLLM-pi_Chili100K-XRD` | Residual (legacy `Slider`, top-20 peaks) | XRD peaks (experimental patterns) | CHILI-100K recovery study from the first paper [CHILI-100K notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/X_XRD_chili100k.ipynb) |
+| `c-bone/CrystaLLM-pi_mp_20_base` | GPT-2 | unconditional | MP-20 text only model for LeMat-Bench|
+| `c-bone/CrystaLLM-pi_alex_mp_20_base` | GPT-2 | unconditional | Alex-mp-20 text only model for LeMat-Bench |
+| `c-bone/CrystaLLM-pi_SLME` | Prefix  | solar efficiency (SLME), 0-33% | SLME discovery study, maintained in [`T4_SLME`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T4_SLME.ipynb) |
+| `c-bone/CrystaLLM-pi_bandgap` | Prefix | bandgap + stability, 0-18 eV / 0-5 eV/atom | Pretraining-benefits study ([B1a notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/B1a_Pretrain_benefits.ipynb) in the paper repository) |
+| `c-bone/CrystaLLM-pi_density` | Prefix  | density + stability, 0-25 g/cm3 / 0-0.1 eV/atom | Dataset-size study ([B2 notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/B2_Dataset_size_study.ipynb) in the paper repository) |
+| `c-bone/CrystaLLM-pi_Mattergen-XRD` | Residual | XRD peak-picked | XRD recovery studies ([X_XRD_* notebooks](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/tree/main/notebooks) in the paper repository) |
+| `c-bone/CrystaLLM-pi_Chili100K-XRD` | Residual | XRD peak-picked | CHILI-100K recovery study from the first paper [CHILI-100K notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/X_XRD_chili100k.ipynb) |
 
 Model metadata, including the model class, conditioning variables, and normalisation, is stored in [`_utils/model_registry.json`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/_utils/model_registry.json). To generate with a model that is not listed above with the `_load_and_generate.py` script, provide a JSON file with the same schema through `--model_registry`. See [`notebooks/T1_finetune_density_example.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T1_finetune_density_example.ipynb) for complete workflow, from fine-tuning a density model to uploading, registering, and generating with it.
 

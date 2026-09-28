@@ -43,15 +43,15 @@ CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> generates crystal structur
 <img src="docs/images/Framework_github.png" width="75%" style="background-color:white;"/>
 </div>
 
-The same training and generation workflow supports different numerical properties. To work with a new property, prepare a dataset with the corresponding values and fine-tune a model.
-
-This repo includes the package, tutorials, documentation and a containerised API, with pretrained models available on Hugging Face. The API also powers the [CrystaLLM-π web application](https://crystallm-pi.psdi.ac.uk/). Most models fit on a 16 GB GPU for training and need 1–2 GB for generation. Generation also runs on CPU.
+This repo includes the package, tutorials, documentation and a containerised API, with pretrained models available on Hugging Face. The API also powers the [CrystaLLM-<span style="font-size: 1.2em;">&pi;</span> web application](https://crystallm-pi.psdi.ac.uk/). Most models fit on a 16 GB GPU for training and need 1–2 GB for generation. Generation also runs on CPU.
 
 ## Reproducing the paper
 
-The notebooks and configs for ["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299) are in [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper). The [v1.3.0 tag](https://github.com/C-Bone-UCL/CrystaLLM-pi/releases/tag/v1.3.0) preserves the version used for those studies.
+The notebooks and configs for ["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299) are in the repository made to reproduce our paper: [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper).
 
-Use this repo for current development and generation with any released model.
+Use this repo for up to date training, generation, and access to models from our other CrystaLLM-<span style="font-size: 1.2em;">&pi;</span>  projects as they come out!
+
+> In the reproduce paper code, the `Residual` model goes buy `Slider`, and the `Prefix` model goes by `PKV`. This is legacy naming and has been updated across this codebase.
 
 ## Key Features
 
@@ -59,11 +59,11 @@ Use this repo for current development and generation with any released model.
 - **Property targets**: guide generation with one or more numerical properties.
 - **Fine-tuning**: train Prefix or Residual models on your own data. Residual models also support missing property values.
 - **Evaluation**: check validity, uniqueness, novelty and stability.
-- **Released models**: download pretrained models from Hugging Face.
+- **Released models**: download pretrained models from Hugging Face and run them yourself.
 
 ## Documentation
 
-Full documentation: **https://c-bone-ucl.github.io/CrystaLLM-pi/**
+Full documentation: **https://c-bone-ucl.github.io/CrystaLLM-pi/**, quick links:
 
 - [Installation](https://c-bone-ucl.github.io/CrystaLLM-pi/install/)
 - [Quickstart and generation examples](https://c-bone-ucl.github.io/CrystaLLM-pi/quickstart/)
@@ -91,13 +91,13 @@ Lighter installs (generation only, training only, API only), prerequisites and A
 
 Use with pre-trained models from HuggingFace Hub for direct crystal structure generation. The `_load_and_generate.py` script handles downloading models and generating valid CIF structures with desired properties.
 
-> **Note**: Properties (Conditions, Spacegroups, XRD files, Z values) map strictly 1:1 to the canonicalized reduced formulas provided in `--reduced_formula_list`.
+> **Note**: Properties (Conditions, Spacegroups, XRD files, Z values) map strictly 1:1 to the reduced formulas provided in `--reduced_formula_list`.
 > 
 > **Outputs**: Outputs can either be saved as a dataframe in a `.parquet` using the `--output_parquet` flag, or as individual CIFs in a directory using the `--output_cif_dir` flag.
 
-**Explicit Z Generation (Unconditional)**
+**Recovery: known composition and space group, no property**
 
-Generate 10 (2 batches of 5) Ti2O4 structures by explicitly setting the reduced formula and Z=2, including a spacegroup constraint.
+Generate Ti2O4 (TiO2 with Z=2) in space group P4_2/mnm. The model samples up to 2 batches of 5 and keeps 5 valid structures.
 
 ```bash
 python _load_and_generate.py \
@@ -108,28 +108,44 @@ python _load_and_generate.py \
     --level level_4 \
     --num_return_sequences 5 \
     --max_return_attempts 2 \
-    --output_parquet generated_structures.parquet
+    --target_valid_cifs 5 \
+    --output_cif_dir recovery_cifs
 ```
 
-Mapped condition lists, Z-searches, perplexity ranking and every configuration option are on the [quickstart page](https://c-bone-ucl.github.io/CrystaLLM-pi/quickstart/).
+**Discovery: property target only**
+
+Generate structures with no composition given, asking the SLME model for a photovoltaic efficiency of 25%. The model chooses the elements, stoichiometry and space group, sampling up to 2 batches of 5 and keeping 5 valid structures.
+
+```bash
+python _load_and_generate.py \
+    --hf_model_path "c-bone/CrystaLLM-pi_SLME" \
+    --condition_lists "25.0" \
+    --level level_1 \
+    --num_return_sequences 5 \
+    --max_return_attempts 2 \
+    --target_valid_cifs 5 \
+    --output_cif_dir discovery_cifs
+```
+
+To understand what each flag does and see more examples, see the documentation [quickstart page](https://c-bone-ucl.github.io/CrystaLLM-pi/quickstart/).
 
 ## Available Pre-trained Models
 
-Each released model exists because a paper study or tutorial produced it. The table says which, so you know where to look for its training setup and evaluation.
+Each released model exists because a paper study or tutorial produced it. This table keeps track of all available models in the zoo as they come out. 
 
 | Model | Class | Conditioning | Origin |
 |---|---|---|---|
 | `c-bone/CrystaLLM-pi_ft_alex_mp_20-text` | GPT-2 | unconditional | **Recommended base model**, LeMat-Bulk pretrain finetuned on Alex-MP-20 CIFs |
 | `c-bone/CrystaLLM-pi_base` | GPT-2 | unconditional | LeMaterial base model from the first paper |
-| `c-bone/CrystaLLM-pi_mp_20_base` | GPT-2 | unconditional | mp-20 pretraining base from the paper's pretraining studies |
-| `c-bone/CrystaLLM-pi_alex_mp_20_base` | GPT-2 | unconditional | alex-mp-20 pretraining base from the paper's dataset-size study |
-| `c-bone/CrystaLLM-pi_SLME` | Prefix (legacy `PKV`) | solar efficiency (SLME), 0-33% | SLME discovery study, maintained here in [`T5_SLME`](notebooks/T5_SLME.ipynb) |
-| `c-bone/CrystaLLM-pi_bandgap` | Prefix (legacy `PKV`) | bandgap + stability, 0-18 eV / 0-5 eV/atom | Pretraining-benefits study ([B1a notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/B1a_Pretrain_benefits.ipynb) in the paper repo) |
-| `c-bone/CrystaLLM-pi_density` | Prefix (legacy `PKV`) | density + stability, 0-25 g/cm3 / 0-0.1 eV/atom | Dataset-size study ([B2 notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/B2_Dataset_size_study.ipynb) in the paper repo) |
-| `c-bone/CrystaLLM-pi_Mattergen-XRD` | Residual (legacy `Slider`, top-20 peaks) | XRD peaks (theoretical patterns, fully ordered bias) | XRD recovery studies ([X_XRD notebooks](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/tree/main/notebooks) in the paper repo) |
-| `c-bone/CrystaLLM-pi_Chili100K-XRD` | Residual (legacy `Slider`, top-20 peaks) | XRD peaks (experimental patterns) | Model used in the paper's [CHILI-100K recovery study](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/X_XRD_chili100k.ipynb) in the paper repo |
+| `c-bone/CrystaLLM-pi_mp_20_base` | GPT-2 | unconditional | MP-20 text only model for LeMat-Bench|
+| `c-bone/CrystaLLM-pi_alex_mp_20_base` | GPT-2 | unconditional | Alex-mp-20 text only model for LeMat-Bench |
+| `c-bone/CrystaLLM-pi_SLME` | Prefix  | solar efficiency (SLME), 0-33% | SLME discovery study, maintained here in [`T4_SLME`](notebooks/T4_SLME.ipynb) |
+| `c-bone/CrystaLLM-pi_bandgap` | Prefix | bandgap + stability, 0-18 eV / 0-5 eV/atom | Pretraining-benefits study ([B1a notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/B1a_Pretrain_benefits.ipynb) in the paper repo) |
+| `c-bone/CrystaLLM-pi_density` | Prefix  | density + stability, 0-25 g/cm3 / 0-0.1 eV/atom | Dataset-size study ([B2 notebook](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/B2_Dataset_size_study.ipynb) in the paper repo) |
+| `c-bone/CrystaLLM-pi_Mattergen-XRD` | Residual | XRD peak-picked | XRD recovery studies ([X_XRD_* notebooks](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/tree/main/notebooks) in the paper repo) |
+| `c-bone/CrystaLLM-pi_Chili100K-XRD` | Residual | XRD peak-picked | Model used in the paper's [CHILI-100K recovery study](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/X_XRD_chili100k.ipynb) in the paper repo |
 
-Model metadata (class, conditions, normalization) lives in [`_utils/model_registry.json`](_utils/model_registry.json). To generate with a model that is not in the table, pass a JSON file with the same schema via `--model_registry`. [`notebooks/T1_finetune_density_example.ipynb`](notebooks/T1_finetune_density_example.ipynb) walks through that full loop (finetune a density model, upload it, register it, generate with it).
+Model metadata (class, conditions, normalization) lives in [`_utils/model_registry.json`](_utils/model_registry.json). To generate with a model that is not in the table, you just pass a JSON file with the same schema via `--model_registry`. [`notebooks/T1_finetune_density_example.ipynb`](notebooks/T1_finetune_density_example.ipynb) walks through that full loop (finetune a density model, upload it, register it, generate with it).
 
 The conditioning mechanism behind each class is described on the [models page](https://c-bone-ucl.github.io/CrystaLLM-pi/models/).
 
@@ -140,9 +156,7 @@ Four notebooks in [`notebooks/`](notebooks/) cover the maintained workflows end 
 * [`T1_finetune_density_example.ipynb`](notebooks/T1_finetune_density_example.ipynb): finetune a base model on your own property dataset, push it to the Hub, register it, and generate with it
 * [`T2_load_and_generate.ipynb`](notebooks/T2_load_and_generate.ipynb): generate structures with the released Hub models (courtesy of [Joley Lin](https://github.com/yhjollin/))
 * [`T3_API_density_example.ipynb`](notebooks/T3_API_density_example.ipynb): predict density for a composition through the containerised API
-* [`T5_SLME.ipynb`](notebooks/T5_SLME.ipynb): discover a material with a target photovoltaic efficiency
-
-The paper studies are not here, they live in [CrystaLLM-pi-paper](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper) (see [Reproducing the paper](#reproducing-the-paper)).
+* [`T4_SLME.ipynb`](notebooks/T4_SLME.ipynb): discover a material with a target photovoltaic efficiency
 
 Customising the tokenizer is covered on the [tutorials page](https://c-bone-ucl.github.io/CrystaLLM-pi/tutorials/).
 

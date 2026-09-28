@@ -1,7 +1,7 @@
 # Training, Generating & Evaluating from Scratch
 
 !!! tip "Run it in a notebook"
-    [`T1_finetune_density_example.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T1_finetune_density_example.ipynb) runs this pipeline end to end on a density dataset: prepare the data, finetune, push to the Hub, register, generate. [`T5_SLME.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T5_SLME.ipynb) does the same for a photovoltaic efficiency target and screens the output.
+    [`T1_finetune_density_example.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T1_finetune_density_example.ipynb) runs this pipeline end to end on a density dataset: prepare the data, finetune, push to the Hub, register, generate. [`T4_SLME.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T4_SLME.ipynb) does the same for a photovoltaic efficiency target and screens the output.
 
 Complete pipeline for training your own models from data preprocessing to evaluation. All training and generation parameters and options are defined in [`_args.py`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/_args.py). Training & generating should be done via configuration files (`.jsonc` format) which specify all necessary parameters.
 
@@ -170,7 +170,7 @@ Loads pretrained weights as starting point (or trains from scratch), adds condit
 
 
 
-## Advanced Generation Pipeline
+## Advanced Generation Pipeline (Prefer using Load and Generate script instead)
 
 ### Step 1: Create Prompts
 
@@ -211,11 +211,13 @@ python _utils/_generating/make_prompts.py \
 
 **Composition-Condition Pairing modes `--mode`:**
 
-Each quoted string is one complete condition vector, comma-separated property values.
+Each quoted string is one complete condition vector of comma-separated property values. `--mode` sets how these vectors pair with `--compositions`:
 
-* `cartesian` (default): All conditions applied to all compositions
-* `paired`: 1:1 mapping - must have same count of conditions and compositions
-* `broadcast`: Single condition applied to all compositions
+* `cartesian` (default): every condition vector with every composition, so the manual example above makes 4 prompts
+* `paired`: one condition vector per composition, in order; the counts must match (2 prompts above)
+* `broadcast`: a single condition vector applied to every composition
+
+`_load_and_generate.py` has no `--mode`: it always pairs one condition vector per formula, or broadcasts a single one.
 
 </details>
 

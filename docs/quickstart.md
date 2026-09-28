@@ -26,13 +26,13 @@ Expand below for a list of how you can generate with the models using the script
 
 <br>
 
-> **Note**: Properties (Conditions, Spacegroups, XRD files, Z values) map strictly 1:1 to the canonicalized reduced formulas provided in `--reduced_formula_list`.
+> **Note**: Properties (Conditions, Spacegroups, XRD files, Z values) map strictly 1:1 to the reduced formulas provided in `--reduced_formula_list`.
 > 
 > **Outputs**: Outputs can either be saved as a dataframe in a `.parquet` using the `--output_parquet` flag, or as individual CIFs in a directory using the `--output_cif_dir` flag.
 
-**Explicit Z Generation (Unconditional)**
+**Recovery: known composition and space group, no property**
 
-Generate 10 (2 batches of 5) Ti2O4 structures by explicitly setting the reduced formula and Z=2, including a spacegroup constraint.
+Generate Ti2O4 (TiO2 with Z=2) in space group P4_2/mnm. The model samples up to 2 batches of 5 and keeps 5 valid structures.
 
 ```bash
 python _load_and_generate.py \
@@ -43,7 +43,8 @@ python _load_and_generate.py \
     --level level_4 \
     --num_return_sequences 5 \
     --max_return_attempts 2 \
-    --output_parquet generated_structures.parquet
+    --target_valid_cifs 5 \
+    --output_cif_dir recovery_cifs
 ```
 
 **Mapped Lists (Bandgap Conditioning)**
@@ -93,9 +94,9 @@ python _load_and_generate.py \
   --output_parquet reduced_formula_best.parquet
 ```
 
-**Solar Efficiency (Level 1)**
+**Discovery: property target only**
 
-Unconditionally generate with a high photovoltaic efficiency.
+Generate structures with no composition given, asking the SLME model for a photovoltaic efficiency of 25%. The model chooses the elements, stoichiometry and space group, sampling up to 2 batches of 5 and keeping 5 valid structures.
 
 ```bash
 python _load_and_generate.py \
@@ -103,8 +104,9 @@ python _load_and_generate.py \
     --condition_lists "25.0" \
     --level level_1 \
     --num_return_sequences 5 \
-    --target_valid_cifs 0 \
-    --output_parquet solar_screening.parquet
+    --max_return_attempts 2 \
+    --target_valid_cifs 5 \
+    --output_cif_dir discovery_cifs
 ```
 
 </details>

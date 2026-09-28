@@ -1,11 +1,11 @@
 # Contributing to CrystaLLM-pi
 
-Thank you for considering contributing to CrystaLLM-pi. We welcome contributions from the community, whether they are bug reports, feature requests, documentation improvements, or code modifications.
+Thank you for considering contributing to CrystaLLM-pi. We welcome contributions from the community, whether they are bug reports, feature requests, documentation improvements or code modifications.
 
 ## How to Contribute
 
 ### Reporting Bugs
-If you find a bug in the source code, you can help us by submitting an issue to our GitHub Repository. Even better, you can submit a Pull Request with a fix.
+If you find a bug in the source code, you can help us by submitting an issue to our GitHub Repository. Or better, you can submit a Pull Request with a fix.
 
 ### Suggesting Enhancements
 If you have an idea for an enhancement, please submit an issue explaining your idea, why it would be useful, and how it might be implemented.
