@@ -58,7 +58,7 @@
     ],
     "normalization": [
       "power_log",
-      "linear"
+      "power_log"
     ],
     "model_type": "PKV",
     "condition_format": "scalar"
