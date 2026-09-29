@@ -11,8 +11,8 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch.optim import AdamW
 from transformers import (
-    AdamW,
     Trainer,
     TrainerCallback,
     TrainerControl,

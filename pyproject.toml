@@ -15,7 +15,7 @@ authors = [{ name = "Cyprien Bone", email = "cyprien.bone.24@ucl.ac.uk" }]
 # anything else. requirements.txt keeps the exact versions we develop and test against.
 dependencies = [
   "torch>=2.5.1",
-  "transformers>=4.48.0",
+  "transformers>=4.48.0,<4.52",
   "tokenizers>=0.21.0",
   "datasets>=3.2.0",
   "huggingface_hub>=0.26",
