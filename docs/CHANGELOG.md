@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
-## [v2.0.0] - YYYY-MM-DD
+## [v2.0.0] - 2026-09-29
 
 ### Models
 
@@ -15,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Generation Screening
 
-* **`--screening_profile`**: sets how hard generated CIFs are screened. `application`, the default here, runs the bond-length check and ranks the whole batch that reaches the target rather than the first candidates to arrive. `benchmark` reproduces the screening behind the published MP-20 and numbers, and is the default in the paper reproduction repository.
+* **`--screening_profile`**: sets how hard generated CIFs are screened. `application`, the default here, runs the bond-length check and ranks the whole batch that reaches the target rather than the first candidates to arrive. `benchmark` reproduces the screening behind the published MP-20 numbers, and is the default in the paper reproduction repository.
 * **Formula consistency handles supercells and partial occupancy**: the declared formula and the atom-site composition are compared up to cell scale, at a tolerance that still rejects a CIF declaring `Fe12C4` whose sites hold `Fe2C`.
 * **Unknown config keys are rejected**: a misspelled or stale key in a `.jsonc` config raises instead of doing nothing.
 
