@@ -7,11 +7,14 @@ services:
     entrypoint: ["bash", "/app/docker/entrypoint.sh"]
     command: >
       uvicorn _api:app --host 0.0.0.0 --port 8000 --reload
+      --reload-exclude outputs
       --reload-exclude outputs/**
       --reload-exclude outputs/**/*
+      --reload-exclude data
       --reload-exclude data/**
       --reload-exclude data/**/*
       --reload-exclude model_ckpts/**
       --reload-exclude model_ckpts/**/*
       --reload-exclude wandb/**
       --reload-exclude wandb/**/*
+      --reload-exclude _remote_module_non_scriptable.py

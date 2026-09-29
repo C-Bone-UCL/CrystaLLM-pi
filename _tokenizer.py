@@ -1,29 +1,51 @@
-"""
-Hugging Face compatible custom tokenizer for CIF data.
+"""Hugging Face compatible custom tokenizer for CIF data.
 """
 
+import torch
 import os
 import re
 import json
 from transformers import PreTrainedTokenizer
 
-class CustomCIFTokenizer(PreTrainedTokenizer):
+BUNDLED_TOKENIZER_DIR = os.path.join(os.path.dirname(__file__), "_utils", "HF-cif-tokenizer")
+
+
+def resolve_tokenizer_dir(pretrained_dir: str) -> str:
+    """Map a tokenizer directory name to a path that exists.
+
+    A relative name is honoured as-is when it resolves against the working directory, which is
+    how clone-based runs and `--pretrained_tokenizer_dir` overrides have always worked. When it
+    does not, the copy bundled inside the installed package is used instead, so an installed
+    CrystaLLM-pi generates from any working directory rather than only from the repo root.
     """
-    Hugging Face-compatible custom tokenizer for CIF data.
+    if os.path.isdir(pretrained_dir):
+        return pretrained_dir
+    if os.path.basename(os.path.normpath(pretrained_dir)) == "HF-cif-tokenizer":
+        return BUNDLED_TOKENIZER_DIR
+    return pretrained_dir
+
+
+class CustomCIFTokenizer(PreTrainedTokenizer):
+    """Hugging Face-compatible tokenizer for CIF text.
+
+    Tokenisation follows CIF structure rather than subwords, keeping element symbols, numbers, and
+    CIF keywords as whole tokens. Space-group tokens receive an internal `_sg` suffix during
+    tokenisation and the suffix is removed during decoding. `from_pretrained` and `save_pretrained`
+    use `vocabulary.json`, `spacegroups.txt`, and `tokenizer_config.json`.
     """
     def __init__(
         self,
-        vocab_file,
-        spacegroups_file,
-        unk_token="<unk>",
-        pad_token="<pad>",
-        bos_token="<bos>",
-        eos_token="<eos>",
-        var_open_token="[",
-        var_close_token="]",
-        prop_token="<prop>",
+        vocab_file: str,
+        spacegroups_file: str | None,
+        unk_token: str="<unk>",
+        pad_token: str | None="<pad>",
+        bos_token: str="<bos>",
+        eos_token: str="<eos>",
+        var_open_token: str="[",
+        var_close_token: str="]",
+        prop_token: str="<prop>",
         **kwargs
-    ):
+    ) -> None:
         with open(vocab_file, "r") as f:
             self.token_to_id = json.load(f)
 
@@ -44,11 +66,10 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
             reverse=True
         )
         
-        # Escaped tokens refer to tokens that have been processed 
-        # to ensure that any special characters they contain are treated as literal characters
-        # escaping means prefixing the special character with a backslash (like \\n)
-        # you sort the tokens by length so that the longest token is matched first
-        # this is important because if you have a token "a" and "ab", you want to match "ab" first
+        # re.escape backslashes any regex metacharacter in a token, so a token containing
+        # "\\n" or "." matches as literal text instead of as a newline or a wildcard.
+        # Longest first matters: with "a" ahead of "ab" in the alternation, the regex would
+        # match "a" and leave a stray "b" to be tokenised separately.
 
         # Define main special tokens
         self.unk_token = unk_token
@@ -88,15 +109,13 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
         )
 
     @property
-    def vocab_size(self):
-        """
-        Return the size of the base vocabulary (without added special tokens).
+    def vocab_size(self) -> int:
+        """Return the size of the base vocabulary (without added special tokens).
         """
         return len(self.token_to_id)
 
-    def _tokenize(self, text):
-        """
-        Custom tokenization logic for CIF data.
+    def _tokenize(self, text: str) -> list[str]:
+        """Custom tokenization logic for CIF data.
         """
         # Disambiguate space groups in the text:
         spacegroups_pattern = "|".join(self.space_groups)
@@ -109,7 +128,7 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
         )
 
 
-        # here just adding "_sg" to the space group name inside the sample
+        # Add "_sg" to the sample's space-group name.
 
         # Build the tokenization pattern:
         token_pattern = "|".join(self._escaped_tokens)
@@ -136,15 +155,13 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
         # if the token is in the predefined tokens, keep it, otherwise replace with unk_token
         return output_tokens
 
-    def _convert_token_to_id(self, token):
-        """
-        Convert a token to its corresponding ID.
+    def _convert_token_to_id(self, token: str) -> int:
+        """Convert a token to its corresponding ID.
         """
         return self.token_to_id.get(token, self.token_to_id.get(self.unk_token))
 
-    def _convert_id_to_token(self, index):
-        """
-        Convert an ID to its corresponding token.
+    def _convert_id_to_token(self, index: int) -> str:
+        """Convert an ID to its corresponding token.
         """
         #print the id_to_token dictionary
         if hasattr(index, "item"):
@@ -153,9 +170,8 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
             print(f"Warning: Token ID {index} not found in id_to_token. Returning <unk>.")
         return self.id_to_token.get(index, self.unk_token)
     
-    def validate_id_to_token(self):
-        """
-        Validate that id_to_token covers all token IDs up to vocab_size.
+    def validate_id_to_token(self) -> None:
+        """Validate that id_to_token covers all token IDs up to vocab_size.
         """
         missing_ids = [i for i in range(len(self.token_to_id)) if i not in self.id_to_token]
         if missing_ids:
@@ -163,40 +179,37 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
         else:
             print("Tokenizer validation passed: token vocabulary is consistent.")
 
-    def convert_tokens_to_string(self, tokens):
-        """
-        Convert a list of tokens to a string.
+    def convert_tokens_to_string(self, tokens: list[str]) -> str:
+        """Convert a list of tokens to a string.
         """
         return "".join(tokens)
 
-    def build_inputs_with_special_tokens(self, token_ids_0, token_ids_1=None):
-        """
-        Add special tokens to a sequence or a pair of sequences.
-        For GPT-2-style models, no additional special tokens are used.
-        either returns token_ids_0 or token_ids_0 + token_ids_1
+    def build_inputs_with_special_tokens(self, token_ids_0: list[int], token_ids_1: list[int] | None=None) -> list[int]:
+        """Add special tokens to a sequence or a pair of sequences. For GPT-2-style models, no additional
+special tokens are used. either returns token_ids_0 or token_ids_0 + token_ids_1
         """
         if token_ids_1 is None:
             return token_ids_0
         return token_ids_0 + token_ids_1
 
-    def get_vocab(self):
-        """
-        Return the tokenizer's vocabulary (including base vocabulary).
+    def get_vocab(self) -> dict[str, int]:
+        """Return the tokenizer's vocabulary (including base vocabulary).
         """
         return dict(self.token_to_id)
 
-    def get_added_vocab(self):
-        """
-        Return the additional vocabulary tokens added after the initial vocab.
+    def get_added_vocab(self) -> dict[str, int]:
+        """Return the additional vocabulary tokens added after the initial vocab.
         """
         return {
             tok: idx
             for tok, idx in self._added_tokens_encoder.items()
         }
 
-    def decode(self, token_ids, skip_special_tokens=False, **kwargs):
-        """
-        Decode a sequence of token IDs into a string.
+    def decode(self, token_ids: list[int] | torch.Tensor, skip_special_tokens: bool=False, **kwargs) -> str:
+        """Decode token ids into CIF text.
+
+        Internal `_sg` suffixes are removed from space-group tokens so the decoded text uses the
+        external CIF spelling.
         """
         tokens = [self._convert_id_to_token(idx) for idx in token_ids]
         if skip_special_tokens:
@@ -213,10 +226,13 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
         return result
 
     @classmethod
-    def from_pretrained(cls, pretrained_dir, **kwargs):
+    def from_pretrained(cls, pretrained_dir: str, **kwargs) -> "CustomCIFTokenizer":
+        """Load a tokenizer from a directory written by `save_pretrained`.
+
+        The directory must contain `vocabulary.json`, `spacegroups.txt`, and
+        `tokenizer_config.json`.
         """
-        Load a tokenizer from a pretrained directory.
-        """
+        pretrained_dir = resolve_tokenizer_dir(pretrained_dir)
         vocab_file = os.path.join(pretrained_dir, "vocabulary.json")
         spacegroups_file = os.path.join(pretrained_dir, "spacegroups.txt")
         tokenizer_config_file = os.path.join(pretrained_dir, "tokenizer_config.json")
@@ -231,11 +247,9 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
             **kwargs
         )
 
-    def save_vocabulary(self, save_directory, filename_prefix=None):
-        """
-        Save the base vocabulary (token->ID) to a file.
-        Hugging Face's `save_pretrained` will call this.
-        Returns the path(s) of the saved vocab file(s).
+    def save_vocabulary(self, save_directory: str, filename_prefix: str | None=None) -> tuple[str, ...]:
+        """Save the base vocabulary (token->ID) to a file. Hugging Face's `save_pretrained` will call this.
+Returns the path(s) of the saved vocab file(s).
         """
         if not os.path.isdir(save_directory):
             os.makedirs(save_directory)
@@ -247,9 +261,10 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
 
         return (vocab_file,)
 
-    def save_pretrained(self, save_directory, **kwargs):
-        """
-        Save the tokenizer configuration, vocabulary, and other data (at every save).
+    def save_pretrained(self, save_directory: str, **kwargs) -> None:
+        """Save the tokenizer vocabulary, space groups, and configuration.
+
+        The files are written in the layout expected by `from_pretrained`.
         """
         super().save_pretrained(save_directory, **kwargs)
 
@@ -268,10 +283,11 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
         with open(tokenizer_config_file, "w") as f:
             json.dump(tokenizer_config, f)
 
-    def add_custom_tokens(self, tokens):
-        """
-        Add a list of tokens to the tokenizer vocabulary.
-        Updates internal mappings and escaped tokens for regex.
+    def add_custom_tokens(self, tokens: list[str]) -> None:
+        """Add tokens to the vocabulary and refresh the tokenisation pattern.
+
+        New tokens are appended so existing token ids retain their meanings and remain compatible
+        with models trained against the previous vocabulary.
         """
         for token in tokens:
             if token not in self.token_to_id:
@@ -288,10 +304,11 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
             reverse=True
         )
 
-    def remove_custom_tokens(self, tokens):
-        """
-        Remove tokens from vocabulary. btw: This breaks trained models
-        Only use this on fresh tokenizers before training.
+    def remove_custom_tokens(self, tokens: list[str]) -> None:
+        """Remove tokens from the vocabulary.
+
+        This is safe only before training. Removing a token shifts subsequent token ids, which makes
+        models trained against the previous vocabulary incompatible with the tokenizer.
         """
         removed_any = False
         for token in tokens:
@@ -309,7 +326,7 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
                 print(f"Removed token '{token}' (was ID {old_id})")
         
         if removed_any:
-            # Just update the escaped tokens - leave IDs as-is to avoid breaking everything
+            # Update escaped tokens only. Downstream code uses the original IDs.
             self._escaped_tokens = sorted(
                 [re.escape(t) for t in self._tokens],
                 key=len,
@@ -317,9 +334,8 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
             )
             print("WARNING: Token removal creates gaps in ID space. Model compatibility may be affected.")
 
-    def validate_tokenizer_state(self):
-        """
-        Validate that the tokenizer's internal state is consistent.
+    def validate_tokenizer_state(self) -> None:
+        """Validate that the tokenizer's internal state is consistent.
         """
         # Check token_to_id and id_to_token mappings
         for token, idx in self.token_to_id.items():

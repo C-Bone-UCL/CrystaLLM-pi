@@ -11,7 +11,7 @@ class EvaluationTests:
     
     def test_vun_metrics(self):
         """Test VUN metrics calculation."""
-        from _utils._metrics_utils import is_valid
+        from _utils.metrics import is_valid
 
         valid_result = is_valid(self.test_data['test_cif'])
         assert isinstance(valid_result, bool), "is_valid should return a boolean"
@@ -27,7 +27,7 @@ class EvaluationTests:
     
     def test_validity_function(self):
         """Test is_valid function with various CIF inputs."""
-        from _utils._metrics_utils import is_valid
+        from _utils.metrics import is_valid
         
         # Test with structurally valid CIF
         valid_result = is_valid(self.test_data['test_cif'], bond_length_acceptability_cutoff=0.5)
@@ -49,7 +49,7 @@ class EvaluationTests:
     
     def test_uniqueness_function(self):
         """Test get_unique function for structure deduplication."""
-        from _utils._metrics_utils import get_unique
+        from _utils.metrics import get_unique
         
         # Create dataframe with duplicates (same CIF twice)
         df_gen = pd.DataFrame({
@@ -63,7 +63,7 @@ class EvaluationTests:
     
     def test_novelty_function(self):
         """Test get_novelty function for comparing against training set."""
-        from _utils._metrics_utils import get_novelty
+        from _utils.metrics import get_novelty
         
         # Generated CIFs dataframe
         df_gen = pd.DataFrame({
@@ -88,7 +88,7 @@ class EvaluationTests:
     
     def test_density_calculation(self):
         """Test density calculation from CIF."""
-        from _utils._metrics_utils import get_density
+        from _utils.metrics import get_density
 
         density = get_density(self.test_data['test_cif'])
         assert density == density, "Density should not be NaN for valid test CIF"
@@ -97,7 +97,7 @@ class EvaluationTests:
 
     def test_formula_consistency_partial_occupancy(self):
         """Test formula consistency with valid and invalid partial occupancy CIFs."""
-        from _utils._metrics_utils import is_formula_consistent
+        from _utils.metrics import is_formula_consistent
 
         valid_result = is_formula_consistent(self.test_data['partial_occ_valid_cif'])
         mismatched_formula = self.test_data['test_cif'].replace(
@@ -115,7 +115,7 @@ class EvaluationTests:
     def test_basic_evaluation(self):
         """Test basic evaluation pipeline components."""
         from _utils import extract_volume
-        from _utils._metrics_utils import is_valid, get_density
+        from _utils.metrics import is_valid, get_density
 
         assert callable(extract_volume), "extract_volume should be callable"
         assert callable(is_valid), "is_valid should be callable"

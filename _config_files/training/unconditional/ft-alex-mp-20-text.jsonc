@@ -1,0 +1,69 @@
+{
+  // Data Arguments
+  //################
+  "dataset_HF": "c-bone/alex_mp_20",
+  "pretrained_tokenizer_dir": "_utils/HF-cif-tokenizer",
+  "context_length": 1024,
+  "remove_CIFs_above_context": false,
+  "remove_CIFs_with_unk": false,
+
+  "activate_conditionality": "None",
+
+  // Model Arguments
+  //#################
+  "n_embd": 512,
+  "n_layer": 8,
+  "n_head": 8,
+  "residual_dropout": 0.1,
+  "embedding_dropout": 0.1,
+  "attention_dropout": 0.1,
+
+  // Trainer Arguments
+  //###################
+  // Batching
+  "train_batch_size": 32,
+  "eval_batch_size": 32,
+  "gradient_accumulation_steps": 1,
+  // Learning Rate and Optimizer
+  "learning_rate": 5e-6,
+  "lr_scheduler_type": "cosine_with_min_lr",
+  "lr_scheduler_kwargs": {
+    "min_lr_rate": 0.01
+  },
+  "warmup_steps": 3000,
+  "adam_beta1": 0.9,
+  "adam_beta2": 0.995,
+  "grad_clip": 1.0,
+  "weight_decay": 0.1,
+  "optimizer": "muon",
+  "muon_lr": 5e-5,
+  "muon_momentum": 0.95,
+
+  "pretrained_model_dir": "model_ckpts/mpdb-small-base-lematerial/checkpoint-1250000",
+
+  // Logging
+  "output_dir": "model_ckpts/ft-alex-mp-20-text/",
+  "save_total_limit": 2,
+  "report_to": "wandb",
+  "wandb_project_folder": "CrystaLLM-pi",
+  "eval_strategy": "steps",
+  "eval_steps": 5000,
+  "logging_steps": 100,
+  "save_strategy": "steps",
+  "max_steps": 75000,
+  "early_stopping_patience": 15,
+  "early_stopping_threshold": 0.000005,
+
+  // Utils
+  "seed": 1,
+  "data_seed": 1,
+  "load_best_model_at_end": true,
+  "metric_for_best_model": "eval_loss",
+  "greater_is_better": false,
+  "torch_compile": true,
+  "deepspeed_config": "_config_files/deepspeed_default.json",
+
+  // CodeCarbon
+  "codecarbon": true,
+  "tracker_project": "CrystaLLM-pi"
+}

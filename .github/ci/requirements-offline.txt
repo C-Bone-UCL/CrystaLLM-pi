@@ -1,3 +1,5 @@
+# Pinned environment for the offline CI tier. Deliberately lighter than requirements.txt:
+# no deepspeed or wandb, which the offline suite never exercises.
 accelerate==1.2.1
 torch==2.5.1
 pandas==2.2.3
@@ -7,19 +9,15 @@ datasets==3.2.0
 matplotlib==3.10.0
 tqdm==4.67.1
 joblib==1.4.2
-scikit-learn==1.6.1
-omegaconf==2.3.0
 pyyaml==6.0.2
 codecarbon==2.8.2
 smact==3.0.1
-matminer==0.9.3
 commentjson==0.9.0
 jarvis-tools==2024.10.30
-brokenaxes==0.6.2
-seaborn==0.13.2
 mace-torch==0.3.13
 fastapi==0.115.5
 uvicorn==0.32.1
-powerxrd==3.0.0
-pymatgen==2025.1.9
+pymatgen==2025.6.14
 numpy==1.26.4
+muon-optimizer==0.1.0
+material-hasher @ git+https://github.com/lematerial/material-hasher.git

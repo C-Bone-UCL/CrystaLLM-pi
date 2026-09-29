@@ -1,11 +1,11 @@
 # Contributing to CrystaLLM-pi
 
-Thank you for considering contributing to CrystaLLM-pi. We welcome contributions from the community, whether they are bug reports, feature requests, documentation improvements, or code modifications.
+Thank you for considering contributing to CrystaLLM-pi. We welcome contributions from the community, whether they are bug reports, feature requests, documentation improvements or code modifications.
 
 ## How to Contribute
 
 ### Reporting Bugs
-If you find a bug in the source code, you can help us by submitting an issue to our GitHub Repository. Even better, you can submit a Pull Request with a fix.
+If you find a bug in the source code, you can help us by submitting an issue to our GitHub Repository. Or better, you can submit a Pull Request with a fix.
 
 ### Suggesting Enhancements
 If you have an idea for an enhancement, please submit an issue explaining your idea, why it would be useful, and how it might be implemented.
@@ -21,9 +21,20 @@ If you have an idea for an enhancement, please submit an issue explaining your i
 To set up the project locally for development:
 
 1. Clone your fork of the repository.
-2. Install the required dependencies as pre the `README.md`.
+2. Install the package with every extra: `pip install -e ".[all]"`. See the [installation page](install.md) for prerequisites.
 3. Add your Credentials for Hugging-Face and WandB (may need to create accounts).
 4. Run the local tests to ensure your environment is configured correctly.
+
+## Code and docstring conventions
+
+The [API reference](api/cli.md) pages define what counts as public. A symbol is public when a `:::` directive names it. Those entries are workflow-level, mostly module docstrings carrying a runnable `Usage:` command, plus the classes and predicates a user calls directly. Everything else keeps its full `Args:`/`Returns:` docstring (with shapes on tensor lines) in source, where contributors and `help()` read it. Module files inside `_utils/` are lowercase with no leading underscore. Five registered tests enforce all of it, so a pull request that drifts fails the offline tier.
+
+Building the docs site locally:
+
+```bash
+pip install -r docs/requirements.txt
+mkdocs serve
+```
 
 ## Testing and Continuous Integration (CI)
 To ensure stability and reproducibility, this project relies on a three-tier testing strategy. All code contributions must pass the relevant CI checks before being merged.
@@ -44,7 +55,7 @@ To ensure stability and reproducibility, this project relies on a three-tier tes
 ## Adding the API keys as secrets
 To add the API keys as secrets, go to repo Settings -> Secrets and variables -> Actions -> New repository secret.
 
-Add one with name `HF_KEY`, where the content is you actual key. Do the same for `WANBD_KEY`
+Add one with name `HF_KEY`, where the content is your actual key. Do the same for `WANDB_KEY`.
 
 To get the keys:
 - Hugging Face: Settings -> Access Tokens
@@ -53,7 +64,7 @@ To get the keys:
 ## Governance and Support
 CrystaLLM-pi is primarily developed and maintained by Cyprien Bone (PhD Student @ UCL). 
 
-Please note that this repository is maintained on a **best-effort basis**. While we value community input and strive to review pull requests, investigate bug reports, and answer questions in a timely manner, we cannot guarantee immediate responses or resolution. Support and maintenance are provided as time and research resources permit.
+This repository is maintained on a best-effort basis. Pull requests, bug reports and questions are welcome, but responses depend on the time and research resources available, so there is no guaranteed turnaround.
 
 ## License
 By contributing to CrystaLLM-pi, you agree that your contributions will be licensed under the MIT License.

@@ -1,5 +1,12 @@
-"""
-Main training script for CrystaLLM_pi conditional or unconditional crystal structure generation.
+"""Train or finetune a CrystaLLM-pi model, conditionally or unconditionally.
+
+Conditional runs require `condition_columns` and an `activate_conditionality` model family.
+Unconditional runs use plain GPT-2. Under `torchrun`, rank 0 handles logging and checkpoint writes.
+
+Usage:
+    ```bash
+    python _train.py --config _config_files/training/conditional/density-example/mpdb-density-finetune_example.jsonc
+    ```
 """
 
 import os
@@ -8,7 +15,6 @@ import atexit
 import torch
 import torch.distributed as dist
 import numpy as np
-import wandb
 from transformers import TrainingArguments
 from datasets import load_dataset
 from huggingface_hub import login
@@ -19,8 +25,11 @@ from _tokenizer import CustomCIFTokenizer
 from _utils import (
     LossTrack_EarlyStop_Callback,
     TrainingArgsCallback,
-    CIFFormattingTrainer, 
+    CIFFormattingTrainer,
     DualLRLogger,
+    resolve_data_mode,
+    ContextExtensionWarmupCallback,
+    has_context_extension_wpe,
     tokenizer_ID_check, 
     start_codecarbon_tracker, 
     find_checkpoint_from_dir, 
@@ -41,7 +50,7 @@ np.set_printoptions(threshold=np.inf)
 process_socket = None
 process_port = None
 
-def cleanup():
+def cleanup() -> None:
     """Clean up distributed processes if initialized."""
     if dist.is_initialized():
         dist.destroy_process_group()
@@ -56,11 +65,14 @@ if torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
     torch.set_float32_matmul_precision('high')
 
-def main():
-    """Main training function for CrystaLLM_pi."""
+def main() -> None:
+    """Parse the config and run the training job."""
     global process_socket, process_port
 
     # Setting up environment
+    ## Parse first: argparse serves --help here, and a fresh clone has no API_keys.jsonc.
+    args = parse_args()
+
     ## Load API keys
     data = load_api_keys(API_KEY_PATH)
     hf_key_json = str(data['HF_key'])
@@ -69,14 +81,13 @@ def main():
     ## Acquire and hold an unused port
     process_socket, process_port = acquire_port()
 
-    ## Parse arguments
-    args = parse_args()
     print("Arguments:")
     for arg in vars(args):
         print(f"\t{arg}: {getattr(args, arg)}")
     print()
 
     ## Setup wandb and HF login
+    import wandb  # local: --help must work without the optional train extra installed
     login(token=hf_key_json)
     wandb.login(key=wandb_key)
     if args.wandb_project_folder and args.report_to == "wandb":
@@ -101,13 +112,6 @@ def main():
             args.deepspeed_config = None
             print("Deepspeed config provided, but only 1 GPU detected. Disabling deepspeed.")
 
-    ## If raw conditionality is activated, we need to adjust the context length
-    if args.activate_conditionality == "Raw":
-        # For fair comparison with PKV/Prepend/Slider conditioning
-        additional_tokens = int(5 * args.n_prefix_tokens + args.n_prefix_tokens + 2)
-        args.context_length = args.context_length + additional_tokens
-
-
     # Dataloading and tokenization
     ## Load dataset with the specified cache directory
     cache_dir = os.path.join(args.output_dir, "..", ".cache")
@@ -122,7 +126,8 @@ def main():
     )
 
     ## Fetch data_collator and tokenized dataset
-    if args.activate_conditionality in ["PKV", "Prepend", "Slider"]:
+    data_mode = resolve_data_mode(args.activate_conditionality)
+    if data_mode == "conditional":
         print("\n**CONDITIONALITY ACTIVATED**")
         print(f"Condition type: {args.activate_conditionality}")
         # Load data and data collator
@@ -137,23 +142,7 @@ def main():
             show_token_stats=VERBOSE,
             validate_conditions=VERBOSE
         )
-    elif args.activate_conditionality == "Raw":
-        print("\n**RAW CONDITIONALITY ACTIVATED**")
-        print(f"Condition type: {args.activate_conditionality}")
-        # Load data and data collator
-        tokenized_dataset, data_collator = load_data(
-            tokenizer=tokenizer,
-            dataset=dataset,
-            context_length=args.context_length,
-            mode="raw",
-            condition_columns=args.condition_columns,
-            remove_CIFs_above_context=args.remove_CIFs_above_context,
-            remove_CIFs_with_unk=args.remove_CIFs_with_unk,
-            show_token_stats=VERBOSE,
-            validate_conditions=VERBOSE
-        )
-        print(f"Context length for raw conditionality (to account for new condition tokens): {args.context_length}")
-    elif args.activate_conditionality == "None" or args.activate_conditionality is None:
+    else:
         print("\n**CONDITIONALITY DEACTIVATED**")
         # Load data and data collator
         tokenized_dataset, data_collator = load_data(
@@ -174,7 +163,7 @@ def main():
 
     # Build or Load a model
     ## If conditional model chosen, we assume finetuning, and so we always want to eval on start
-    eval_on_start = args.activate_conditionality in ["PKV", "Prepend", "Slider", "Raw"] and args.eval_strategy != "no"
+    eval_on_start = data_mode == "conditional" and args.eval_strategy != "no"
     ## Build base model (works for all)
     model = build_model(args, tokenizer)
     
@@ -243,6 +232,12 @@ def main():
 
     # Capture arguments here so runtime adjustments are recorded in each checkpoint.
     callbacks = [DualLRLogger(), TrainingArgsCallback(vars(args).copy())]
+    if has_context_extension_wpe(model) and args.context_extension_warmup_steps > 0:
+        callbacks.append(
+            ContextExtensionWarmupCallback(
+                context_extension_warmup_steps=args.context_extension_warmup_steps
+            )
+        )
 
     # Only add early stopping if evaluation is enabled
     if args.eval_strategy != "no" and hasattr(args, 'early_stopping_patience'):

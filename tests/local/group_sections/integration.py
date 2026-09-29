@@ -21,8 +21,8 @@ class IntegrationTests:
     
     def test_minimal_training_loop(self):
         """Test minimal training loop (2 steps) to verify pipeline doesn't crash."""
-        from _utils._model_utils import build_model
-        from _utils._trainer_utils import CIFFormattingTrainer
+        from _utils.model import build_model
+        from _utils.trainer import CIFFormattingTrainer
         from _dataloader import load_data, CustomCIFDataCollator
         from _tokenizer import CustomCIFTokenizer
         from transformers import TrainingArguments
@@ -90,14 +90,14 @@ class IntegrationTests:
         # Run 2 training steps
         train_result = trainer.train()
 
-        # Verify the trainer actually executed steps and produced a finite loss
+        # Verify the trainer executed steps and produced a finite loss
         assert train_result.global_step == 2, "Expected exactly 2 training steps"
         assert train_result.training_loss == train_result.training_loss, "Training loss should be finite"
     
     def test_conditional_training_loop(self):
         """Test conditional model training loop."""
         from _models.PKV_model import PKVGPT, PKVGPT2Config
-        from _utils._trainer_utils import CIFFormattingTrainer
+        from _utils.trainer import CIFFormattingTrainer
         from _dataloader import load_data
         from _tokenizer import CustomCIFTokenizer
         from transformers import TrainingArguments

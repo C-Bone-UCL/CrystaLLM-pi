@@ -1,0 +1,109 @@
+site_name: CrystaLLM-pi
+site_description: Property-conditioned transformer generation of crystal structures as CIFs
+site_url: https://c-bone-ucl.github.io/CrystaLLM-pi/
+repo_url: https://github.com/C-Bone-UCL/CrystaLLM-pi
+repo_name: C-Bone-UCL/CrystaLLM-pi
+edit_uri: edit/main/docs/
+
+# 8000 is the API container's port, so `mkdocs serve` would collide with a running stack.
+dev_addr: 127.0.0.1:8001
+
+theme:
+  name: material
+  logo: images/Logo.png
+  favicon: images/Logo.png
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - navigation.instant
+    - navigation.instant.progress
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+  palette:
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle: {icon: material/brightness-7, name: Dark mode}
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle: {icon: material/brightness-4, name: Light mode}
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/C-Bone-UCL/CrystaLLM-pi
+      name: Source on GitHub
+    - icon: simple/huggingface
+      link: https://huggingface.co/c-bone
+      name: Models on the Hugging Face Hub
+    - icon: simple/arxiv
+      link: https://arxiv.org/abs/2511.21299
+      name: Preprint on arXiv
+
+# requirements.txt lives in docs/ by convention but is tooling, not a page.
+exclude_docs: |
+  requirements.txt
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: ["."]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            separate_signature: true
+            signature_crossrefs: true
+            heading_level: 3
+            members_order: source
+            filters: ["!^_"]
+            # Curated surface: directives render the named symbol only. A page opts members
+            # back in per directive with an explicit `members:` list.
+            members: false
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight: {anchor_linenums: true}
+  - pymdownx.inlinehilite
+  - toc: {permalink: true}
+
+nav:
+  - Home: index.md
+  - Installation: install.md
+  - Quickstart: quickstart.md
+  - Models: models.md
+  - Training from scratch: training.md
+  - Virtual crystals: virtualiser.md
+  - API service: api-service.md
+  - Tutorials: tutorials.md
+  - API reference:
+      - CLI entry points: api/cli.md
+      - Models: api/models.md
+      - Data: api/data.md
+      - Generation: api/generation.md
+      - Metrics and analysis: api/metrics.md
+      - Service: api/service.md
+  - Project:
+      - Contributing: CONTRIBUTING.md
+      - Code of conduct: CODE_OF_CONDUCT.md
+      - Changelog: CHANGELOG.md
+      - AI usage: AI_USAGE_DISCLOSURE.md

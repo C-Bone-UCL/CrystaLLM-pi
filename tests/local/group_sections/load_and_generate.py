@@ -18,12 +18,60 @@ class LoadAndGenerateTests:
         self.temp_dir = temp_dir
         self.test_data = test_data
     
+    def test_cli_help_runs(self) -> None:
+        """The entrypoint must at least build its parser and exit cleanly.
+
+        Nothing else drives _load_and_generate.py's main(), so a broken argparse or a NameError at
+        import level would otherwise only surface for a user.
+        """
+        result = subprocess.run(
+            [sys.executable, os.path.join(script_dir, "_load_and_generate.py"), "--help"],
+            capture_output=True, text=True, cwd=script_dir, timeout=120,
+        )
+
+        assert result.returncode == 0, f"--help exited {result.returncode}: {result.stderr[-400:]}"
+        assert "--hf_model_path" in result.stdout, "help text should list the model flag"
+
+    def test_cli_rejects_unknown_model(self) -> None:
+        """An unregistered model must fail before any generation work starts."""
+        result = subprocess.run(
+            [sys.executable, os.path.join(script_dir, "_load_and_generate.py"),
+             "--hf_model_path", "nobody/not-a-real-model",
+             "--reduced_formula_list", "TiO2",
+             "--output_parquet", os.path.join(self.temp_dir, "unused.parquet")],
+            capture_output=True, text=True, cwd=script_dir, timeout=120,
+        )
+
+        assert result.returncode != 0, "unknown model should not exit 0"
+        assert "registry" in result.stderr.lower(), f"unhelpful error: {result.stderr[-400:]}"
+
     def test_hf_model_loading(self) -> None:
         """Built-in models remain available without an external registry."""
         import _load_and_generate
 
         model_info = _load_and_generate.MODEL_INFO["c-bone/CrystaLLM-pi_base"]
         assert model_info["model_type"] == "Base"
+
+    def test_model_registry_json_schema(self) -> None:
+        """Packaged default registry parses and every entry is complete."""
+        from _utils.direct_gen import MODEL_INFO
+
+        required = {"description", "conditions", "example_conditions",
+                    "max", "min", "normalization", "model_type", "condition_format"}
+        optional = {"config_overrides"}
+        assert MODEL_INFO, "default registry is empty"
+        for path, info in MODEL_INFO.items():
+            missing = required - set(info)
+            assert not missing, f"{path} missing keys: {missing}"
+            unknown = set(info) - required - optional
+            assert not unknown, f"{path} unknown keys: {unknown}"
+            assert info["model_type"] in {"Base", "PKV", "Slider", "Prefix", "Residual"}, \
+                f"{path}: unknown model_type {info['model_type']!r}"
+            assert info["condition_format"] in {None, "scalar", "xrd_top20"}, \
+                f"{path}: unknown condition_format {info['condition_format']!r}"
+            if "config_overrides" in info:
+                assert isinstance(info["config_overrides"], dict), \
+                    f"{path}: config_overrides must be a dict"
 
     def test_custom_model_registry(self) -> None:
         """A custom registry resolves a Hub path and normalizes raw conditions."""
@@ -88,7 +136,7 @@ class LoadAndGenerateTests:
 
     def test_invalid_custom_model_registry(self) -> None:
         """The registry root must map model paths to metadata."""
-        from _utils._direct_gen_utils import _load_custom_model_registry
+        from _utils.direct_gen import _load_custom_model_registry
 
         registry_path = os.path.join(self.temp_dir, "invalid-models.json")
         with open(registry_path, "w", encoding="utf-8") as file:
@@ -110,7 +158,6 @@ class LoadAndGenerateTests:
             condition_lists=[["0.5"]],
             level="level_2",
             spacegroups=None,
-            raw_mode=False
         )
         
         assert len(df_prompts) > 0, "Should generate prompts"
@@ -118,7 +165,7 @@ class LoadAndGenerateTests:
 
     def test_xrd_raw_file_parsing_and_conversion(self):
         """Verify raw XRD files are dynamically processed and scaled."""
-        from _utils._direct_gen_utils import parse_xrd_file_to_condition_vector
+        from _utils.direct_gen import parse_xrd_file_to_condition_vector
         raw_xy = os.path.join(fixtures_dir, "test_rutile_raw.xy")
         
         if not os.path.exists(raw_xy):
@@ -142,7 +189,7 @@ class LoadAndGenerateTests:
     def test_mattergen_xrd_generation_smoke(self):
         """Try a minimal Mattergen-XRD generation run with explicit Z."""
         import _load_and_generate
-        from _utils import _direct_gen_utils
+        from _utils import direct_gen
 
         xrd_file = os.path.join(fixtures_dir, "test_rutile_processed.csv")
         if not os.path.exists(xrd_file):
@@ -168,6 +215,7 @@ class LoadAndGenerateTests:
             max_return_attempts=1,
             max_samples=1,
             scoring_mode="None",
+            screening_profile="application",
             target_valid_cifs=0,
             num_workers=1,
             skip_postprocess=True,
@@ -176,9 +224,9 @@ class LoadAndGenerateTests:
             output_cif_dir=None,
         )
 
-        canonical = _direct_gen_utils.canonicalize_reduced_formulas(["TiO2"])
-        specs = _direct_gen_utils.build_reduced_formula_specs(
-            canonical, [2], [{"xrd": xrd_file, "sg": "P4_2/mnm", "cond": None}], is_xrd=True, xrd_wavelength=1.54056
+        canonical = direct_gen.canonicalize_reduced_formulas(["TiO2"])
+        specs = direct_gen.build_reduced_formula_specs(
+            canonical, [2], [{"xrd": xrd_file, "sg": "P4_2/mnm", "cond": None}], xrd_format="xrd_top20", xrd_wavelength=1.54056
         )
         
         df_prompts = _load_and_generate.generate_prompts_from_specs(specs, args)
@@ -200,14 +248,14 @@ class LoadAndGenerateTests:
     def test_mattergen_xrd_allows_missing_xrd_inputs(self):
         """Mattergen-XRD should run without xrd_files by passing missing conditioning."""
         import _load_and_generate
-        from _utils import _direct_gen_utils
+        from _utils import direct_gen
 
-        canonical = _direct_gen_utils.canonicalize_reduced_formulas(["TiO2"])
-        specs = _direct_gen_utils.build_reduced_formula_specs(
+        canonical = direct_gen.canonicalize_reduced_formulas(["TiO2"])
+        specs = direct_gen.build_reduced_formula_specs(
             canonical,
             [2],
             [{"xrd": None, "sg": None, "cond": None}],
-            is_xrd=True,
+            xrd_format="xrd_top20",
             xrd_wavelength=1.54056,
         )
         assert specs[0]["condition_vector"] is None
@@ -246,7 +294,7 @@ class LoadAndGenerateTests:
             _load_and_generate.generate_cifs_with_hf_model = original_generate
 
     def test_direct_generation_logp_smoke(self):
-        """Run the README LOGP ranked Z-search flow and verify it emits a ranked CIF parquet."""
+        """Run the docs quickstart LOGP ranked Z-search flow and verify it emits a ranked CIF parquet."""
         output_parquet = os.path.join(self.temp_dir, "readme_logp_base_sio2.parquet")
         cmd = [
             sys.executable,
@@ -264,13 +312,13 @@ class LoadAndGenerateTests:
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
             raise AssertionError(
-                f"README LOGP smoke generation failed with code {proc.returncode}\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+                f"Quickstart LOGP smoke generation failed with code {proc.returncode}\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
             )
 
-        assert os.path.exists(output_parquet), "Expected README LOGP smoke test to write a parquet output"
+        assert os.path.exists(output_parquet), "Expected quickstart LOGP smoke test to write a parquet output"
 
         df_generated = pd.read_parquet(output_parquet)
-        assert len(df_generated) >= 1, "README LOGP smoke generation should return at least one row"
+        assert len(df_generated) >= 1, "Quickstart LOGP smoke generation should return at least one row"
         assert "Generated CIF" in df_generated.columns, "Expected Generated CIF output column"
         assert "score" in df_generated.columns, "Expected LOGP score column in output"
         assert "reduced_formula_target" in df_generated.columns, "Expected reduced formula metadata in output"
@@ -284,28 +332,33 @@ class LoadAndGenerateTests:
         finite_scores = finite_scores[finite_scores.notna()]
         assert not finite_scores.empty, "Expected finite LOGP scores"
         assert finite_scores.is_monotonic_increasing, "LOGP-ranked outputs should be sorted by score"
-        assert set(df_generated["reduced_formula_target"].dropna()) == {"SiO2"}, "Expected SiO2-only output for this README example"
+        assert set(df_generated["reduced_formula_target"].dropna()) == {"SiO2"}, "Expected SiO2-only output for this quickstart example"
 
     def test_multi_gpu_single_prompt_worker_resolution(self):
-        """Single prompt should still enable multi-GPU when forced and GPUs are visible."""
-        from _utils import _direct_gen_utils
+        """num_workers_gpu is the single knob: unset fans out, N caps, 1 forces single-GPU."""
+        from _utils import direct_gen
 
-        original_get_visible_gpu_count = _direct_gen_utils.get_visible_gpu_count
+        original_get_visible_gpu_count = direct_gen.get_visible_gpu_count
         try:
-            _direct_gen_utils.get_visible_gpu_count = lambda: 4
-            args = argparse.Namespace(
-                output_cif_dir=None,
-                multi_gpu="true",
-                num_workers_gpu=None,
-            )
-            workers = _direct_gen_utils.resolve_multi_gpu_workers(args, n_prompts=1)
+            direct_gen.get_visible_gpu_count = lambda: 4
+
+            workers = direct_gen.resolve_multi_gpu_workers(
+                argparse.Namespace(num_workers_gpu=None), n_prompts=1)
             assert workers == 4, f"Expected 4 workers for single prompt fanout, got {workers}"
+
+            workers = direct_gen.resolve_multi_gpu_workers(
+                argparse.Namespace(num_workers_gpu=2), n_prompts=1)
+            assert workers == 2, f"Expected the cap of 2 workers, got {workers}"
+
+            workers = direct_gen.resolve_multi_gpu_workers(
+                argparse.Namespace(num_workers_gpu=1), n_prompts=1)
+            assert workers == 0, f"Expected 0 (single-process path) for a cap of 1, got {workers}"
         finally:
-            _direct_gen_utils.get_visible_gpu_count = original_get_visible_gpu_count
+            direct_gen.get_visible_gpu_count = original_get_visible_gpu_count
 
     def test_scoring_mode_normalization_helper(self):
         """Shared scoring mode normalization should handle common casing."""
-        from _utils._generating.generate_CIFs import _normalize_scoring_mode
+        from _utils._generating.generate_cifs import _normalize_scoring_mode
 
         assert _normalize_scoring_mode("None") == "none"
         assert _normalize_scoring_mode("none") == "none"
@@ -314,17 +367,17 @@ class LoadAndGenerateTests:
     def test_reduced_formula_prompt_expansion(self):
         """Reduced formula mode should expand each formula to Z=1..4 prompts during a search."""
         import _load_and_generate
-        from _utils import _direct_gen_utils
+        from _utils import direct_gen
 
         args = argparse.Namespace(level="level_2", verbose=False)
         formulas = ["SiO2", "TiO2"]
-        canonical = _direct_gen_utils.canonicalize_reduced_formulas(formulas)
+        canonical = direct_gen.canonicalize_reduced_formulas(formulas)
         # Expand each formula × 4 Z values for the index-based API
         expanded_formulas = [f for f in canonical for _ in [1, 2, 3, 4]]
         expanded_z_values = [z for _ in canonical for z in [1, 2, 3, 4]]
         expanded_properties = [{"xrd": None, "sg": None, "cond": None} for _ in expanded_formulas]
 
-        specs = _direct_gen_utils.build_reduced_formula_specs(expanded_formulas, expanded_z_values, expanded_properties, is_xrd=False)
+        specs = direct_gen.build_reduced_formula_specs(expanded_formulas, expanded_z_values, expanded_properties, xrd_format=None)
         df_prompts = _load_and_generate.generate_prompts_from_specs(specs, args)
         
         assert len(df_prompts) == 8, "Expected 2 formulas x 4 Z values"
@@ -335,7 +388,7 @@ class LoadAndGenerateTests:
 
     def test_reduced_formula_selection_modes(self):
         """Selection should keep one row per reduced formula for LOGP and None modes."""
-        from _utils import _direct_gen_utils
+        from _utils import direct_gen
 
         df_prompts = pd.DataFrame([
             {"Material ID": "SiO2_Z1", "reduced_formula_target": "SiO2", "Z_search": 1, "prompt_order": 1},
@@ -352,7 +405,7 @@ class LoadAndGenerateTests:
             {"Material ID": "TiO2_Z2_1", "Generated CIF": "cif_bad_2", "score": 0.1, "is_valid": False},
         ])
 
-        out_logp = _direct_gen_utils.reduce_rows_for_reduced_formula_search(
+        out_logp = direct_gen.reduce_rows_for_reduced_formula_search(
             df_generated=df_generated,
             df_prompts=df_prompts,
             formulas_in_order=["SiO2", "TiO2"],
@@ -364,7 +417,7 @@ class LoadAndGenerateTests:
 
     def test_reduced_formula_selection_uses_provided_cif_text(self):
         """Selection should validate the CIF text as provided when consistency flags are absent."""
-        from _utils import _direct_gen_utils
+        from _utils import direct_gen
 
         df_prompts = pd.DataFrame([
             {"Material ID": "TiO2_Z1", "reduced_formula_target": "TiO2", "Z_search": 1, "prompt_order": 1},
@@ -373,11 +426,11 @@ class LoadAndGenerateTests:
             {"Material ID": "TiO2_Z1_1", "Generated CIF": "raw_cif", "score": 0.1},
         ])
 
-        original_is_valid = _direct_gen_utils.is_valid
+        original_is_valid = direct_gen.is_valid
         try:
-            _direct_gen_utils.is_valid = lambda cif, **kwargs: cif == "raw_cif"
+            direct_gen.is_valid = lambda cif, **kwargs: cif == "raw_cif"
 
-            out = _direct_gen_utils.reduce_rows_for_reduced_formula_search(
+            out = direct_gen.reduce_rows_for_reduced_formula_search(
                 df_generated=df_generated,
                 df_prompts=df_prompts,
                 formulas_in_order=["TiO2"],
@@ -388,11 +441,11 @@ class LoadAndGenerateTests:
             row = out.iloc[0]
             assert row["Generated CIF"] == "raw_cif"
         finally:
-            _direct_gen_utils.is_valid = original_is_valid
+            direct_gen.is_valid = original_is_valid
 
     def test_level1_dummy_formula_canonicalization(self):
         """Level-1 dummy formula token X should bypass pymatgen canonicalization."""
-        from _utils._direct_gen_utils import canonicalize_reduced_formulas
+        from _utils.direct_gen import canonicalize_reduced_formulas
 
         out = canonicalize_reduced_formulas(["X"])
         assert out == ["X"]
@@ -475,3 +528,84 @@ class LoadAndGenerateTests:
             _load_and_generate.generate_prompts_from_specs = original_generate_prompts
             _load_and_generate.generate_cifs_with_hf_model = original_generate
             _load_and_generate.reduce_rows_for_reduced_formula_search = original_reduce
+
+    def test_search_zs_early_stop_selects_first_valid(self):
+        """Early-stop Z search drops a formula once found and ships one clean row for it."""
+        import _load_and_generate
+
+        output_parquet = os.path.join(self.temp_dir, "early_stop_first_valid.parquet")
+        original_argv = sys.argv[:]
+        original_generate = _load_and_generate.generate_cifs_with_hf_model
+        seen_zs = []
+
+        def _fake_generate(df_prompts, hf_model_path, args, worker_count=1):
+            seen_zs.extend(df_prompts["Z_search"].tolist())
+            if df_prompts.iloc[0]["Z_search"] != 2:  # only Z=2 "succeeds"
+                return pd.DataFrame()
+            return pd.DataFrame([{
+                "Material ID": f"{df_prompts.iloc[0]['Material ID']}_1",
+                "Generated CIF": "data_test",
+                "is_consistent": True,
+            }])
+
+        try:
+            _load_and_generate.generate_cifs_with_hf_model = _fake_generate
+            sys.argv = [
+                "_load_and_generate.py",
+                "--hf_model_path", "c-bone/CrystaLLM-pi_base",
+                "--reduced_formula_list", "SiO2",
+                "--search_zs",
+                "--output_parquet", output_parquet,
+                "--skip_postprocess",
+            ]
+            _load_and_generate.main()
+
+            assert seen_zs == [1, 2], f"Expected early stop after Z=2, searched {seen_zs}"
+            df = pd.read_parquet(output_parquet)
+            assert len(df) == 1, f"Expected 1 selected row, got {len(df)}"
+            assert df.iloc[0]["Material ID"] == "SiO2_Z2_1"
+            assert df.iloc[0]["reduced_formula_target"] == "SiO2"
+            for col in ("Z_search", "prompt_order", "is_consistent", "is_valid"):
+                assert col not in df.columns, f"Bookkeeping column {col} leaked into output"
+        finally:
+            sys.argv = original_argv
+            _load_and_generate.generate_cifs_with_hf_model = original_generate
+
+    def test_condition_format_routing(self) -> None:
+        """Registry-driven condition_format resolution with the Slider legacy fallback."""
+        from _utils import direct_gen
+        from _utils.direct_gen import XRD_FORMATS, get_condition_format
+
+        # Built-in entries carry the key explicitly
+        assert get_condition_format("c-bone/CrystaLLM-pi_Chili100K-XRD") == "xrd_top20"
+        assert get_condition_format("c-bone/CrystaLLM-pi_density") == "scalar"
+        assert get_condition_format("c-bone/CrystaLLM-pi_base") is None
+        assert get_condition_format("not/registered") is None
+
+        # scalar is NOT an XRD format: PKV models must keep their --condition_lists path
+        assert "scalar" not in XRD_FORMATS
+
+        # Legacy fallback: a user-overlay Slider entry without the key is top-20 XRD
+        direct_gen.MODEL_INFO["overlay/legacy-slider"] = {"model_type": "Slider"}
+        try:
+            assert get_condition_format("overlay/legacy-slider") == "xrd_top20"
+        finally:
+            del direct_gen.MODEL_INFO["overlay/legacy-slider"]
+
+    def test_condition_lists_uneven_input_rejected(self) -> None:
+        """Ragged --condition_lists strings raise instead of silently dropping values."""
+        from _utils.direct_gen import build_formula_condition_map
+
+        try:
+            build_formula_condition_map(
+                ["NaCl", "KCl"], ["2.16, 0.0", "3.0, 0.1, 7.7"], "c-bone/CrystaLLM-pi_density"
+            )
+            assert False, "uneven condition lists should raise"
+        except ValueError as err:
+            assert "same number" in str(err), f"Unexpected error: {err}"
+
+        # The corrected per-formula form still round-trips (values normalized per dimension)
+        cond = build_formula_condition_map(
+            ["NaCl"], ["2.16, 0.0"], "c-bone/CrystaLLM-pi_density"
+        )
+        assert len(cond) == 1 and len(cond[0].split(",")) == 2

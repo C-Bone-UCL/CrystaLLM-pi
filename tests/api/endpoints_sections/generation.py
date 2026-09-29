@@ -3,6 +3,8 @@
 import os
 import json
 
+import pandas as pd
+
 from tests.api.endpoints_sections._base import IntegrationMixin
 
 class GenerationEndpointTests(IntegrationMixin):
@@ -265,7 +267,7 @@ class GenerationEndpointTests(IntegrationMixin):
 
         if self.is_integration:
             container_config_path = self._out("gen_config.jsonc")
-            # Clever trick: strip '/app/' to get the local host path!
+            # The container mounts the repo at /app, so dropping that prefix gives the host path.
             local_config_path = container_config_path.replace("/app/", "")
             
             input_prompts = self._out("prompts_auto.parquet")
@@ -292,7 +294,7 @@ class GenerationEndpointTests(IntegrationMixin):
             "config_file": container_config_path
         })
         data = self._wait_and_assert(response, job_name="generate_cifs", timeout=600)
-        assert "generate_CIFs" in data["command"]
+        assert "generate_cifs" in data["command"]
 
     def test_direct_generation_search_zs_all_rows_mode(self):
         """search_zs with target_valid_cifs=0 should pass through all generated rows mode."""
@@ -331,7 +333,7 @@ class GenerationEndpointTests(IntegrationMixin):
             "save_valid_parquet": save_valid_parquet
         })
         data = self._wait_and_assert(response, job_name="evaluate_cifs")
-        assert "evaluate_CIFs" in data["command"]
+        assert "evaluate_cifs" in data["command"]
         assert "--save_valid_parquet" in data["command"]
         
     def test_postprocess(self):

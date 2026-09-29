@@ -1,7 +1,7 @@
 """API endpoint tests: command construction."""
 
 class CommandConstructionTests:
-    """Test that CLI commands are constructed correctly."""
+    """Each endpoint builds the CLI command string its handler is meant to run."""
     
     def __init__(self, client, temp_dir: str):
         self.client = client
@@ -28,13 +28,13 @@ class CommandConstructionTests:
         cmd = self._command_from_response(response)
         
         # check command structure
-        assert cmd.startswith("python -m _utils._preprocessing._deduplicate")
+        assert cmd.startswith("python -m _utils._preprocessing.deduplicate")
         assert "--input_parquet /data/in.parquet" in cmd
         assert "--output_parquet /data/out.parquet" in cmd
         assert '--property_columns ["Bandgap"]' in cmd or "--property_columns [\"Bandgap\"]" in cmd
         
     def test_direct_generation_condition_lists_format(self):
-        """Verify condition_lists are passed correctly to CLI."""
+        """condition_lists reaches the CLI space-separated after the flag, not as a JSON list."""
         response = self.client.post("/generate/direct", json={
             "hf_model_path": "c-bone/CrystaLLM-pi_slme",
             "output_parquet": "/out.parquet",

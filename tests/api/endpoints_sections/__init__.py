@@ -1,3 +1,5 @@
+"""Per-endpoint-group test sections for the API suite."""
+
 from tests.api.endpoints_sections.root import RootEndpointTests
 from tests.api.endpoints_sections.jobs import JobManagementTests
 from tests.api.endpoints_sections.preprocessing import PreprocessingEndpointTests

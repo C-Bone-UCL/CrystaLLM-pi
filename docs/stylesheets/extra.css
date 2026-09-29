@@ -1,0 +1,105 @@
+/* Palette sampled from images/Logo.png: #40a0c0 mid blue-cyan, #a0e0e0 pale cyan.
+   Material writes its own values into these variables, so the names have to match exactly
+   and the scheme is selected with `primary: custom` / `accent: custom` in mkdocs.yml. */
+
+[data-md-color-primary=custom] {
+  --md-primary-fg-color:        #40a0c0;
+  --md-primary-fg-color--light: #6cbdd6;
+  --md-primary-fg-color--dark:  #2d7a96;
+  --md-primary-bg-color:        #fff;
+  --md-primary-bg-color--light: hsla(0, 0%, 100%, 0.7);
+}
+
+/* Light mode links use the darker tone. #a0e0e0 on white fails contrast for body text. */
+[data-md-color-accent=custom] {
+  --md-accent-fg-color:             #2d7a96;
+  --md-accent-fg-color--transparent: rgba(45, 122, 150, 0.1);
+  --md-accent-bg-color:             #fff;
+  --md-accent-bg-color--light:      hsla(0, 0%, 100%, 0.7);
+}
+
+/* Dark mode can carry the pale cyan, which is where it reads best. */
+[data-md-color-scheme=slate][data-md-color-accent=custom] {
+  --md-accent-fg-color:             #a0e0e0;
+  --md-accent-fg-color--transparent: rgba(160, 224, 224, 0.1);
+}
+
+[data-md-color-scheme=slate][data-md-color-primary=custom] {
+  --md-primary-fg-color:        #2d7a96;
+  --md-primary-fg-color--light: #40a0c0;
+  --md-primary-fg-color--dark:  #1f5a70;
+}
+
+/* The logo is a dark line drawing, so it disappears against the coloured header bar. */
+.md-header__button.md-logo img {
+  background: #fff;
+  border-radius: 3px;
+  padding: 1px;
+}
+
+/* Salmon, the logo's other half (#f27258 mid, #fb9b81 light). Blue owns the chrome and the
+   links; salmon marks where you are and what to read. Text-weight uses get a darkened tone,
+   the logo salmon only clears 2.9:1 on white. */
+:root {
+  --cpi-salmon:       #f27258;
+  --cpi-salmon-light: #fb9b81;
+  --cpi-salmon-text:  #c44a32;  /* 4.8:1 on white */
+}
+
+[data-md-color-scheme=slate] {
+  --cpi-salmon-text: #fb9b81;   /* 7.7:1 on the slate background */
+}
+
+/* Inline code. The most frequent warm note on the site, and it separates `--flags` and
+   ClassNames from the blue links they sit next to. Fenced blocks keep their own highlighting,
+   and code inside a link stays link-coloured. */
+.md-typeset :not(pre):not(a) > code {
+  color: var(--cpi-salmon-text);
+}
+
+/* "You are here" markers: active item in the left nav and in the right-hand table of contents.
+   Matches Material's own specificity, so extra.css loading last is what wins. */
+.md-nav__item .md-nav__link--active,
+.md-nav__item .md-nav__link--active code {
+  color: var(--cpi-salmon-text);
+}
+
+/* Tip admonitions open three of the guide pages, so this is the first colour on the page. */
+.md-typeset .admonition.tip,
+.md-typeset details.tip {
+  border-color: var(--cpi-salmon);
+}
+
+.md-typeset .tip > .admonition-title,
+.md-typeset .tip > summary {
+  background-color: rgba(242, 114, 88, 0.1);
+}
+
+.md-typeset .tip > .admonition-title::before,
+.md-typeset .tip > summary::before {
+  background-color: var(--cpi-salmon);
+}
+
+/* The collapse chevron on a `???+ tip` block. */
+.md-typeset .tip > summary::after {
+  color: var(--cpi-salmon);
+}
+
+/* Structural rules: table header underline, section dividers, search hits. */
+.md-typeset table:not([class]) th {
+  border-bottom: 2px solid var(--cpi-salmon);
+}
+
+.md-typeset hr {
+  border-bottom-color: var(--cpi-salmon-light);
+}
+
+/* Search hits: highlighted terms on the landed page, and the matches in the results list
+   (which Material styles as underlined text with no background, so only the colour changes). */
+.md-typeset mark {
+  background-color: rgba(251, 155, 129, 0.4);
+}
+
+.md-search-result mark {
+  color: var(--cpi-salmon-text);
+}

@@ -1,3 +1,5 @@
+"""Per-area test sections for the local suite."""
+
 from tests.local.group_sections.data_processing import DataProcessingTests
 from tests.local.group_sections.dataloader import DataLoaderTests
 from tests.local.group_sections.models import ModelTests
@@ -12,6 +14,7 @@ from tests.local.group_sections.notebook_utils import NotebookUtilsTests
 from tests.local.group_sections.integration import IntegrationTests
 from tests.local.group_sections.load_and_generate import LoadAndGenerateTests
 from tests.local.group_sections.virtualiser import VirtualiserTests
+from tests.local.group_sections.conventions import SourceConventionTests
 
 __all__ = [
     "DataProcessingTests",
@@ -28,4 +31,5 @@ __all__ = [
     "IntegrationTests",
     "LoadAndGenerateTests",
     "VirtualiserTests",
+    "SourceConventionTests",
 ]

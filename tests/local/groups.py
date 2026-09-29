@@ -14,6 +14,7 @@ from tests.local.group_sections import NotebookUtilsTests
 from tests.local.group_sections import IntegrationTests
 from tests.local.group_sections import LoadAndGenerateTests
 from tests.local.group_sections import VirtualiserTests
+from tests.local.group_sections import SourceConventionTests
 
 __all__ = [
     "DataProcessingTests",
@@ -30,4 +31,5 @@ __all__ = [
     "IntegrationTests",
     "LoadAndGenerateTests",
     "VirtualiserTests",
+    "SourceConventionTests",
 ]

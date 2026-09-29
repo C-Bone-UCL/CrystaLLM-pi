@@ -12,7 +12,7 @@ Usage:
     # Test locally with FastAPI TestClient (requires fastapi installed)
     python tests/api/suite.py --hf_key YOUR_HF_KEY --wandb_key YOUR_WANDB_KEY
     
-    # Run integration tests (slower, actually executes commands)
+    # Run integration tests (slower, executes real commands)
     conda run -n crystallmv2_venv python tests/api/suite.py --docker_url http://localhost:8000 --integration
     
     # Run integration tests with verbose output (shows sample CIFs, VUN stats, E-hull values)
@@ -37,7 +37,7 @@ import time
 import json
 import traceback
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Any
 
 from tests.fixtures.shared_cif_fixtures import (
     TEST_CIF_SIO2,
@@ -55,7 +55,7 @@ if project_root not in sys.path:
 class APITestSuite:
     """Main API test coordinator with temporary file management."""
     
-    def __init__(self, hf_key: str, wandb_key: str, docker_url: Optional[str] = None):
+    def __init__(self, hf_key: str, wandb_key: str, docker_url: str | None = None):
         self.hf_key = hf_key
         self.wandb_key = wandb_key
         self.docker_url = docker_url
@@ -120,7 +120,7 @@ class APITestSuite:
                     handle.write("Traceback:\n")
                     handle.write(traceback.format_exc())
             
-    def create_test_data(self) -> Dict[str, Any]:
+    def create_test_data(self) -> dict[str, Any]:
         """Create minimal test CIF data."""
         test_cif = TEST_CIF_SIO2
         partial_occ_valid_cif = PARTIAL_OCC_VALID_CIF
@@ -164,7 +164,7 @@ class APITestSuite:
             return 1
 
 class DockerTestClient:
-    """Simple wrapper for testing against a running Docker container."""
+    """Requests-backed stand-in for the FastAPI TestClient, pointed at a running container."""
     
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip('/')

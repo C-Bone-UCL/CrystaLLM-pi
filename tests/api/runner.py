@@ -1,4 +1,10 @@
-"""Runner for API test suites."""
+"""Run the API test suites against a running CrystaLLM-pi container.
+
+Needs the docker stack up, since every test issues real HTTP requests to the service.
+
+Usage:
+    make api-test
+"""
 
 import argparse
 import traceback
@@ -170,7 +176,7 @@ def run_all_tests(
             suite.run_test("integration_xrd_preprocessing", int_preproc_tests.test_xrd_preprocessing_valid_request)
             
             print("\nGeneration integration tests")
-            # Run make_prompts FIRST so the files exist for downstream tests!
+            # Run make_prompts first so the prompt files exist for the downstream tests.
             suite.run_test("integration_make_prompts_manual", int_gen_tests.test_make_prompts_manual)
             suite.run_test("integration_make_prompts_automatic", int_gen_tests.test_make_prompts_automatic)
 
@@ -215,7 +221,7 @@ def main():
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Show detailed output: sample CIFs, validity stats, E-hull values")
     parser.add_argument("--known-gaps", action="store_true",
-                        help="Run checks that document known missing API features; these may fail by design")
+                        help="Run checks that document known missing API features. These may fail by design")
     parser.add_argument("--command-tests", action="store_true",
                         help="Include command-construction assertion tests")
     parser.add_argument("--integration-only", action="store_true",

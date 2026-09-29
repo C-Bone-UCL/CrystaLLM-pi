@@ -12,7 +12,7 @@ class DataPipelineTests:
     
     def test_deduplicate_script(self):
         """Test deduplication functionality with actual data."""
-        from _utils._preprocessing._deduplicate import process_cif_entry, deduplicate_table
+        from _utils._preprocessing.deduplicate import process_cif_entry, deduplicate_table
         
         # Test CIF entry processing - returns (key, idx, vpfu) tuple
         result = process_cif_entry(0, self.test_data['test_cif'])
@@ -39,8 +39,8 @@ class DataPipelineTests:
     def test_cleaning_script(self):
         """Test CIF cleaning and normalization with actual processing."""
         try:
-            from _utils._preprocessing._cleaning import add_atomic_props_block
-            from _utils._processing_utils import add_atomic_props_block as process_add_props
+            from _utils._preprocessing.cleaning import add_atomic_props_block
+            from _utils.processing import add_atomic_props_block as process_add_props
             
             # Test atomic properties addition
             result = process_add_props(self.test_data['test_cif'])
@@ -50,6 +50,23 @@ class DataPipelineTests:
         except ImportError as e:
             print(f"Cleaning imports not available (acceptable): {e}")
     
+    def test_float_occupancies(self):
+        """Full occupancies become 1.0; partial ones and other loops are left alone."""
+        from _utils._preprocessing.cleaning import float_occupancies
+
+        cif = (
+            "loop_\n _atom_type_symbol\n _atom_type_radius\n  Na  1\n"
+            "loop_\n _symmetry_equiv_pos_site_id\n _symmetry_equiv_pos_as_xyz\n  1  'x, y, z'\n"
+            "loop_\n _atom_site_occupancy\n"
+            "  Na  Na0  4  0.0000  0.0000  0.0000  1\n"
+            "  Cl  Cl1  4  0.5000  -0.5000  0.5000  1.0\n"
+            "  Fe  Fe2  2  0.2500  0.2500  0.2500  0.5\n"
+        )
+        out = float_occupancies(cif)
+        assert "  Na  Na0  4  0.0000  0.0000  0.0000  1.0\n" in out
+        assert out.replace("0.0000  1.0\n", "0.0000  1\n", 1) == cif, "only the Na site should change"
+        assert float_occupancies(out) == out, "should be idempotent"
+
     def test_xrd_calculation(self):
         """Test XRD pattern calculation with actual structure."""
         try:
@@ -72,7 +89,7 @@ class DataPipelineTests:
     def test_hf_dataset_save(self):
         """Test Hugging Face dataset formatting."""
         try:
-            import _utils._preprocessing._save_dataset_to_HF
+            import _utils._preprocessing.save_dataset_to_hf
             print("HF dataset save script imported successfully")
             
         except Exception as e:
@@ -82,7 +99,7 @@ class DataPipelineTests:
         """Test XRD input processing script functions on fixture data."""
         try:
             import pandas as pd
-            from _utils._preprocessing._process_exp_XRD_inputs import process_and_convert, save_to_crystallm_csv
+            from _utils._preprocessing.process_exp_xrd_inputs import process_and_convert, save_to_crystallm_csv
 
             output_csv = os.path.join(self.temp_dir, "xrd_peaks_processed.csv")
             peaks = process_and_convert(

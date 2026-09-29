@@ -4,7 +4,6 @@
   "dataset_HF": "c-bone/lematerial_clean",
   "pretrained_tokenizer_dir": "HF-cif-tokenizer",
   "context_length": 1024,
-  "dataset_streaming": false,
   // Filters
   "remove_CIFs_above_context": false,
   "remove_CIFs_with_unk": true,
@@ -30,7 +29,6 @@
   "train_batch_size": 32,
   "eval_batch_size": 32,
   "gradient_accumulation_steps": 1,
-  "auto_find_batch_size": false,
   // Learning Rate and Optimizer
   "learning_rate": 0.001,
   "lr_scheduler_type": "cosine_with_min_lr",

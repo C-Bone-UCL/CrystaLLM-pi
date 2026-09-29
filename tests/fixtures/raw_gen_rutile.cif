@@ -1,0 +1,35 @@
+
+data_Ti2O4
+loop_
+ _atom_type_symbol
+ _atom_type_electronegativity
+ _atom_type_radius
+ _atom_type_ionic_radius
+ Ti 1.5400 1.4000 0.8517
+ O 3.4400 0.6000 1.2600
+_symmetry_space_group_name_H-M P4_2/mnm
+_cell_length_a 4.5987
+_cell_length_b 4.5987
+_cell_length_c 2.9418
+_cell_angle_alpha 90.0000
+_cell_angle_beta 90.0000
+_cell_angle_gamma 90.0000
+_symmetry_Int_Tables_number 136
+_chemical_formula_structural TiO2
+_chemical_formula_sum 'Ti2 O4'
+_cell_volume 62.5833
+_cell_formula_units_Z 2
+loop_
+ _symmetry_equiv_pos_site_id
+ _symmetry_equiv_pos_as_xyz
+ 1 'x, y, z'
+loop_
+ _atom_site_type_symbol
+ _atom_site_label
+ _atom_site_symmetry_multiplicity
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+ _atom_site_occupancy
+ Ti Ti0 2 0.0000 0.0000 0.0000 1.0
+ O O1 4 0.1987 0.8013 0.5000 1.0

@@ -1,4 +1,12 @@
-"""Runner for local CrystaLLM test suites."""
+"""Run the local CrystaLLM-pi test suites.
+
+Tiers select what is run: `--offline` skips anything needing network or secrets and is what CI runs,
+`--secrets` adds the HF and W&B backed tests, `--full` is the default. Every test is registered by
+hand below, so a new `test_*` method that is not listed here never runs.
+
+Usage:
+    python -m tests.local.runner --cpu --offline
+"""
 
 import argparse
 import os
@@ -21,6 +29,7 @@ from tests.local.groups import (
     LoadAndGenerateTests,
     NotebookUtilsTests,
     VirtualiserTests,
+    SourceConventionTests,
 )
 
 DEVICE = None
@@ -104,30 +113,49 @@ def main():
         load_gen_tests = LoadAndGenerateTests(suite.temp_dir, test_data)
         integration_tests = IntegrationTests(suite.temp_dir, test_data)
         virtualiser_tests = VirtualiserTests(suite.temp_dir, test_data)
+        convention_tests = SourceConventionTests(suite.temp_dir, test_data)
         
         # Execute tests
-        print("Running CrystaLLM-pi Comprehensive Test Suite...")
+        print("Running CrystaLLM-pi test suite")
         print("-" * 50)
         
         # Core component tests
         print("\n🔧 Core Component Tests:")
         suite.run_test("tokenizer_basic", data_tests.test_tokenizer_basic)
+        suite.run_test("tokenizer_dir_resolves_when_cwd_copy_is_absent", gen_pipeline_tests.test_tokenizer_dir_resolves_when_cwd_copy_is_absent)
         suite.run_test("cif_validation", data_tests.test_cif_validation)
         suite.run_test("prompt_creation", data_tests.test_prompt_creation)
-        suite.run_test("logit_analysis_reconstruction", data_tests.test_logit_analysis_reconstruction)
-        suite.run_test("logit_analysis_condition_dtype_matches_model", data_tests.test_logit_analysis_condition_dtype_matches_model)
+        suite.run_test("automatic_prompts_keep_condition_column_intact", data_tests.test_automatic_prompts_keep_condition_column_intact)
+        suite.run_test("xrd_top20_matches_reference", data_tests.test_xrd_top20_matches_reference)
+        suite.run_test("xrd_top20_tie_break", data_tests.test_xrd_top20_tie_break_is_deterministic)
         suite.run_test("model_loading", model_tests.test_model_loading)
         suite.run_test("model_forward", model_tests.test_model_forward)
         suite.run_test("pkv_model_forward", model_tests.test_pkv_model_forward)
-        suite.run_test("prepend_model_forward", model_tests.test_prepend_model_forward)
         suite.run_test("slider_model_forward", model_tests.test_slider_model_forward)
+        suite.run_test("prefix_model_forward", model_tests.test_prefix_model_forward)
+        suite.run_test("residual_model_forward", model_tests.test_residual_model_forward)
+        suite.run_test("positional_embedding_resize_shift_right", model_tests.test_positional_embedding_resize_shift_right)
+        suite.run_test("positional_embedding_resize_marks_context_extension", model_tests.test_positional_embedding_resize_marks_context_extension)
+        suite.run_test("positional_embedding_resize_marks_prefix_conversion_only", model_tests.test_positional_embedding_resize_marks_prefix_conversion_only)
+        suite.run_test("prefix_load_resizes_wpe_with_shift", model_tests.test_prefix_load_resizes_wpe_with_shift)
+        suite.run_test("prefix_load_resizes_wpe_without_shift", model_tests.test_prefix_load_resizes_wpe_without_shift_for_prefix_source)
+        suite.run_test("pretrained_load_shape_check", model_tests.test_pretrained_load_shape_check)
+        suite.run_test("context_extension_warmup_freeze", model_tests.test_context_extension_warmup_freeze)
+        suite.run_test("context_extension_warmup_ignores_prefix_conversion_only", model_tests.test_context_extension_warmup_ignores_prefix_conversion_only)
+        suite.run_test("muon_routes_wpe_to_adamw_for_context_extension", model_tests.test_muon_routes_wpe_to_adamw_for_context_extension)
+        suite.run_test("muon_keeps_wpe_grouping_without_context_extension", model_tests.test_muon_keeps_wpe_grouping_without_context_extension)
+        suite.run_test("legacy_training_rail", model_tests.test_legacy_training_rail)
+        suite.run_test("train_data_mode_registry_coverage", model_tests.test_train_data_mode_covers_every_registry_family)
         suite.run_test("conditional_model_with_labels", model_tests.test_conditional_model_with_labels)
         suite.run_test("generation_basic", gen_tests.test_generation_basic)
         suite.run_test("generation_conditional", gen_tests.test_generation_conditional)
         suite.run_test("check_cif", gen_tests.test_check_cif)
+        suite.run_test("screening_profiles", gen_tests.test_screening_profiles)
+        suite.run_test("formula_consistency_tolerates_partial_occupancy", gen_tests.test_formula_consistency_tolerates_partial_occupancy)
+        suite.run_test("formula_consistency_ratio_mismatch", gen_tests.test_formula_consistency_catches_ratio_mismatch)
         suite.run_test("get_model_class", gen_tests.test_get_model_class)
+        suite.run_test("parse_condition_vector_nested", gen_tests.test_parse_condition_vector_nested)
         suite.run_test("build_generation_kwargs_modes", gen_tests.test_build_generation_kwargs_modes)
-        suite.run_test("remove_conditionality", gen_tests.test_remove_conditionality)
         suite.run_test("get_material_id", gen_tests.test_get_material_id)
         suite.run_test("build_output_df", gen_tests.test_build_output_df)
         
@@ -146,23 +174,15 @@ def main():
         suite.run_test("filter_cifs_with_unk", data_utils_tests.test_filter_cifs_with_unk)
         suite.run_test("tokenize_function_unconditional", data_utils_tests.test_tokenize_function_unconditional)
         suite.run_test("tokenize_function_conditional", data_utils_tests.test_tokenize_function_conditional)
-        suite.run_test("tokenize_function_raw", data_utils_tests.test_tokenize_function_raw)
         suite.run_test("create_fixed_format_mask", data_utils_tests.test_create_fixed_format_mask)
         suite.run_test("parse_condition_value", data_utils_tests.test_parse_condition_value)
 
         print("\nNotebook Utils Tests:")
-        suite.run_test("notebook_utils_metrics_xrd", notebook_utils_tests.test_get_metrics_xrd_keys_and_counts)
-        suite.run_test("notebook_utils_stratified_metrics_xrd", notebook_utils_tests.test_get_stratified_metrics_xrd_tiers)
-        suite.run_test("notebook_utils_xrd_condition_vector", notebook_utils_tests.test_process_xrd_to_condition_vector_output_length)
         suite.run_test("notebook_utils_novelty_round_trip", notebook_utils_tests.test_build_and_parse_novelty_round_trip)
         suite.run_test("notebook_utils_select_top_materials", notebook_utils_tests.test_select_top_materials_returns_summary)
         suite.run_test("notebook_utils_material_selection_io", notebook_utils_tests.test_export_and_run_material_selection_write_files)
-        suite.run_test("notebook_utils_stratified_only_matched", notebook_utils_tests.test_get_stratified_metrics_xrd_only_matched_and_missing_score)
         suite.run_test("notebook_utils_extract_formula_fallback", notebook_utils_tests.test_extract_formula_fallback)
         suite.run_test("notebook_utils_summary_columns", notebook_utils_tests.test_run_material_selection_preserves_summary_columns)
-        suite.run_test("notebook_utils_ptnd_metrics", notebook_utils_tests.test_get_metrics_ptnd_vs_scratch_returns_core_keys)
-        suite.run_test("notebook_utils_dataset_size_metrics", notebook_utils_tests.test_get_metrics_dataset_size_study_returns_raw_dataframe)
-        suite.run_test("notebook_utils_plot_stats", notebook_utils_tests.test_plot_dataset_stats_writes_png)
         
         # Evaluation tests
         print("\n📊 Evaluation Tests:")
@@ -178,12 +198,14 @@ def main():
         print("\n🗂️ Data Processing Pipeline Tests:")
         suite.run_test("deduplicate_script", pipeline_tests.test_deduplicate_script)
         suite.run_test("cleaning_script", pipeline_tests.test_cleaning_script)
+        suite.run_test("float_occupancies", pipeline_tests.test_float_occupancies)
         suite.run_test("xrd_calculation", pipeline_tests.test_xrd_calculation)
         suite.run_test("xrd_input_processing_script", pipeline_tests.test_xrd_input_processing_script)
         suite.run_test("hf_dataset_save", pipeline_tests.test_hf_dataset_save)
         
         # Training pipeline tests
         print("\n🚀 Training Pipeline Tests:")
+        suite.run_test("train_cli_help", training_tests.test_train_cli_help_runs)
         suite.run_test("training_setup", training_tests.test_training_setup)
         suite.run_test("model_initialization", training_tests.test_model_initialization)
         
@@ -207,7 +229,10 @@ def main():
         
         # Load and generate tests
         print("\n🤗 HF Load & Generate Tests:")
+        suite.run_test("load_and_generate_cli_help", load_gen_tests.test_cli_help_runs)
+        suite.run_test("load_and_generate_cli_unknown_model", load_gen_tests.test_cli_rejects_unknown_model)
         suite.run_test("hf_model_loading", load_gen_tests.test_hf_model_loading)
+        suite.run_test("model_registry_json_schema", load_gen_tests.test_model_registry_json_schema)
         suite.run_test("custom_model_registry", load_gen_tests.test_custom_model_registry)
         suite.run_test("invalid_custom_model_registry", load_gen_tests.test_invalid_custom_model_registry)
         suite.run_test("prompt_generation_from_args", load_gen_tests.test_prompt_generation_from_args)
@@ -220,7 +245,10 @@ def main():
         suite.run_test("level1_dummy_formula_canonicalization", load_gen_tests.test_level1_dummy_formula_canonicalization)
         suite.run_test("logp_zero_target_is_invalid_configuration", load_gen_tests.test_logp_zero_target_is_invalid_configuration)
         suite.run_test("search_zs_zero_target_keeps_all_generated_rows", load_gen_tests.test_search_zs_zero_target_keeps_all_generated_rows)
+        suite.run_test("search_zs_early_stop_selects_first_valid", load_gen_tests.test_search_zs_early_stop_selects_first_valid)
         suite.run_test("xrd_raw_file_parsing_and_conversion", load_gen_tests.test_xrd_raw_file_parsing_and_conversion)
+        suite.run_test("condition_format_routing", load_gen_tests.test_condition_format_routing)
+        suite.run_test("condition_lists_uneven_input_rejected", load_gen_tests.test_condition_lists_uneven_input_rejected)
 
         if tier in ("secrets", "full"):
             suite.run_test("mattergen_xrd_generation_smoke", load_gen_tests.test_mattergen_xrd_generation_smoke)
@@ -240,10 +268,19 @@ def main():
         suite.run_test("virtualiser_pair_fractions", virtualiser_tests.test_compute_pair_fractions)
         suite.run_test("virtualiser_pair_fractions_absent", virtualiser_tests.test_compute_pair_fractions_absent_element)
         suite.run_test("virtualiser_virtualise_structure", virtualiser_tests.test_virtualise_structure)
+        suite.run_test("virtualiser_virtualise_ternary", virtualiser_tests.test_virtualise_structure_ternary)
         suite.run_test("virtualiser_preserves_composition", virtualiser_tests.test_virtualise_structure_preserves_composition)
         suite.run_test("virtualiser_promote_symmetry", virtualiser_tests.test_promote_symmetry)
         suite.run_test("virtualiser_load_config", virtualiser_tests.test_load_config)
         suite.run_test("virtualiser_full_pipeline_to_cif", virtualiser_tests.test_full_pipeline_to_cif)
+
+        # Source convention tests
+        print("\n📝 Source Convention Tests:")
+        suite.run_test("module_docstring_format", convention_tests.test_module_docstrings_follow_the_house_format)
+        suite.run_test("no_legacy_typing_generics", convention_tests.test_no_legacy_typing_generics)
+        suite.run_test("annotations_resolve", convention_tests.test_annotations_do_not_break_imports)
+        suite.run_test("module_naming", convention_tests.test_module_names_follow_the_house_convention)
+        suite.run_test("api_manifest", convention_tests.test_api_pages_list_documented_symbols)
 
         # Report results
         success = suite.report_results()

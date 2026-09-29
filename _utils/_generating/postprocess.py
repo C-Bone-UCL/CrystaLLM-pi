@@ -1,6 +1,12 @@
-"""
-Post-processing tool for cleaning and validating CIF strings in parquet datasets.
-Outputs are fully standard-compliant CIF strings
+r"""Clean and validate generated CIF strings in a parquet dataset.
+
+Each CIF is rewritten into the standard-compliant representation expected by the metrics scripts.
+
+Usage:
+    ```bash
+    python _utils/_generating/postprocess.py --input_parquet gen.parquet \
+        --output_parquet gen_post.parquet
+    ```
 """
 
 import pandas as pd
@@ -12,7 +18,7 @@ from tqdm import tqdm
 from multiprocessing import Pool
 from functools import partial 
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import (
     extract_space_group_symbol,
     replace_symmetry_operators,
@@ -61,16 +67,13 @@ def postprocess(cif: str) -> str:
 
 
 def _process_generated(record: dict, column_name: str) -> str:
-    """
-    Top-level function for multiprocessing. 
-    It must be defined at module scope so it can be pickled.
+    """Top-level function for multiprocessing. It must be defined at module scope so it can be pickled.
     """
     return postprocess(record[column_name])
 
 
 def process_dataframe(df: pd.DataFrame, num_workers: int, column_name: str) -> pd.DataFrame:
-    """
-    Process CIF columns with validation, possibly in parallel, and display a progress bar.
+    """Process CIF columns with validation, possibly in parallel, and display a progress bar.
     """
     if df.empty:
         return df
@@ -107,7 +110,8 @@ def process_dataframe(df: pd.DataFrame, num_workers: int, column_name: str) -> p
         return df
 
 
-def main():
+def main() -> None:
+    """Parse arguments and post-process a parquet of generated CIFs."""
     parser = argparse.ArgumentParser(
         description="Post-process CIFs in parquet DataFrame",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter

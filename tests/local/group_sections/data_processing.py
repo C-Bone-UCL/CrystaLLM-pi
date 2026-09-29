@@ -1,44 +1,13 @@
 """Local test section: data processing."""
 
 import os
-import pandas as pd
-import torch
+from pathlib import Path
 
-RAW_GENERATED_CIF_SIO2 = """data_Si1O2
-loop_
- _atom_type_symbol
- _atom_type_electronegativity
- _atom_type_radius
- _atom_type_ionic_radius
-    Si  1.9000  1.1000  0.5400
-    O   3.4400  0.6000  1.2600
-_symmetry_space_group_name_H-M P1
-_cell_length_a 5.0000
-_cell_length_b 5.0000
-_cell_length_c 5.0000
-_cell_angle_alpha 90.0000
-_cell_angle_beta 90.0000
-_cell_angle_gamma 90.0000
-_symmetry_Int_Tables_number 1
-_chemical_formula_structural SiO2
-_chemical_formula_sum 'Si1 O2'
-_cell_volume 125.0000
-_cell_formula_units_Z 1
-loop_
- _symmetry_equiv_pos_site_id
- _symmetry_equiv_pos_as_xyz
-    1  'x, y, z'
-loop_
- _atom_site_type_symbol
- _atom_site_label
- _atom_site_symmetry_multiplicity
- _atom_site_fract_x
- _atom_site_fract_y
- _atom_site_fract_z
- _atom_site_occupancy
-    Si  Si0  1  0.0000  0.0000  0.0000  1
-    O   O1   1  0.3000  0.3000  0.3000  1
-    O   O2   1  0.7000  0.7000  0.7000  1"""
+import numpy as np
+import pandas as pd
+
+FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
+
 
 class DataProcessingTests:
     """Test data processing components."""
@@ -65,7 +34,7 @@ class DataProcessingTests:
     
     def test_cif_validation(self):
         """Test CIF validation utilities."""
-        from _utils._metrics_utils import is_valid
+        from _utils.metrics import is_valid
         
         # Test that the validation function works without crashing
         try:
@@ -85,6 +54,30 @@ class DataProcessingTests:
             # Exception for malformed input is acceptable
             pass
     
+    def test_automatic_prompts_keep_condition_column_intact(self):
+        """condition_vector must reach the output unmangled, including nested XRD profiles.
+
+        The old implementation ran str(value).replace("[", "") over the column, which flattens a
+        nested (1000, 2) [Q, I] profile into unparseable text, and pd.isna on a nested value raises
+        instead of returning False. A missing scalar still has to come out as the -100 sentinel the
+        conditional models read as "no condition supplied".
+        """
+        import pandas as pd
+        from _utils._generating.make_prompts import create_automatic_prompts
+
+        nested_profile = [[0.0, 0.0], [0.01, 0.5], [0.02, 1.0]]
+        df = pd.DataFrame({
+            "CIF": [self.test_data["test_cif"]] * 3,
+            "condition_vector": [nested_profile, "2.16, 0.0", float("nan")],
+        })
+
+        out = create_automatic_prompts(df, "CIF", "level_2", condition_columns=["condition_vector"])
+        values = list(out["condition_vector"])
+
+        assert values[0] == nested_profile, f"nested profile was mangled: {values[0]!r}"
+        assert values[1] == "2.16, 0.0", f"scalar string was altered: {values[1]!r}"
+        assert values[2] == "-100.0", f"missing scalar lost its sentinel: {values[2]!r}"
+
     def test_prompt_creation(self):
         """Test prompt creation utilities."""
         from _utils._generating.make_prompts import create_manual_prompts
@@ -106,79 +99,40 @@ class DataProcessingTests:
         assert 'Prompt' in df.columns, "Prompt column missing"
         assert any('Si' in str(prompt) for prompt in df['Prompt']), "Composition missing from prompts"
 
-    def test_logit_analysis_reconstruction(self):
-        """Reconstruct generated CIFs with the canonical bracket helper."""
-        from _utils._notebook_utils.y_logits_utils import reconstruct_bracketed_cif
+    def test_xrd_top20_matches_reference(self):
+        """Legacy top-20 processing must reproduce the committed reference vector.
 
-        bracketed_cif = reconstruct_bracketed_cif(RAW_GENERATED_CIF_SIO2)
+        Structural assertions elsewhere are order-independent, so a change in peak ordering slips
+        past them while silently changing what the model is conditioned on. This pins the exact
+        output instead.
+        """
+        from _utils._preprocessing.process_exp_xrd_inputs import process_and_convert
 
-        assert "data_[Si1O2]" in bracketed_cif, "data_ formula should be bracketed"
-        assert "_atom_type_ionic_radius\n[" in bracketed_cif, (
-            "Atomic properties loop should open immediately after the final header"
+        peaks = process_and_convert(str(FIXTURES / "test_rutile_raw.xy"))
+        expected = self._read_reference(FIXTURES / "proc_rutile_top20.csv")
+
+        assert len(peaks) == len(expected), f"peak count {len(peaks)} != reference {len(expected)}"
+        for i, ((angle, intensity), (exp_angle, exp_intensity)) in enumerate(zip(peaks, expected)):
+            assert abs(angle - exp_angle) < 1e-3, f"row {i}: 2theta {angle} != reference {exp_angle}"
+            assert abs(intensity - exp_intensity) < 1e-2, f"row {i}: intensity drift at {angle}"
+
+    def test_xrd_top20_tie_break_is_deterministic(self):
+        """Equal intensities must sort by ascending angle, not by numpy's sort order."""
+        from _utils._preprocessing.process_exp_xrd_inputs import process_and_save
+
+        # Angles ascending in the input, so numpy's reverse-stable order would emit the
+        # tied peaks descending. Only an explicit angle tie-break gives 10, 20, 40.
+        angles = np.array([10.0, 20.0, 30.0, 40.0])
+        intensities = np.array([50.0, 50.0, 99.0, 50.0])
+        sorted_angles, _ = process_and_save(angles, intensities)
+
+        assert sorted_angles[0] == 30.0, "strongest peak should lead"
+        assert list(sorted_angles[1:]) == [10.0, 20.0, 40.0], (
+            f"tied peaks should follow ascending angle, got {list(sorted_angles[1:])}"
         )
-        assert "\n]\n_symmetry_space_group_name_H-M [P1]" in bracketed_cif, (
-            "Atomic properties loop should close before the symmetry line"
-        )
-        assert "_cell_length_a [5.0000]" in bracketed_cif, "Cell values should be bracketed"
-        assert "_chemical_formula_sum '[Si1 O2]'" in bracketed_cif, "Quoted formula sum should preserve quotes"
-        assert (
-            "loop_\n _symmetry_equiv_pos_site_id\n _symmetry_equiv_pos_as_xyz\n["
-            not in bracketed_cif
-        ), "Constant symmetry loop should stay unwrapped"
-        assert "_atom_site_occupancy\n[" in bracketed_cif, "Atom-site loop should be bracketed"
 
-    def test_logit_analysis_condition_dtype_matches_model(self):
-        """Condition tensor dtype should match the model's conditioning path."""
-        from _utils._notebook_utils import y_logits_utils as logit_extraction
+    def _read_reference(self, path):
+        """Read a two-column reference csv, skipping its header."""
+        with open(path) as handle:
+            return [tuple(float(v) for v in line.split(",")) for line in handle.read().splitlines()[1:]]
 
-        class DummyTokenizer:
-            bos_token = "<bos>"
-            eos_token = "<eos>"
-            token_to_id = {str(i): i for i in range(10)} | {".": 10}
-
-            def encode(self, _text, return_tensors=None):
-                token_ids = torch.tensor([[0, 1, 2]], dtype=torch.long)
-                if return_tensors == "pt":
-                    return token_ids
-                return token_ids[0].tolist()
-
-        class DummyOutput:
-            def __init__(self, logits):
-                self.logits = logits
-
-        class DummyModel(torch.nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.condition_probe = torch.nn.Linear(1, 1, bias=False, dtype=torch.bfloat16)
-
-            def forward(self, input_ids=None, attention_mask=None, condition_values=None):
-                expected_dtype = self.condition_probe.weight.dtype
-                assert condition_values.dtype == expected_dtype, (
-                    f"expected {expected_dtype}, got {condition_values.dtype}"
-                )
-                batch_size, seq_len = input_ids.shape
-                logits = torch.zeros((batch_size, seq_len, 11), dtype=expected_dtype)
-                return DummyOutput(logits=logits)
-
-        original_parser = logit_extraction.parse_cif_numeric_fields
-        logit_extraction.parse_cif_numeric_fields = lambda *_args, **_kwargs: [
-            {
-                "tag": "_cell_length_a",
-                "digit_positions": [1, 2],
-                "digit_tokens": ["0", "."],
-            }
-        ]
-
-        try:
-            result = logit_extraction.extract_digit_logits(
-                DummyModel(),
-                DummyTokenizer(),
-                cif_text="data_[Si1O2]",
-                condition_value=1.0,
-                device="cpu",
-                include_coords=False,
-            )
-        finally:
-            logit_extraction.parse_cif_numeric_fields = original_parser
-
-        assert len(result["fields"]) == 1, "Expected a single mocked numeric field"

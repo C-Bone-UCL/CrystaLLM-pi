@@ -7,11 +7,30 @@ class TrainingTests:
         self.temp_dir = temp_dir
         self.test_data = test_data
     
+    def test_train_cli_help_runs(self):
+        """_train.py must build its parser and exit cleanly.
+
+        The training entrypoint is otherwise untested end to end, so argparse or import-level
+        breakage would only show up on a real run.
+        """
+        import os
+        import subprocess
+        import sys
+
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+        result = subprocess.run(
+            [sys.executable, os.path.join(repo_root, "_train.py"), "--help"],
+            capture_output=True, text=True, cwd=repo_root, timeout=120,
+        )
+
+        assert result.returncode == 0, f"--help exited {result.returncode}: {result.stderr[-400:]}"
+        assert "--activate_conditionality" in result.stdout, "help should list the family flag"
+
     def test_training_setup(self):
         """Test training script imports and basic setup."""
         import sys
         from _args import parse_args
-        from _utils._model_utils import build_model
+        from _utils.model import build_model
         
         # Save original sys.argv and replace with empty args to avoid conflicts
         original_argv = sys.argv
@@ -30,7 +49,7 @@ class TrainingTests:
     
     def test_model_initialization(self):
         """Test model initialization for different architectures."""
-        from _utils._model_utils import build_model
+        from _utils.model import build_model
         from transformers import GPT2Config
         
         # Test that we can import model building function
@@ -39,11 +58,9 @@ class TrainingTests:
         # Test different model imports
         try:
             from _models.PKV_model import PKVGPT
-            from _models.Prepend_model import PrependGPT
             from _models.Slider_model import SliderGPT
-            
+
             assert PKVGPT is not None, "PKV model class exists"
-            assert PrependGPT is not None, "Prepend model class exists" 
             assert SliderGPT is not None, "Slider model class exists"
             
         except Exception as e:

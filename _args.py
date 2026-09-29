@@ -1,15 +1,38 @@
-"""
-Argument parsing for CrystaLLM_pi training and generation scripts.
+"""Parse training and generation arguments from JSONC configuration and CLI flags.
 
-Handles configuration for Transformer-based crystalline structure generation
-with support for conditional models (PKV, Prepend, Slider, Raw architectures).
+CLI flags override values from the configuration file. Supports the Prefix
+and Residual architectures. The legacy PKV and Slider families can
+be loaded for generation but are not trainable. Unsupported values of
+``activate_conditionality`` raise an error.
 """
 
 import argparse
 import commentjson
 
-def parse_args():
-    """Parse command-line arguments, supporting JSON config files with comments."""
+
+def str_to_bool(value: str | bool) -> bool:
+    """Parse booleans from CLI flags or config-provided strings."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return True
+
+    lowered = str(value).strip().lower()
+    if lowered in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if lowered in {"0", "false", "f", "no", "n", "off"}:
+        return False
+    raise argparse.ArgumentTypeError(f"Invalid boolean value: {value}")
+
+def parse_args() -> argparse.Namespace:
+    """Build the training and generation config from a JSONC file plus command-line overrides.
+
+    `--config` supplies the base values and any remaining flag overrides them. One config file can
+    therefore be reused with a single setting changed on the command line. Normalizes
+    `activate_conditionality` against `MODEL_REGISTRY` and raises on an unknown family rather than
+    falling back to an unconditional model, which would otherwise train silently without
+    conditioning.
+    """
 
     parser = argparse.ArgumentParser(description="CrystaLLM_pi Training Script")
     parser.add_argument("--config", type=str, default=None, help="Path to a JSON config file with comments (commentjson).")
@@ -28,18 +51,18 @@ def parse_args():
     # Conditional Arguments
     #######################
     parser.add_argument("--condition_columns", type=str, default=None, help="Comma-separated dataset column names to condition on (e.g., 'bandgap,density'). Must match exact column names in dataset. Values should be pre-normalized.")
-    parser.add_argument("--n_prefix_tokens", type=int, default=None, help="Number of learned prefix tokens or ghost tokens prefixed to input sequence (Prepend-GPT and PKV-GPT only).")
-    parser.add_argument("--n_hidden_cond", type=int, default=None, help="Hidden dimension for property embedding projections (PKV and Slider).")
-    parser.add_argument("--cond_dropout", type=float, default=None, help="Dropout rate applied to conditional embeddings during training (PKV an Slider)).")
-    parser.add_argument("--share_layers", type=bool, default=None, help="Share conditional key-value projections across all layers (PKV-GPT only). Reduces parameters but may limit expressivity.")
-    parser.add_argument("--n_heads_sharing_slider", type=int, default=None, help="Number of attention heads that use shared conditioning weights (Slider-GPT only). Must be ≤ n_head.")
-    parser.add_argument("--cond_lr", type=float, default=None, help="Learning rate for conditional parameters (all models except for Raw). Separate from main model learning rate.") 
-    parser.add_argument("--cond_wd", type=float, default=None, help="Weight decay for conditional parameters (all models except for Raw).")
+    parser.add_argument("--n_prefix_tokens", type=int, default=None, help="Number of conditioning tokens. Prefix prepends this many ghost tokens as past_key_values and extends n_positions by the same amount. Residual reads it as the number of slider variables, which must equal the number of condition columns.")
+    parser.add_argument("--n_hidden_cond", type=int, default=None, help="Hidden dimension for property embedding projections (Prefix and Residual).")
+    parser.add_argument("--cond_dropout", type=float, default=None, help="Dropout rate applied to conditional embeddings during training (Prefix and Residual).")
+    parser.add_argument("--n_heads_sharing_slider", type=int, default=None, help="Number of attention heads that use shared conditioning weights (Residual-GPT only). Must be less or equal to n_head.")
+    parser.add_argument("--cond_lr", type=float, default=None, help="Learning rate for conditional parameters. Separate from main model learning rate.")
+    parser.add_argument("--cond_wd", type=float, default=None, help="Weight decay for conditional parameters.")
+    parser.add_argument("--context_extension_warmup_steps", type=int, default=0, help="Number of initial optimizer steps that keep checkpoint-copied positional embedding rows frozen after extending context length.")
 
     # Model Arguments
     #######################
     # Model Depth
-    parser.add_argument("--activate_conditionality", type=str, default=None, help="Select conditioning architecture: 'PKV', 'Prepend', 'Slider', 'Raw', or None for unconditional model. Default None loads base unconditional model.")
+    parser.add_argument("--activate_conditionality", type=str, default=None, help="Select conditioning architecture: 'Prefix' (PKV successor), 'Residual' (Slider successor), or None for unconditional model. 'PKV' and 'Slider' are legacy generation-only families, training them raises error. Default None loads base unconditional model.")
     # parser.add_argument("--n_positions", type=int, default=1024, help="Model context size")
     parser.add_argument("--n_embd", type=int, default=256, help="Transformer embedding dimension size.")
     parser.add_argument("--n_layer", type=int, default=4, help="Number of Transformer layers in the model.")
@@ -120,6 +143,9 @@ def parse_args():
     parser.add_argument("--max_return_attempts", type=int, default=1, help="Number of generation batches per prompt. In validation-targeted modes, generation stops when target_valid_cifs is reached or max_return_attempts is hit. In raw mode, returns max_return_attempts * num_return_sequences CIFs per prompt.")
     parser.add_argument("--scoring_mode", type=str, default="None", help="Scoring mode for generated structures: 'logp' validates and ranks CIFs by perplexity. 'None' disables ranking, and either validates until target_valid_cifs valid CIFs are found or returns all raw generations when target_valid_cifs is 0.")
 
+    parser.add_argument("--screening_profile", type=str, default="application", choices=("benchmark", "application"),
+                        help="How hard to screen generated CIFs. 'application' runs the bond-length check and ranks over the whole generated batch. 'benchmark' skips the bond-length check and ranks a pool truncated at target_valid_cifs, reproducing the screening behind the published MP-20 and CHILI-100K numbers.")
+
     # If scoring_mode is 'logp', the model will compute log-perplexity scores for target_valid_cifs valid generated CIFs to rank them.
     parser.add_argument("--target_valid_cifs", type=int, default=1, help="Target number of valid CIFs per prompt. With scoring_mode='logp', valid CIFs are ranked by perplexity. With scoring_mode='None', target_valid_cifs > 0 enables validation-only early stop, while 0 returns all generated CIFs without validation.")
 
@@ -138,6 +164,13 @@ def parse_args():
         with open(args.config, "r") as f:
             config_data = commentjson.load(f)
         
+        # set_defaults accepts keys matching no argument, so a typo or a key carried
+        # over from a sibling repo would silently do nothing. Reject them instead.
+        known = {a.dest for a in parser._actions}
+        unknown = set(config_data) - known
+        if unknown:
+            raise ValueError(f"{args.config}: unknown config keys {sorted(unknown)}")
+
         # Set config values as new defaults and re-parse to let CLI take precedence
         parser.set_defaults(**config_data)
         args = parser.parse_args()

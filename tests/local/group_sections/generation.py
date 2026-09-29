@@ -11,7 +11,8 @@ class GenerationTests:
     
     def test_generation_basic(self):
         """Test basic generation utilities."""
-        from _utils._generating.generate_CIFs import init_tokenizer, setup_device, build_generation_kwargs
+        from _utils._generating.generate_cifs import init_tokenizer, build_generation_kwargs
+        from _utils._generating.workers import setup_device
         
         # Test tokenizer init
         tokenizer = init_tokenizer("HF-cif-tokenizer")
@@ -44,7 +45,7 @@ class GenerationTests:
     
     def test_generation_conditional(self):
         """Test conditional generation setup."""
-        from _utils._generating.generate_CIFs import parse_condition_vector
+        from _utils._generating.generate_cifs import parse_condition_vector
         
         # Test condition parsing with comma-separated values
         condition_str = "0.5,0.3"
@@ -64,7 +65,7 @@ class GenerationTests:
     
     def test_check_cif(self):
         """Test CIF validation function."""
-        from _utils._generating.generate_CIFs import check_cif
+        from _utils._generating.generate_cifs import check_cif
         
         # Test with valid CIF (from test data)
         valid_cif = self.test_data['test_cif']
@@ -82,25 +83,91 @@ class GenerationTests:
         # Test exception handling
         assert check_cif(None) is False, "None should be handled gracefully"
     
+    def test_screening_profiles(self):
+        """Only the two profile names are accepted, and this repo defaults to application."""
+        import sys
+        from _args import parse_args
+
+        def profile(argv):
+            saved, sys.argv = sys.argv, ["generate"] + argv
+            try:
+                return parse_args().screening_profile
+            finally:
+                sys.argv = saved
+
+        assert profile([]) == "application", "The zoo screens at full strength by default"
+        assert profile(["--screening_profile", "benchmark"]) == "benchmark"
+
+    def test_formula_consistency_tolerates_partial_occupancy(self):
+        """Fractional occupancies must survive screening, virtualiser output above all.
+
+        `reduced_composition` divides out only an integer factor, so this used to fail on scale.
+        """
+        from _utils.validity import is_formula_consistent
+
+        assert is_formula_consistent(self.test_data['partial_occ_valid_cif']) is True, \
+            "Disordered CIF must pass the formula-consistency check"
+
+    def test_formula_consistency_catches_ratio_mismatch(self):
+        """Tolerating fractional occupancies must not weaken the check itself."""
+        from _utils.validity import _compositions_match
+        from pymatgen.core import Composition
+
+        # Scale must cancel, both for supercells and for partial occupancy.
+        assert _compositions_match(Composition({"Si": 1, "O": 2}),
+                                   Composition({"Si": 4, "O": 8})) is True
+        assert _compositions_match(Composition({"Hf": 1, "Ta": 1, "Mo": 1, "W": 1}),
+                                   Composition({"Hf": .5, "Ta": .5, "Mo": .5, "W": .5})) is True
+        # Ratio mismatches must fail. The first is a real CHILI case the old 0.1 accepted.
+        assert _compositions_match(Composition({"Fe": 12, "C": 4}),
+                                   Composition({"Fe": 2, "C": 1})) is False
+        assert _compositions_match(Composition({"Eu": 3, "Au": 1, "O": 6}),
+                                   Composition({"Eu": 2, "Au": 1, "O": 3})) is False
+        assert _compositions_match(Composition({"Hf": 1, "Ta": 1, "Mo": 1, "W": 1}),
+                                   Composition({"Hf": .5, "Ta": .5, "Mo": .5, "W": .25})) is False
+
     def test_get_model_class(self):
-        """Test model class selection."""
-        from _utils._generating.generate_CIFs import get_model_class
-        from _models import PKVGPT, PrependGPT, SliderGPT
+        """Test strict model class selection."""
+        from _utils._generating.generate_cifs import get_model_class
+        from _models import PKVGPT, SliderGPT, PrefixGPT, ResidualGPT
         from transformers import GPT2LMHeadModel
-        
+
         # Test each conditionality type
         assert get_model_class("PKV") == PKVGPT, "PKV should return PKVGPT"
-        assert get_model_class("Prepend") == PrependGPT, "Prepend should return PrependGPT"
         assert get_model_class("Slider") == SliderGPT, "Slider should return SliderGPT"
-        
-        # Test default/unconditional cases
+        assert get_model_class("Prefix") == PrefixGPT, "Prefix should return PrefixGPT"
+        assert get_model_class("Residual") == ResidualGPT, "Residual should return ResidualGPT"
+
+        # Base/None aliases still map to plain GPT2
         assert get_model_class(None) == GPT2LMHeadModel, "None should return GPT2LMHeadModel"
-        assert get_model_class("Raw") == GPT2LMHeadModel, "Raw should return GPT2LMHeadModel"
-        assert get_model_class("unconditional") == GPT2LMHeadModel, "Unknown type should return GPT2LMHeadModel"
-    
+        assert get_model_class("Base") == GPT2LMHeadModel, "Base should return GPT2LMHeadModel"
+
+        # Unknown names now raise instead of silently falling back to GPT2
+        try:
+            get_model_class("unconditional")
+            assert False, "Unknown model type should raise ValueError"
+        except ValueError as err:
+            assert "Unknown model type" in str(err), f"Unexpected error: {err}"
+
+    def test_parse_condition_vector_nested(self):
+        """Nested condition vectors (continuous XRD) survive parsing, and flat strings stay unchanged."""
+        from _utils._generating.generate_cifs import parse_condition_vector
+
+        # Nested string form (parquet round-trip) and native nested lists preserve 2D shape
+        assert parse_condition_vector("[[0.0, 0.1], [0.01, 0.2]]") == [[0.0, 0.1], [0.01, 0.2]]
+        profile = [[round(0.01 * i, 2), 0.5] for i in range(1000)]
+        parsed = parse_condition_vector(profile)
+        assert len(parsed) == 1000 and parsed == profile
+
+        # Legacy flat forms are unchanged
+        assert parse_condition_vector("1.0, 2.0") == [1.0, 2.0]
+        assert parse_condition_vector("0.5") == [0.5]
+        assert parse_condition_vector(None) is None
+        assert parse_condition_vector("None") is None
+
     def test_build_generation_kwargs_modes(self):
         """Test build_generation_kwargs with different sampling modes."""
-        from _utils._generating.generate_CIFs import init_tokenizer, build_generation_kwargs
+        from _utils._generating.generate_cifs import init_tokenizer, build_generation_kwargs
         
         tokenizer = init_tokenizer("HF-cif-tokenizer")
         
@@ -140,35 +207,9 @@ class GenerationTests:
         kwargs_capped = build_generation_kwargs(args_long, tokenizer, 1024)
         assert kwargs_capped['max_length'] == 1024, "max_length should be capped to model max"
     
-    def test_remove_conditionality(self):
-        """Test removal of conditioning comments from CIF."""
-        from _utils._generating.generate_CIFs import remove_conditionality
-        
-        # Test with comments before data_ block
-        cif_with_comments = """# Bandgap: 2.5 eV
-# Density: 3.2 g/cm3
-data_Si1O2
-_cell_length_a 5.0
-loop_
- _atom_site_label
-  Si0"""
-        result = remove_conditionality(cif_with_comments)
-        assert result.startswith("data_"), "Should start with data_"
-        assert "Bandgap" not in result, "Comments should be removed"
-        
-        # Test with no comments
-        cif_clean = "data_Ti1O2\n_cell_length_a 4.5"
-        result_clean = remove_conditionality(cif_clean)
-        assert result_clean == cif_clean, "Clean CIF should be unchanged"
-        
-        # Test with no data_ block (edge case)
-        no_data = "# Just comments\n_cell_length_a 5.0"
-        result_no_data = remove_conditionality(no_data)
-        assert result_no_data == no_data, "No data_ block should return original"
-    
     def test_get_material_id(self):
         """Test material ID extraction/generation."""
-        from _utils._generating.generate_CIFs import get_material_id
+        from _utils._generating.generate_cifs import get_material_id
         
         # Test with Material ID in row - now expects unique counter suffix
         row_with_id = pd.Series({"Material ID": "mp-1234", "Formula": "Si1O2"})
@@ -189,7 +230,7 @@ loop_
     
     def test_build_output_df(self):
         """Test output dataframe construction."""
-        from _utils._generating.generate_CIFs import build_output_df
+        from _utils._generating.generate_cifs import build_output_df
         
         # Create mock generated data
         generated_data = [

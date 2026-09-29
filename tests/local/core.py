@@ -1,11 +1,11 @@
 """Core local test harness utilities."""
 
 """
-Comprehensive automated test suite for CrystaLLM-pi pipeline components.
-Tests all major functionality including data processing, training, generation, 
-and evaluation pipelines without creating permanent files.
+Automated test suite for CrystaLLM-pi pipeline components.
+Covers data processing, training, generation and evaluation without creating
+permanent files.
 
-Covers all scripts mentioned in README:
+Covers all scripts documented on the docs site:
 - Data processing: deduplication, cleaning, XRD calculation, HF formatting
 - Training: model initialization, conditional model forward passes
 - Generation: CIF generation, evaluation, postprocessing  
@@ -13,11 +13,14 @@ Covers all scripts mentioned in README:
 - Dataloader: collator, round-robin packing, conditional mode
 - HF integration: model loading, direct generation
 
-Usage:
-    python tests/local/suite.py          # Run on GPU if available, else CPU
-    python tests/local/suite.py --cpu    # Force CPU execution
-    python tests/local/suite.py --gpu    # Force GPU execution
-    python run-tests.py                  # Compatibility wrapper
+Usage (from the repository root):
+    python tests/local/suite.py --cpu              # Force CPU execution
+    python tests/local/suite.py --gpu              # Force GPU execution
+    python tests/local/suite.py --cpu --offline    # CI tier, no network or secrets
+    python tests/local/suite.py --cpu --secrets    # Adds HF/W&B-backed tests
+    python tests/local/suite.py --cpu --full       # Full local suite (the default)
+
+    python -m tests.local.runner --cpu             # Equivalent module form
 """
 
 import os
