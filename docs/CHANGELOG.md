@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [Unreleased]
+
+### Preprocessing
+
+* **More robust CIF cleaning**: cleaning now writes `-0.0000` as `0.0000`, and wraps fractional coordinates of `1.0000` to `0.0000`.
+
+
 ## [v2.0.0] - 2026-09-29
 
 ### Models

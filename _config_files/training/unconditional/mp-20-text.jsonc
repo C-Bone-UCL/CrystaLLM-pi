@@ -2,7 +2,7 @@
   // Data Arguments
   //################
   "dataset_HF": "c-bone/mp_20_pxrd",
-  "pretrained_tokenizer_dir": "HF-cif-tokenizer",
+  "pretrained_tokenizer_dir": "_utils/HF-cif-tokenizer",
   "context_length": 1024,
   "remove_CIFs_above_context": false,
   "remove_CIFs_with_unk": false,

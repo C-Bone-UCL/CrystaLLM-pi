@@ -4,7 +4,10 @@
     "gradient_accumulation_steps": "auto",
     "gradient_clipping": "auto",
     "fp16": {
-      "enabled": true
+      "enabled": "auto"
+    },
+    "bf16": {
+      "enabled": "auto"
     },
     "zero_optimization": {
       "stage": 2,

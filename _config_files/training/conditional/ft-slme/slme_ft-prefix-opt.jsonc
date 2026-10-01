@@ -2,7 +2,7 @@
   // Data Arguments
   //################
   "dataset_HF": "c-bone/mpdb-slme-full",
-  "pretrained_tokenizer_dir": "HF-cif-tokenizer",
+  "pretrained_tokenizer_dir": "_utils/HF-cif-tokenizer",
   "context_length": 1024,
   // Filters
   "remove_CIFs_above_context": false,

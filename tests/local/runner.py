@@ -199,6 +199,7 @@ def main():
         suite.run_test("deduplicate_script", pipeline_tests.test_deduplicate_script)
         suite.run_test("cleaning_script", pipeline_tests.test_cleaning_script)
         suite.run_test("float_occupancies", pipeline_tests.test_float_occupancies)
+        suite.run_test("coordinate_normalisation", pipeline_tests.test_coordinate_normalisation)
         suite.run_test("xrd_calculation", pipeline_tests.test_xrd_calculation)
         suite.run_test("xrd_input_processing_script", pipeline_tests.test_xrd_input_processing_script)
         suite.run_test("hf_dataset_save", pipeline_tests.test_hf_dataset_save)

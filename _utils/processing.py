@@ -319,7 +319,8 @@ def round_numbers(cif_str, decimal_places=4):
         # Check if number of digits after decimal point is less than 'decimal_places'
         if len(number_str.split('.')[-1]) <= decimal_places:
             return number_str
-        rounded = round(number, decimal_places)
+        # + 0.0 turns -0.0 into 0.0, so tiny negatives are not written as "-0.0000"
+        rounded = round(number, decimal_places) + 0.0
         return format(rounded, '.{}f'.format(decimal_places))
 
     # Replace all occurrences of the pattern using a regex sub operation

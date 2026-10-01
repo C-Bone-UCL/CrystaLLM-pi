@@ -17,7 +17,7 @@ import torch.distributed as dist
 import numpy as np
 from transformers import TrainingArguments
 from datasets import load_dataset
-from huggingface_hub import login
+from huggingface_hub import login, constants as hf_constants
 
 from _args import parse_args
 from _dataloader import load_data
@@ -88,8 +88,10 @@ def main() -> None:
 
     ## Setup wandb and HF login
     import wandb  # local: --help must work without the optional train extra installed
-    login(token=hf_key_json)
-    wandb.login(key=wandb_key)
+    if not hf_constants.HF_HUB_OFFLINE:  # login() raises on offline compute nodes
+        login(token=hf_key_json)
+    if os.environ.get("WANDB_MODE") not in ("offline", "disabled"):
+        wandb.login(key=wandb_key)
     if args.wandb_project_folder and args.report_to == "wandb":
         os.environ["WANDB_PROJECT"] = args.wandb_project_folder
 
@@ -111,6 +113,8 @@ def main() -> None:
         if torch.cuda.device_count() == 1:
             args.deepspeed_config = None
             print("Deepspeed config provided, but only 1 GPU detected. Disabling deepspeed.")
+        elif args.optimizer == "muon":
+            raise ValueError("Muon needs whole 2-D gradients, which ZeRO-2 flattens: use DDP (no deepspeed_config) or --optimizer adamw")
 
     # Dataloading and tokenization
     ## Load dataset with the specified cache directory

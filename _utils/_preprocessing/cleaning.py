@@ -41,11 +41,22 @@ DECIMAL_PLACES = 4
 OXI_DEFAULT = False  # Default value for oxidation states if not provided
 # Atom-site row whose occupancy is the bare integer 1: symbol, label, multiplicity, x, y, z, occupancy
 FULL_OCCUPANCY = re.compile(r"^(\s*\S+\s+\S+\s+\d+\s+-?\d+\.\d+\s+-?\d+\.\d+\s+-?\d+\.\d+\s+)1$", re.M)
+# Spaces only, never \s, so a match cannot run across a line break into the next row
+ATOM_SITE_ROW = re.compile(r"^ *\S+ +\S+ +\d+ +-?\d+\.\d+ +-?\d+\.\d+ +-?\d+\.\d+ +\S+$", re.M)
 
 
 def float_occupancies(cif_str):
     """Write full occupancies as `1.0`, the form pymatgen gives any structure parsed from a CIF."""
     return FULL_OCCUPANCY.sub(r"\g<1>1.0", cif_str)
+
+
+def wrap_unit_coords(cif_str: str) -> str:
+    """Write fractional coordinates that rounded up to `1.0000` as `0.0000`, the same position."""
+    def wrap(match):
+        symbol, label, mult, *xyz, occ = match.group(0).split()
+        xyz = ["0.0000" if c == "1.0000" else c for c in xyz]
+        return "  " + "  ".join([symbol, label, mult, *xyz, occ])
+    return ATOM_SITE_ROW.sub(wrap, cif_str)
 
 
 def progress_listener(progress_queue, total):
@@ -79,6 +90,7 @@ def augment_cif_chunk(chunk, oxi, progress_queue):
             cif_str = add_atomic_props_block(cif_str, oxi)
             cif_str = round_numbers(cif_str, decimal_places=DECIMAL_PLACES)
             cif_str = float_occupancies(cif_str)
+            cif_str = wrap_unit_coords(cif_str)
             cif_str = remove_comments(cif_str)
             cif_str = add_variable_brackets_to_cif(cif_str)
             results.append((idx, cif_str))

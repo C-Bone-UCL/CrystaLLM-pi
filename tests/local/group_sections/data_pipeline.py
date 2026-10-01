@@ -67,6 +67,23 @@ class DataPipelineTests:
         assert out.replace("0.0000  1.0\n", "0.0000  1\n", 1) == cif, "only the Na site should change"
         assert float_occupancies(out) == out, "should be idempotent"
 
+    def test_coordinate_normalisation(self):
+        """Rounding never writes -0.0000, and coordinates that round to 1.0000 wrap to 0.0000."""
+        from _utils import round_numbers
+        from _utils._preprocessing.cleaning import wrap_unit_coords
+
+        assert round_numbers("x -0.00001234 y 0.99996 z", 4) == "x 0.0000 y 1.0000 z"
+        cif = (
+            "_cell_length_a 1.0000\n"
+            "  Na  Na0  4  1.0000  0.5000  -0.2500  1.0\n"
+            "  Fe  Fe1  2  0.2500  1.0000  1.0000  0.5\n"
+        )
+        out = wrap_unit_coords(cif)
+        assert "_cell_length_a 1.0000\n" in out, "only atom-site coordinates should wrap"
+        assert "  Na  Na0  4  0.0000  0.5000  -0.2500  1.0\n" in out
+        assert "  Fe  Fe1  2  0.2500  0.0000  0.0000  0.5\n" in out
+        assert wrap_unit_coords(out) == out, "should be idempotent"
+
     def test_xrd_calculation(self):
         """Test XRD pattern calculation with actual structure."""
         try:
