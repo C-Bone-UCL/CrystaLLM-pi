@@ -1,6 +1,7 @@
 """Training utilities for CrystaLLM-pi including custom trainers, callbacks, and optimizer setup.
 """
 
+import copy
 import json
 import logging
 import os
@@ -20,7 +21,6 @@ from transformers import (
     TrainingArguments,
     get_scheduler,
 )
-import torch.distributed as dist
 
 import _tokenizer
 reload(_tokenizer)
@@ -36,6 +36,16 @@ class CIFFormattingTrainer(Trainer):
     The penalty discourages errors in invariant CIF formatting tokens such as
     ``data_``, ``loop_``, and ``cell_length_a``.
     """
+
+    def get_eval_dataloader(self, eval_dataset=None):
+        """Evaluate one CIF per row to prevent attention between structures."""
+        packing_collator = self.data_collator
+        self.data_collator = copy.copy(packing_collator)
+        self.data_collator.pack = False
+        try:
+            return super().get_eval_dataloader(eval_dataset)
+        finally:
+            self.data_collator = packing_collator
 
     def compute_loss(
         self,
@@ -63,6 +73,19 @@ class CIFFormattingTrainer(Trainer):
         }
 
         outputs = model(**model_inputs)
+
+        # Eval averages each CIF's per-token NLL without the format penalty, independently of batch size.
+        if not model.training:
+            shift_labels = inputs["labels"][..., 1:]
+            token_nll = F.cross_entropy(
+                outputs.logits[..., :-1, :].transpose(1, 2).float(),
+                shift_labels,
+                ignore_index=-100,
+                reduction="none",
+            )
+            n_tokens = (shift_labels != -100).sum(dim=1).clamp(min=1)
+            cif_nll = (token_nll.sum(dim=1) / n_tokens).mean()
+            return (cif_nll, outputs) if return_outputs else cif_nll
 
         # For Finetuning we use original loss
         lm_loss = outputs.loss
@@ -167,7 +190,7 @@ class LossTrack_EarlyStop_Callback(TrainerCallback):
         """Perform early stopping setup checks."""
         assert args.load_best_model_at_end, "EarlyStoppingCallback requires load_best_model_at_end = True"
         assert args.metric_for_best_model is not None, "EarlyStoppingCallback requires metric_for_best_model to be defined"
-        assert args.evaluation_strategy != "no", "EarlyStoppingCallback requires EvaluationStrategy of steps or epoch"
+        assert args.eval_strategy != "no", "EarlyStoppingCallback requires EvaluationStrategy of steps or epoch"
         return control
 
     def on_log(self, args, state, control, logs=None, **kwargs):
@@ -379,14 +402,16 @@ def start_codecarbon_tracker(args):
     return tracker
 
 def find_checkpoint_from_dir(checkpoint_dir):
-    """Find the earliest checkpoint in a directory and return the full path."""
+    """Return the Trainer's best recorded checkpoint, or the latest saved one."""
     model_files = os.listdir(checkpoint_dir)
     steps = [int(file.split('-')[-1]) for file in model_files if 'checkpoint' in file]
-    
+
     if not steps:
         raise ValueError(f"No checkpoint files found in {checkpoint_dir}")
-    
-    best_step = min(steps)
+
+    state_path = os.path.join(checkpoint_dir, f'checkpoint-{max(steps)}', 'trainer_state.json')
+    best = json.load(open(state_path)).get("best_model_checkpoint") if os.path.exists(state_path) else None
+    best_step = int(best.split('-')[-1]) if best and int(best.split('-')[-1]) in steps else max(steps)
     checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint-{best_step}')
     print(f"Using model checkpoint: {checkpoint_path}")
     return checkpoint_path
@@ -432,7 +457,7 @@ def setup_scheduler(args, model):
 
     if args.optimizer == "muon":
         # Training extra, imported lazily for the same reason as codecarbon above.
-        from muon import MuonWithAuxAdam, SingleDeviceMuonWithAuxAdam
+        from muon import SingleDeviceMuonWithAuxAdam
 
         hidden_matrix_params = [] # 2D weights in transformer blocks (Muon)
         adamw_params = [] # Embeddings, lm_head, 1D params (AdamW)
@@ -473,8 +498,6 @@ def setup_scheduler(args, model):
         if context_extension_wpe_weight is not None:
             print("Routing transformer.wpe.weight through AdamW for context-extension load")
         
-        is_distributed = dist.is_initialized() and dist.get_world_size() > 1
-        
         # Build parameter groups: Muon for 2D transformer weights, AdamW for rest
         param_groups = [
             dict(params=hidden_matrix_params, lr=args.muon_lr, momentum=args.muon_momentum,
@@ -495,12 +518,9 @@ def setup_scheduler(args, model):
             )
             print(f"Conditioning params use AdamW with lr={cond_lr}, wd={cond_wd}")
         
-        if is_distributed:
-            optimizer = MuonWithAuxAdam(param_groups)
-            print(f"Using distributed MuonWithAuxAdam (muon_lr={args.muon_lr}, adam_lr={args.learning_rate})")
-        else:
-            optimizer = SingleDeviceMuonWithAuxAdam(param_groups)
-            print(f"Using SingleDeviceMuonWithAuxAdam (muon_lr={args.muon_lr}, adam_lr={args.learning_rate})")
+        # DDP averages gradients before Muon. Each rank needs full state in optimizer.pt to resume.
+        optimizer = SingleDeviceMuonWithAuxAdam(param_groups)
+        print(f"Using SingleDeviceMuonWithAuxAdam (muon_lr={args.muon_lr}, adam_lr={args.learning_rate})")
         
         lr_scheduler = get_scheduler(
             name=args.lr_scheduler_type,

@@ -16,40 +16,34 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.10"
+          python-version: "3.12"
 
       - name: Install offline test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r .github/ci/requirements-offline.txt
-          pip install -e .
+        run: uv sync --locked --extra train --extra metrics --extra notebooks
 
       - name: Run required offline local suite
-        run: python -m tests.local.runner --cpu --offline
+        run: uv run python -m tests.local.runner --cpu --offline
 
-  # `pip install -e .` resolves package data from the source tree, so it cannot catch a
-  # model_registry.json or HF-cif-tokenizer that never made it into the wheel. Installing the
-  # built wheel and importing from outside the checkout is the only check that does.
+  # Test the installed wheel outside the checkout to catch missing package data.
   wheel-install:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.10"
+          python-version: "3.12"
       - name: Build the wheel
-        run: |
-          python -m pip install --upgrade pip build
-          python -m build --wheel
+        run: uv build --wheel
       - name: Install and import it outside the source tree
         run: |
           mkdir /tmp/wheeltest
-          pip install "$GITHUB_WORKSPACE"/dist/*.whl
+          uv venv /tmp/wheeltest/.venv
+          uv pip install --python /tmp/wheeltest/.venv "$GITHUB_WORKSPACE"/dist/*.whl
           cd /tmp/wheeltest
-          python -c "
+          .venv/bin/python -c "
           import _load_and_generate
           from _utils.model import MODEL_REGISTRY
           from _tokenizer import CustomCIFTokenizer

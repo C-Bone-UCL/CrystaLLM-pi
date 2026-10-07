@@ -140,10 +140,8 @@ def get_hf_model_max_length(hf_model_path: str, model_type: str | None = None) -
         for attr in ("n_positions", "max_position_embeddings", "n_ctx"):
             val = getattr(cfg, attr, None)
             if isinstance(val, int) and val > 0:
-                if model_type == "Prefix":
-                    # Prefix families extend wpe by n_prefix_tokens, so the text budget
-                    # excludes them. PKV is deliberately NOT subtracted so legacy hub models
-                    # generate identically.
+                if model_type in ("Prefix", "PKV"):
+                    # Prefix tokens count towards the context limit.
                     return max(val - int(getattr(cfg, "n_prefix_tokens", 0) or 0), 1)
                 return val
     except Exception:

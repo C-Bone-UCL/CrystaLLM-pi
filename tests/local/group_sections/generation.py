@@ -9,6 +9,45 @@ class GenerationTests:
         self.temp_dir = temp_dir
         self.test_data = test_data
     
+    def test_pre_p6_checkpoint_gets_its_tokenizer(self):
+        """A 377-token checkpoint keeps its vocabulary and splits P6 into `P` and `6`."""
+        import os
+        from transformers import GPT2Config, GPT2LMHeadModel
+        from _tokenizer import CustomCIFTokenizer, checkpoint_vocab_size
+        from _utils._generating import workers
+
+        full = CustomCIFTokenizer.from_pretrained("HF-cif-tokenizer")
+        prompt = "<bos>\ndata_[Na1Cl1]\n_symmetry_space_group_name_H-M [P6]\n"
+        p6_ids = full.encode(prompt)
+        assert len(full) == 378 and full.convert_tokens_to_ids("P6_sg") == 377
+
+        ckpt = os.path.join(self.temp_dir, "pre_p6_model")
+        GPT2LMHeadModel(GPT2Config(vocab_size=377, n_positions=128, n_embd=32, n_layer=1, n_head=2)).save_pretrained(ckpt)
+        assert checkpoint_vocab_size(ckpt) == 377
+        workers.init_worker(ckpt, "HF-cif-tokenizer", None)
+        assert len(workers.tokenizer) == 377
+        assert workers.model.get_input_embeddings().num_embeddings == 377, "pre-P6 checkpoint must not gain a P6 row"
+
+        legacy_ids = workers.tokenizer.encode(prompt)
+        assert workers.tokenizer.convert_ids_to_tokens(legacy_ids)[-5:-1] == ["[", "P", "6", "]"]
+        assert legacy_ids[:-4] == p6_ids[:-3] and max(legacy_ids) < 377
+        assert workers.tokenizer.decode(legacy_ids) == full.decode(p6_ids) == prompt
+
+    def test_worker_load_error_is_raised(self):
+        """Worker load errors are raised on the first generation task."""
+        import os
+        from _utils._generating import workers
+
+        workers.init_worker(os.path.join(self.temp_dir, "no_such_model"), "HF-cif-tokenizer", None)
+        assert workers.init_error is not None
+        try:
+            workers.generate_on_gpu(0, pd.DataFrame({"Prompt": ["<bos>"]}), {}, None, 0, 1, None)
+        except RuntimeError as e:
+            assert "failed to load the model" in str(e)
+        else:
+            raise AssertionError("generate_on_gpu should raise the worker's load error")
+        workers.init_error = None
+
     def test_generation_basic(self):
         """Test basic generation utilities."""
         from _utils._generating.generate_cifs import init_tokenizer, build_generation_kwargs

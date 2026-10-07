@@ -2,6 +2,7 @@
 
 import torch
 from transformers import GPT2Config, GPT2LMHeadModel
+from transformers.cache_utils import Cache, DynamicCache
 from torch import nn
 
 
@@ -166,13 +167,13 @@ class PrefixGPT(GPT2LMHeadModel):
             ``CausalLMOutputWithCrossAttentions`` containing logits with shape
             ``[B, T, vocab_size]``.
         """
-        if "past_key_values" in kwargs:
-            past_key_values = kwargs.pop("past_key_values")
-        else:
+        past_key_values = kwargs.pop("past_key_values", None)
+        # generate() hands an empty Cache on the first step: treat it as "no prefix yet"
+        if past_key_values is None or (isinstance(past_key_values, Cache) and past_key_values.get_seq_length() == 0):
             if condition_values is not None:
                 # Prefix tokens are prepended to the attention mask so cached
                 # positions remain visible to every decoder layer.
-                past_key_values = self.conditioning(condition_values)
+                past_key_values = DynamicCache(self.conditioning(condition_values))
                 attention_mask = prepend_prefix_attention_mask(
                     attention_mask, condition_values.shape[0], self.config.n_prefix_tokens
                 )
@@ -183,6 +184,16 @@ class PrefixGPT(GPT2LMHeadModel):
             raise ValueError(
                 "WARNING: Prefix Condition values activated but not passed correctly."
             )
+
+        # generate() keeps a text-only mask on cached steps, so cover the prefix slots too
+        if (attention_mask is not None and input_ids is not None and isinstance(past_key_values, Cache)
+                and attention_mask.shape[1] < past_key_values.get_seq_length() + input_ids.shape[1]):
+            attention_mask = torch.cat(
+                [attention_mask.new_ones(attention_mask.shape[0], self.config.n_prefix_tokens), attention_mask], dim=1
+            )
+
+        # generate() counts cache_position over text only, drop it so GPT-2 offsets positions past the prefix
+        kwargs.pop("cache_position", None)
 
         output = super().forward(
             input_ids=input_ids,

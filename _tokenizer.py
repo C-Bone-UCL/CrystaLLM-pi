@@ -5,7 +5,7 @@ import torch
 import os
 import re
 import json
-from transformers import PreTrainedTokenizer
+from transformers import PretrainedConfig, PreTrainedTokenizer
 
 BUNDLED_TOKENIZER_DIR = os.path.join(os.path.dirname(__file__), "_utils", "HF-cif-tokenizer")
 
@@ -23,6 +23,14 @@ def resolve_tokenizer_dir(pretrained_dir: str) -> str:
     if os.path.basename(os.path.normpath(pretrained_dir)) == "HF-cif-tokenizer":
         return BUNDLED_TOKENIZER_DIR
     return pretrained_dir
+
+
+def checkpoint_vocab_size(model_path: str) -> int | None:
+    """Return a checkpoint's vocabulary size, or None if its config cannot be read."""
+    try:
+        return PretrainedConfig.get_config_dict(model_path)[0]["vocab_size"]
+    except Exception:
+        return None
 
 
 class CustomCIFTokenizer(PreTrainedTokenizer):
@@ -44,10 +52,15 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
         var_open_token: str="[",
         var_close_token: str="]",
         prop_token: str="<prop>",
+        max_vocab_size: int | None=None,
         **kwargs
     ) -> None:
         with open(vocab_file, "r") as f:
             self.token_to_id = json.load(f)
+
+        # New tokens are appended, so truncation preserves older vocabularies.
+        if max_vocab_size is not None:
+            self.token_to_id = {t: i for t, i in self.token_to_id.items() if i < max_vocab_size}
 
         # Invert to get ID -> token
         self.id_to_token = {v: k for k, v in self.token_to_id.items()}
@@ -58,6 +71,9 @@ class CustomCIFTokenizer(PreTrainedTokenizer):
         # For convenience, load the raw spacegroups
         with open(spacegroups_file, "r") as f:
             self.space_groups = [sg.strip() for sg in f.readlines()]
+
+        # A space group whose token was cut (P6 for a 377-token checkpoint) splits into plain tokens, as it used to
+        self.space_groups = [sg for sg in self.space_groups if sg + "_sg" in self.token_to_id]
 
         # Sort tokens by length for regex matching
         self._escaped_tokens = sorted(
@@ -229,8 +245,7 @@ special tokens are used. either returns token_ids_0 or token_ids_0 + token_ids_1
     def from_pretrained(cls, pretrained_dir: str, **kwargs) -> "CustomCIFTokenizer":
         """Load a tokenizer from a directory written by `save_pretrained`.
 
-        The directory must contain `vocabulary.json`, `spacegroups.txt`, and
-        `tokenizer_config.json`.
+        The directory must contain `vocabulary.json`, `spacegroups.txt`, and `tokenizer_config.json`. Use `max_vocab_size` to match an older checkpoint's vocabulary.
         """
         pretrained_dir = resolve_tokenizer_dir(pretrained_dir)
         vocab_file = os.path.join(pretrained_dir, "vocabulary.json")

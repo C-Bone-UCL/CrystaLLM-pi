@@ -2,6 +2,7 @@
 """
 
 import math
+import multiprocessing
 import re
 import pandas as pd
 import os
@@ -28,6 +29,13 @@ from _tokenizer import CustomCIFTokenizer
 
 
 logger = logging.getLogger(__name__)
+
+SITE_TOLERANCE = 1e-3  # Merge symmetry images separated by rounding to four decimals.
+
+
+def cif_parser(cif_str: str, **kwargs) -> CifParser:
+    """Parse CIFs without duplicating atoms at rounded special positions."""
+    return CifParser.from_str(cif_str, site_tolerance=SITE_TOLERANCE, **kwargs)
 
 # Adapted from original CrystaLLM repo: https://github.com/lantunes/CrystaLLM
 
@@ -75,8 +83,7 @@ def extract_formula_nonreduced(cif_str):
 
 
 def extract_reduced_formula(cif_str):
-    parser = CifParser.from_str(cif_str)
-    structure = parser.get_structures()[0]
+    structure = cif_parser(cif_str).parse_structures(primitive=False)[0]
     return structure.reduced_formula
 
 
@@ -537,8 +544,10 @@ def filter_df_to_context(
         )
         mask = [len(tokenizer.tokenize(x)) <= context for x in tqdm(cif_strings)]
     else:
+        # Forking after threads start can deadlock. Use spawned workers.
         with ProcessPoolExecutor(
             max_workers=num_workers,
+            mp_context=multiprocessing.get_context("spawn"),
             initializer=_init_tokenizer_worker,
             initargs=(tokenizer_dir, '<pad>'),
         ) as executor:
@@ -566,8 +575,10 @@ def count_tokens_df(
         )
         token_counts = [len(tokenizer.tokenize(x)) for x in tqdm(cif_strings)]
     else:
+        # Forking after threads start can deadlock. Use spawned workers.
         with ProcessPoolExecutor(
             max_workers=num_workers,
+            mp_context=multiprocessing.get_context("spawn"),
             initializer=_init_tokenizer_worker,
             initargs=(tokenizer_dir, '<pad>'),
         ) as executor:

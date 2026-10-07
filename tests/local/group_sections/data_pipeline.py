@@ -84,6 +84,59 @@ class DataPipelineTests:
         assert "  Fe  Fe1  2  0.2500  0.0000  0.0000  0.5\n" in out
         assert wrap_unit_coords(out) == out, "should be idempotent"
 
+    def test_tolerant_parse(self):
+        """Rounded special positions do not duplicate atoms. Only consistent CIFs are rewritten."""
+        from pymatgen.core import Structure
+        from _utils import extract_space_group_symbol, replace_symmetry_operators, is_formula_consistent
+        from _utils._generating.postprocess import postprocess
+
+        # Alex-MP-20 fixture: default tolerance (1e-4) reads 48 F atoms instead of 36.
+        cif = """data_Li3Sc9Tl6F36
+_symmetry_space_group_name_H-M R-3m
+_cell_length_a 7.7542
+_cell_length_b 7.7542
+_cell_length_c 18.4867
+_cell_angle_alpha 90.0000
+_cell_angle_beta 90.0000
+_cell_angle_gamma 120.0000
+_symmetry_Int_Tables_number 166
+_chemical_formula_structural LiSc3Tl2F12
+_chemical_formula_sum 'Li3 Sc9 Tl6 F36'
+_cell_volume 962.6508
+_cell_formula_units_Z 3
+loop_
+ _symmetry_equiv_pos_site_id
+ _symmetry_equiv_pos_as_xyz
+  1  'x, y, z'
+loop_
+ _atom_site_type_symbol
+ _atom_site_label
+ _atom_site_symmetry_multiplicity
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+ _atom_site_occupancy
+  Li  Li0  3  0.0000  0.0000  0.0000  1.0
+  Sc  Sc1  9  0.0000  0.5000  0.5000  1.0
+  Tl  Tl2  6  0.0000  0.0000  0.3356  1.0
+  F  F3  18  0.0605  0.5303  0.6053  1.0
+  F  F4  18  0.0853  0.5426  0.8550  1.0
+"""
+
+        # The fixture fails at default tolerance and passes with SITE_TOLERANCE.
+        with_ops = replace_symmetry_operators(cif, extract_space_group_symbol(cif))
+        assert Structure.from_str(with_ops, fmt="cif").composition["F"] == 48, "fixture no longer shows the bug"
+        assert is_formula_consistent(with_ops)
+
+        # The rewritten CIF passes at default tolerance.
+        rewritten = postprocess(cif)
+        assert Structure.from_str(rewritten, fmt="cif").composition["F"] == 36, "rewrite should read right at 1e-4"
+
+        # A wrong declared formula stays unchanged and fails validation.
+        wrong = postprocess(cif.replace("'Li3 Sc9 Tl6 F36'", "'Li3 Sc9 Tl6 F30'"))
+        assert not wrong.startswith("# generated using pymatgen"), "inconsistent CIF must not be rewritten"
+        assert not is_formula_consistent(wrong)
+
     def test_xrd_calculation(self):
         """Test XRD pattern calculation with actual structure."""
         try:

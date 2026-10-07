@@ -37,7 +37,6 @@ from _utils.mp_data import MPDataProvider, download_mp_data
 from datasets import load_dataset
 from pymatgen.core import Structure
 from pymatgen.core import Composition
-from pymatgen.io.cif import CifParser
 from pymatgen.entries.computed_entries import ComputedEntry
 from pymatgen.analysis.phase_diagram import PhaseDiagram
 from pymatgen.entries.compatibility import MaterialsProject2020Compatibility
@@ -45,6 +44,7 @@ from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from pymatgen.analysis.local_env import CrystalNN
 
 from _utils import (
+    cif_parser,
     extract_volume,
     extract_formula_units,
     extract_data_formula,
@@ -88,7 +88,7 @@ def build_generated_structures(df_proc: pd.DataFrame) -> list:
                 cif_str = df_proc.at[idx, "Generated CIF"]
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", category=UserWarning)
-                    structures[idx] = Structure.from_str(cif_str, fmt="cif")
+                    structures[idx] = cif_parser(cif_str).parse_structures(primitive=False)[0]
             except Exception:
                 # If structure building fails here, it's not valid
                 df_proc.at[idx, "is_valid"] = False
@@ -152,7 +152,7 @@ def _uniqueness_worker(args_tuple: tuple[int, str, float]) -> tuple[int, str, fl
     idx, cif_str, ehull_val = args_tuple
     
     try:
-        struct = Structure.from_str(cif_str, fmt="cif")
+        struct = cif_parser(cif_str).parse_structures(primitive=False)[0]
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore",
@@ -248,7 +248,7 @@ def _novelty_worker(args_tuple: tuple) -> tuple:
     
     for ref_cif_str in ref_cifs:
         try:
-            ref_struct = Structure.from_str(ref_cif_str, fmt="cif")
+            ref_struct = cif_parser(ref_cif_str).parse_structures(primitive=False)[0]
             if matcher.fit(gen_struct, ref_struct):
                 return False  # Found a match, so it's not novel
         except Exception:

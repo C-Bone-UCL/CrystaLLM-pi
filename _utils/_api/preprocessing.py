@@ -177,7 +177,7 @@ def register_preprocessing_routes(
     @app.post("/preprocessing/cifs-zip-to-parquet")
     async def cifs_zip_to_parquet(request: CifsZipToParquetRequest, background_tasks: BackgroundTasks):
         job_id = str(uuid.uuid4())
-        cmd = ["python", "-m", "_utils._preprocessing.cifs_zip_to_parquet", "--input_tarballs"]
+        cmd = ["python", "-m", "_utils._datasets.crystallm", "--input_tarballs"]
         cmd.extend(request.input_tarballs)
         cmd.extend([
             "--output_parquet", request.output_parquet,

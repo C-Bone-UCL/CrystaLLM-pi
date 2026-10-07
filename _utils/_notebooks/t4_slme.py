@@ -300,6 +300,7 @@ def plot_slme_distribution(gen_merged: pd.DataFrame, training_hse_gaps: pd.Serie
     print(f"Number of generated materials with SLME >= 20%: {num_high_slme}")
     
     if output_path:
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
         fig.savefig(output_path, dpi=300, bbox_inches='tight')
         print(f"Plot saved to {output_path}")
         

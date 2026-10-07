@@ -15,10 +15,10 @@ from pymatgen.core import Structure
 from pymatgen.analysis.local_env import CrystalNN
 
 from pymatgen.core import Composition
-from pymatgen.io.cif import CifParser
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 
 from _utils.processing import (
+    cif_parser,
     extract_data_formula,
     extract_formula_nonreduced,
     extract_space_group_symbol,
@@ -59,7 +59,7 @@ def bond_length_reasonableness_score(cif_str: str, tolerance: float=0.32, h_fact
     """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=UserWarning)
-        structure = Structure.from_str(cif_str, fmt="cif")
+        structure = cif_parser(cif_str).parse_structures(primitive=False)[0]
 
     # TODO: make function work for disordered materials. CrystalNN reads site.specie,
     # which raises on partial occupancies, as do the radii lookups below.
@@ -128,8 +128,8 @@ def is_space_group_consistent(cif_str: str, allow_stated_p1_mismatch: bool=False
     `allow_stated_p1_mismatch` permits a CIF declaring P1 when the detected structure has higher
     symmetry.
     """
-    structure = Structure.from_str(cif_str, fmt="cif")
-    parser = CifParser.from_str(cif_str)
+    structure = cif_parser(cif_str).parse_structures(primitive=False)[0]
+    parser = cif_parser(cif_str)
     cif_data = parser.as_dict()
 
     # Extract the stated space group from the CIF file
@@ -173,7 +173,7 @@ def is_formula_consistent(cif_str: str) -> bool:
     Compared up to cell scale, so a supercell matches the formula it is a supercell of.
     """
     try:
-        parser = CifParser.from_str(cif_str)
+        parser = cif_parser(cif_str)
         cif_data = parser.as_dict()
         key = list(cif_data.keys())[0]
 
@@ -187,7 +187,7 @@ def is_formula_consistent(cif_str: str) -> bool:
                 structure = parser.parse_structures(primitive=False)[0]
             except Exception:
                 # Some valid disordered CIFs need occupancy rescaling to parse.
-                parser = CifParser.from_str(cif_str, occupancy_tolerance=2.0)
+                parser = cif_parser(cif_str, occupancy_tolerance=2.0)
                 structure = parser.parse_structures(primitive=False)[0]
         formula_geometry = structure.composition
 
@@ -204,7 +204,7 @@ def is_formula_consistent(cif_str: str) -> bool:
 def is_atom_site_multiplicity_consistent(cif_str: str) -> bool:
     # Parse the CIF string
     """Check whether each atom site's stated multiplicity matches its symmetry orbit."""
-    parser = CifParser.from_str(cif_str)
+    parser = cif_parser(cif_str)
     cif_data = parser.as_dict()
 
     # Extract the chemical formula sum from the CIF data
@@ -309,7 +309,7 @@ def get_density(cif: str) -> float:
     try:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            structure = Structure.from_str(cif, fmt='cif')
+            structure = cif_parser(cif).parse_structures(primitive=False)[0]
             for warn in w:
                 if ("Incorrect stoichiometry" in str(warn.message)):
                     return np.nan

@@ -13,25 +13,17 @@ from transformers.models.gpt2.modeling_gpt2 import (
     GPT2Attention,
     GPT2Block as HFGPT2Block, # renamed to avoid confusion with our own Block
     GPT2MLP,
-    load_tf_weights_in_gpt2,
-    Conv1D,
-    GPT2_INPUTS_DOCSTRING,
-    _prepare_4d_causal_attention_mask_for_sdpa,
-    _prepare_4d_attention_mask_for_sdpa,
-    add_start_docstrings_to_model_forward,
-    add_code_sample_docstrings,
-    add_start_docstrings,
-    _CHECKPOINT_FOR_DOC,
-    _CONFIG_FOR_DOC,
-    PARALLELIZE_DOCSTRING,
-    DEPARALLELIZE_DOCSTRING,
-    assert_device_map,
-    get_device_map,
-    GPT2_START_DOCSTRING,
     ALL_ATTENTION_FUNCTIONS,
     eager_attention_forward,
 )
+from transformers.pytorch_utils import Conv1D
+from transformers.utils.model_parallel_utils import assert_device_map, get_device_map
+from transformers.modeling_attn_mask_utils import (
+    _prepare_4d_causal_attention_mask_for_sdpa,
+    _prepare_4d_attention_mask_for_sdpa,
+)
 from transformers import GPT2Config, GPT2PreTrainedModel, GenerationMixin
+from transformers.cache_utils import Cache, DynamicCache
 from torch.nn import CrossEntropyLoss
 import math
 from typing import Optional, Tuple, Union, Callable
@@ -544,7 +536,6 @@ class SliderGPT2PreTrainedModel(GPT2PreTrainedModel):
     the approach from Qwen2PreTrainedModel.
     """
     config_class = SliderGPT2Config
-    load_tf_weights = load_tf_weights_in_gpt2
     base_model_prefix = "transformer"
     is_parallelizable = True
     supports_gradient_checkpointing = True
@@ -587,7 +578,6 @@ class SliderGPT2PreTrainedModel(GPT2PreTrainedModel):
                     p.data.normal_(mean=0.0, std=(self.config.initializer_range / math.sqrt(2 * self.config.n_layer)))
 
 
-@add_start_docstrings_to_model_forward(GPT2_INPUTS_DOCSTRING)
 class SliderGPT2Model(SliderGPT2PreTrainedModel):
     """
     The base SliderGPT2 model transformer. Handles input processing and passes data through
@@ -618,7 +608,6 @@ class SliderGPT2Model(SliderGPT2PreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    @add_start_docstrings(PARALLELIZE_DOCSTRING)
     def parallelize(self, device_map=None):
         warnings.warn(
             "`GPT2Model.parallelize` is deprecated and will be removed in v5 of Transformers, you should load your"
@@ -649,7 +638,6 @@ class SliderGPT2Model(SliderGPT2PreTrainedModel):
         self.wte = self.wte.to(self.first_device)
         self.wpe = self.wpe.to(self.first_device)
 
-    @add_start_docstrings(DEPARALLELIZE_DOCSTRING)
     def deparallelize(self):
         warnings.warn(
             "Like `parallelize`, `deparallelize` is deprecated and will be removed in v5 of Transformers.",
@@ -682,11 +670,6 @@ class SliderGPT2Model(SliderGPT2PreTrainedModel):
             self.h[layer].attn.prune_heads(heads)
 
 
-    @add_code_sample_docstrings(
-        checkpoint=_CHECKPOINT_FOR_DOC,
-        output_type=BaseModelOutputWithPast,
-        config_class=_CONFIG_FOR_DOC,
-    )
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
@@ -759,6 +742,12 @@ class SliderGPT2Model(SliderGPT2PreTrainedModel):
         if position_ids is not None:
             position_ids = position_ids.view(-1, input_shape[-1])
 
+        # generate() passes a Cache object, the blocks below still run on legacy (k, v) tuples
+        if isinstance(past_key_values, Cache):
+            past_key_values = (
+                tuple((layer.keys, layer.values) for layer in past_key_values.layers)
+                if past_key_values.get_seq_length() > 0 else None
+            )
         if past_key_values is None:
             past_length = 0
             past_key_values = tuple([None] * len(self.h))
@@ -929,20 +918,12 @@ class SliderGPT2Model(SliderGPT2PreTrainedModel):
 
         return BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
-            past_key_values=presents,
+            past_key_values=DynamicCache(presents) if presents is not None else None,
             hidden_states=all_hidden_states,
             attentions=all_self_attentions,
         )
 
 
-@add_start_docstrings(
-    """
-    The SliderGPT model transformer with a language modeling head on top.
-    Can be conditioned on float vectors (`condition_values`). Handles missing
-    condition values by masking their contribution in the attention mechanism.
-    """,
-    GPT2_START_DOCSTRING, # Use GPT2 docstring as base
-)
 class SliderGPT(SliderGPT2PreTrainedModel, GenerationMixin):
     _tied_weights_keys = ["lm_head.weight"]
 
@@ -959,7 +940,6 @@ class SliderGPT(SliderGPT2PreTrainedModel, GenerationMixin):
         # Initialize weights and apply final processing
         self.post_init()
 
-    @add_start_docstrings(PARALLELIZE_DOCSTRING)
     def parallelize(self, device_map=None):
         warnings.warn(
             "`SliderGPT.parallelize` is deprecated and will be removed in v5 of Transformers, you should load"
@@ -981,7 +961,6 @@ class SliderGPT(SliderGPT2PreTrainedModel, GenerationMixin):
         self.model_parallel = True
 
 
-    @add_start_docstrings(DEPARALLELIZE_DOCSTRING)
     def deparallelize(self):
         warnings.warn(
             "Like `parallelize`, `deparallelize` is deprecated and will be removed in v5 of Transformers.",
@@ -1001,6 +980,9 @@ class SliderGPT(SliderGPT2PreTrainedModel, GenerationMixin):
         self.lm_head = new_embeddings
 
     def prepare_inputs_for_generation(self, input_ids, past_key_values=None, inputs_embeds=None, **kwargs):
+        # generate() pre-builds an empty Cache that is truthy, which would crop the prompt on step one
+        if isinstance(past_key_values, Cache) and past_key_values.get_seq_length() == 0:
+            past_key_values = None
         token_type_ids = kwargs.get("token_type_ids", None)
         # only last token for inputs_ids if past is defined in normal flag cases
         if past_key_values:
@@ -1017,6 +999,10 @@ class SliderGPT(SliderGPT2PreTrainedModel, GenerationMixin):
             position_ids.masked_fill_(attention_mask == 0, 1)
             if past_key_values:
                 position_ids = position_ids[:, -1].unsqueeze(-1)
+
+        # generate() may supply full-length position_ids, keep only the rows being fed
+        if position_ids is not None:
+            position_ids = position_ids[:, -input_ids.shape[1]:]
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:

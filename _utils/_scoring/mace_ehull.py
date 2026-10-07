@@ -38,6 +38,7 @@ from mace.calculators import mace_mp
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import (
+    cif_parser,
     MPDataProvider,
     download_mp_data,
 )
@@ -91,7 +92,7 @@ def get_mace_energy(cif_str, calculator):
     """Get MACE energy for a CIF string using pre-loaded calculator"""
     try:
         # Convert CIF to structure to atoms
-        structure = Structure.from_str(cif_str, fmt="cif")
+        structure = cif_parser(cif_str).parse_structures(primitive=False)[0]
         adaptor = AseAtomsAdaptor()
         atoms = adaptor.get_atoms(structure)
         
@@ -193,7 +194,7 @@ def main():
     unique_chemsys = set()
     for cif_str in tqdm(cif_strings[:100], desc="Sampling chemical systems"):  # Sample first 100
         try:
-            structure = Structure.from_str(cif_str, fmt="cif")
+            structure = cif_parser(cif_str).parse_structures(primitive=False)[0]
             elements = tuple(sorted(str(el) for el in structure.composition.elements))
             unique_chemsys.add(elements)
         except Exception:

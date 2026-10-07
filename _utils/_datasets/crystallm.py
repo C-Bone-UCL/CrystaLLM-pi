@@ -8,7 +8,7 @@ From original repo: https://github.com/lantunes/CrystaLLM/blob/main/ARTIFACTS.md
 
 Usage:
     ```bash
-    python _utils/_preprocessing/cifs_zip_to_parquet.py --input_tarballs train.tar.gz val.tar.gz \
+    python _utils/_datasets/crystallm.py --input_tarballs train.tar.gz val.tar.gz \
         --output_parquet cifs.parquet --num_workers 8
     ```
 """
@@ -16,6 +16,7 @@ Usage:
 import argparse
 import concurrent.futures
 import os
+import sys
 import tarfile
 import warnings
 
@@ -23,48 +24,10 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import pandas as pd
-from pymatgen.io.cif import CifParser, CifWriter
-from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from tqdm import tqdm
 
-
-def _process_single_cif(payload):
-    """Parse and attempt to symmetrise one CIF.
-
-    The single-argument interface allows the function to be mapped across a
-    ``ProcessPool``. It returns processed data or an error string when processing
-    fails completely.
-    """
-    cif_string, material_id, current_split = payload
-    
-    try:
-        parser = CifParser.from_str(cif_string)
-        struct = parser.parse_structures()[0]
-        
-        # Use the parsed structure if spatial standardisation fails.
-        try:
-            sga = SpacegroupAnalyzer(struct)
-            symm_struct = sga.get_symmetrized_structure()
-            final_cif_str = str(CifWriter(symm_struct, symprec=0.1))
-        except Exception:
-            # Fallback to standard cif if symmetrization fails
-            final_cif_str = struct.to(fmt="cif")
-            
-        formula = struct.composition.reduced_formula
-        
-        return {
-            "Material ID": material_id,
-            "Reduced Formula": formula,
-            "CIF": final_cif_str,
-            "Split": current_split,
-            "error": None
-        }
-    except Exception as e:
-        # Catch parsing errors so we don't crash the worker pool
-        return {
-            "Material ID": material_id,
-            "error": str(e)
-        }
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from _utils._datasets.common import _process_single_cif
 
 
 def load_cifs(tarball_paths, database_name, num_workers):

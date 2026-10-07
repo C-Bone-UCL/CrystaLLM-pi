@@ -7,6 +7,7 @@ be loaded for generation but are not trainable. Unsupported values of
 """
 
 import argparse
+import json
 import commentjson
 
 
@@ -41,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     # Data Arguments
     #######################
     parser.add_argument("--dataset_HF", type=str, default="HF-databases/mp-db_test", help="Path to Hugging Face dataset containing crystalline structures and optionally properties. Check README for expected format.")
+    parser.add_argument("--dataset_revision", type=str, default=None, help="Hub dataset commit to use. None uses the latest.")
     parser.add_argument("--pretrained_tokenizer_dir", type=str, default="HF-cif-tokenizer", help="Directory containing pretrained CIF tokenizer for crystal structure parsing.")
     parser.add_argument("--context_length", type=int, default=1024, help="Maximum sequence length for CIF token sequences (default: 1024 tokens which is about ~20 atoms per cell).")
     # Filters
@@ -77,14 +79,14 @@ def parse_args() -> argparse.Namespace:
     #######################
     
     # Batching
-    parser.add_argument("--train_batch_size", type=int, default=16, help="Training batch size for crystalline structure generation.")
-    parser.add_argument("--eval_batch_size", type=int, default=16, help="Evaluation batch size for model validation.")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Number of gradient accumulation steps before parameter update. Effective batch size = train_batch_size * gradient_accumulation_steps.")
+    parser.add_argument("--train_batch_size", type=int, default=16, help="Total sequences per optimiser step across all GPUs and accumulation steps.")
+    parser.add_argument("--eval_batch_size", type=int, default=16, help="Total sequences per evaluation batch across all GPUs.")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Forward passes per optimiser step to reduce memory use. Keeps the global batch size unchanged.")
 
     # Learning Rate and Optimizer
     parser.add_argument("--learning_rate", type=float, default=5e-4, help="Base learning rate for transformer training.")
     parser.add_argument("--lr_scheduler_type", type=str, default="linear", help="Learning rate scheduler type (linear, cosine, constant).")
-    parser.add_argument("--lr_scheduler_kwargs", type=dict, default={}, help="Additional keyword arguments for learning rate scheduler.")
+    parser.add_argument("--lr_scheduler_kwargs", type=json.loads, default={}, help="Scheduler options as a JSON object.")
     parser.add_argument("--warmup_steps", type=int, default=None, help="Number of warmup steps, if specified overrides warmup_ratio.")
     parser.add_argument("--warmup_ratio", type=float, default=0.02, help="Warmup ratio as percentage of total training steps.")
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="Adam optimizer beta1 parameter for momentum.")
@@ -97,6 +99,8 @@ def parse_args() -> argparse.Namespace:
     help="Optimizer type: 'adamw' (default) or 'muon' (momentum orthogonalized).")
     parser.add_argument("--muon_lr", type=float, default=0.02,
     help="Learning rate for Muon optimizer (hidden weights). Typically 10-100x higher than AdamW.")
+    parser.add_argument("--muon_lr_factor", type=float, default=None,
+    help="Set muon_lr = learning_rate * muon_lr_factor.")
     parser.add_argument("--muon_momentum", type=float, default=0.95,
     help="Momentum for Muon optimizer.")
 
@@ -110,8 +114,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pretrained_model_dir", type=str, default=None, help="Directory containing pretrained model checkpoint. Use for loading base unconditional model or another pass of conditional training.")
     parser.add_argument("--eval_strategy", type=str, default="steps", help="Evaluation strategy during training.")
     parser.add_argument("--save_strategy", type=str, default="steps", help="Checkpoint saving strategy.")
-    parser.add_argument("--eval_steps", type=int, default=50, help="Number of steps between evaluations & save points.")
+    parser.add_argument("--eval_steps", type=lambda v: float(v) if float(v) < 1 else int(float(v)), default=50, help="Steps between evaluations and saves. Values below 1 are fractions of max_steps.")
     parser.add_argument("--max_steps", type=int, default=50, help="Maximum number of training steps.")
+    parser.add_argument("--num_train_epochs", type=float, default=None, help="Passes over the packed training set, converted to max_steps. None uses max_steps.")
     parser.add_argument("--early_stopping_patience", type=int, default=5, help="Number of evaluation steps without improvement before stopping training.")
     parser.add_argument("--early_stopping_threshold", type=float, default=0.01, help="Minimum improvement required to reset early stopping patience.")
     
@@ -123,9 +128,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--greater_is_better", action="store_true", help="Whether higher values are better for the best model metric.")
     parser.add_argument("--torch_compile", action="store_true", help="Enable PyTorch 2.0+ compilation for faster training (requires PyTorch ≥2.0).")
     parser.add_argument("--fp16", action="store_true", help="Use 16-bit floating point precision to reduce memory usage.")
-    
-    # https://huggingface.co/docs/transformers/en/deepspeed
-    parser.add_argument("--deepspeed_config", type=str, default=None, help="Path to DeepSpeed configuration file for distributed training. Required for multi-GPU training.")
+    parser.add_argument("--bf16", action="store_true", help="Train in bfloat16 mixed precision.")
 
 
     # Evaluation arguments

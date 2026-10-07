@@ -87,12 +87,16 @@ def filter_long_CIFs(tokenized_dataset, context_length):
 
 
 def filter_CIFs_with_unk(tokenized_dataset, tokenizer):
-    """Remove examples with unknown tokens from dataset."""
-    
-    def filter_no_unk(example):
-        return tokenizer.unk_token_id not in example["input_ids"]
-    tokenized_dataset = tokenized_dataset.filter(filter_no_unk)
-    print(f"Removed entries with unknown tokens")
+    """Remove CIFs with unknown tokens and report removals per split."""
+    unk_id = tokenizer.unk_token_id
+    if unk_id is None:  # Skip filtering when no unknown-token ID is defined.
+        raise ValueError("filter_CIFs_with_unk needs the slow CustomCIFTokenizer, whose unk id is 370")
+
+    sizes_before = {split: len(rows) for split, rows in tokenized_dataset.items()}
+    tokenized_dataset = tokenized_dataset.filter(lambda example: unk_id not in example["input_ids"])
+
+    for split, rows in tokenized_dataset.items():
+        print(f"Removed {sizes_before[split] - len(rows)} of {sizes_before[split]} {split} entries with unknown tokens")
     return tokenized_dataset
 
 
@@ -103,18 +107,22 @@ def create_fixed_format_mask(text, tokenizer, full_length):
     tokens "[" and "]" themselves are 1.
     """
     
-    tokenized = tokenizer(text, truncation=False)
-    tokens = tokenizer.convert_ids_to_tokens(tokenized["input_ids"])
-    
+    return _fixed_mask_from_ids(tokenizer(text, truncation=False)["input_ids"], tokenizer)
+
+
+def _fixed_mask_from_ids(input_ids, tokenizer):
+    """Mask encoded IDs: 1 on and outside brackets, 0 inside."""
+    open_id, close_id = tokenizer.convert_tokens_to_ids(["[", "]"])
+
     mask = []
     inside_variable = False
-    for token in tokens:
-        if token == "[":
-            mask.append(1)
+    for token_id in input_ids:
+        if token_id == open_id:
             inside_variable = True
-        elif token == "]":
             mask.append(1)
+        elif token_id == close_id:
             inside_variable = False
+            mask.append(1)
         else:
             mask.append(0 if inside_variable else 1)
     return mask
@@ -169,7 +177,7 @@ def _process_conditions_for_numeric(examples, condition_columns, num_examples):
     return batch_condition_values
 
 def tokenize_function(examples, tokenizer, condition_columns=None, mode="unconditional"):
-    """Tokenize CIF examples with optional conditioning support."""
+    """Encode each CIF once, with optional conditioning."""
     if mode not in ["unconditional", "conditional"]:
         raise ValueError(f"Invalid mode: {mode}. Must be 'unconditional' or 'conditional'")
 
@@ -177,21 +185,17 @@ def tokenize_function(examples, tokenizer, condition_columns=None, mode="uncondi
     parsed_condition_columns = _validate_inputs(condition_columns, mode)
 
     texts = [f"{tokenizer.bos_token}\n{example}\n{tokenizer.eos_token}" for example in examples["CIF"]]
+    all_ids = tokenizer(texts, truncation=False)["input_ids"]
 
-    tokenized_output = tokenizer(
-        texts,
-        truncation=False,
-        return_special_tokens_mask=True,
-        return_attention_mask=True
-    )
-    
+    # The collator fills special_tokens_mask with zeros.
+    tokenized_output = {
+        "input_ids": all_ids,
+        "attention_mask": [[1] * len(ids) for ids in all_ids],
+        "fixed_mask": [_fixed_mask_from_ids(ids, tokenizer) for ids in all_ids],
+    }
+
     if mode == "conditional":
         batch_condition_values = _process_conditions_for_numeric(examples, parsed_condition_columns, num_examples)
         tokenized_output["condition_values"] = batch_condition_values
-    
-    # Create fixed masks
-    masks = [create_fixed_format_mask(texts[i], tokenizer, len(tokenized_output["input_ids"][i])) 
-             for i in range(num_examples)]
-    
-    tokenized_output["fixed_mask"] = masks
+
     return tokenized_output

@@ -25,13 +25,13 @@ docker compose version
 nvidia-smi
 # Verify Docker can access your GPUs
 # If successful, this will download a test image and print nvidia-smi table
-docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.6.3-base-ubuntu24.04 nvidia-smi
 
 # Optional: run Docker without sudo, but you need to re-login or reboot for membership to apply
 sudo usermod -aG docker $USER
 ```
 
-Setup (first time bringing container up, or if requirements.txt or dockerfile or system dependencies are changed):
+Run this setup before starting the container for the first time, or after changing `pyproject.toml`, `uv.lock`, the Dockerfile or system dependencies:
 
 ```bash
 # Make the env file
@@ -99,7 +99,7 @@ make api-test
 make api-test-with-integration
 
 # For Local Unit Tests activate environment
-conda activate CrystaLLM-pi_env
+source .venv/bin/activate
 # Then run tests (1 min)
 python -m tests.local.suite --cpu
 ```

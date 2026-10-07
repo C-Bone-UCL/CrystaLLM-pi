@@ -5,6 +5,7 @@ individually. Optional filtering removes CIFs longer than the context length
 and rows with unusable condition values before batching.
 """
 
+import os
 import numpy as np
 import torch
 import ast
@@ -18,7 +19,7 @@ from _utils import (
     validate_condition_values
 )
 
-NUM_PROC_TOK = 4
+NUM_PROC_TOK = int(os.environ.get("NUM_PROC_TOK", min(os.cpu_count(), 16)))  # Tokenisation workers, configurable per machine.
 MISSING_CONDITION_VALUE = -100.0
 
 np.random.seed(1)
@@ -70,9 +71,33 @@ class CustomCIFDataCollator:
     Conditional mode is detected from the features themselves, by whether `condition_values` is
     present, so the same collator serves both training modes.
     """
-    def __init__(self, tokenizer: "CustomCIFTokenizer", context_length: int) -> None:
+    def __init__(self, tokenizer: "CustomCIFTokenizer", context_length: int, pack: bool = True) -> None:
         self.tokenizer = tokenizer
         self.context_length = context_length
+        self.pack = pack  # False keeps CIFs separate for evaluation.
+
+    def _pad_unpacked(self, features: list[dict]) -> dict[str, torch.Tensor]:
+        """One CIF per row, truncated at `context_length`, with masked right-padding to the longest row."""
+        rows = [list(feature["input_ids"])[:self.context_length] for feature in features]
+        width = max(len(row) for row in rows)
+
+        def pad(values, fill):
+            values = list(values)[:self.context_length]
+            return values + [fill] * (width - len(values))
+
+        input_ids = torch.tensor([pad(row, self.tokenizer.pad_token_id) for row in rows], dtype=torch.long)
+        attention_mask = torch.tensor([pad([1] * len(row), 0) for row in rows], dtype=torch.long)
+
+        batch = {
+            "input_ids": input_ids,
+            "labels": input_ids.masked_fill(attention_mask == 0, -100),
+            "fixed_mask": torch.tensor([pad(feature["fixed_mask"], 0) for feature in features], dtype=torch.long),
+            "attention_mask": attention_mask,
+            "special_tokens_mask": torch.zeros_like(input_ids),
+        }
+        if "condition_values" in features[0]:
+            batch["condition_values"] = _pack_condition_values([feature["condition_values"] for feature in features])
+        return batch
 
     def __call__(self, features: list[dict]) -> dict[str, torch.Tensor]:
         """Pack tokenised features into a fixed-length batch.
@@ -92,6 +117,9 @@ class CustomCIFDataCollator:
             ``special_tokens_mask``. Conditional batches also contain
             ``condition_values``. Padding positions in ``labels`` are set to ``-100``.
         """
+
+        if not self.pack:
+            return self._pad_unpacked(features)
 
         # Auto-detect conditional mode based on presence of condition_values
         is_conditional = "condition_values" in features[0]
@@ -117,7 +145,7 @@ class CustomCIFDataCollator:
             feature["input_ids"] = list(feature["input_ids"])
             feature["fixed_mask"] = list(feature["fixed_mask"])
             feature["attention_mask"] = list(feature.get("attention_mask", [1]*len(feature["input_ids"])))
-            feature["special_tokens_mask"] = list(feature["special_tokens_mask"]) if "special_tokens_mask" in feature else None
+            feature["special_tokens_mask"] = list(feature.get("special_tokens_mask", [0] * len(feature["input_ids"])))
 
         # Pack sequences
         for i in range(len(features)):

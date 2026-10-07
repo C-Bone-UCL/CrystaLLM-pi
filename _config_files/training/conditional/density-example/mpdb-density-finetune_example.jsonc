@@ -26,8 +26,8 @@
 
   // Trainer Arguments
   //###################
-  "train_batch_size": 32,
-  "eval_batch_size": 32,
+  "train_batch_size": 64,
+  "eval_batch_size": 64,
   "gradient_accumulation_steps": 1,
   "learning_rate": 5e-6,
   "lr_scheduler_type": "cosine_with_min_lr",

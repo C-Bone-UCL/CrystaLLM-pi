@@ -4,6 +4,8 @@ Splitting is material-based, so all rows for one material remain in the same spl
 --valid_size 0.2` therefore produces 60/20/20 proportions, while setting both values to zero places
 all rows in the training split.
 
+With `--save_hub`, the dataset is pushed to the Hub as private. Change its visibility in the dataset's settings on Hugging Face if needed.
+
 Usage:
     ```bash
     python _utils/_preprocessing/save_dataset_to_hf.py --input_parquet clean.parquet \
@@ -162,8 +164,9 @@ if __name__ == "__main__":
     if not required_columns.issubset(df.columns):
         raise ValueError(f"The input dataframe must contain the columns: {required_columns}")
     
-    # Convert DataFrame to strings for HF compatibility
-    df = df.astype(str)
+    # Convert object columns to strings for Hub uploads, preserving numeric types.
+    obj_cols = df.select_dtypes("object").columns
+    df[obj_cols] = df[obj_cols].astype(str)
 
     # Create dataset splits
     dataset = create_dataset_splits(df, args.test_size, args.valid_size, args.duplicates)
@@ -185,5 +188,5 @@ if __name__ == "__main__":
         if '.' in dataset_name:
             dataset_name = dataset_name.split('.')[0]
         hf_repo_name = f"{args.HF_username}/{dataset_name}"
-        dataset.push_to_hub(hf_repo_name)
+        dataset.push_to_hub(hf_repo_name, private=True)
         print(f"Dataset saved to Hugging Face Hub as {hf_repo_name}")

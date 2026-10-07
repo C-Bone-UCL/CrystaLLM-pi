@@ -23,6 +23,7 @@ from _utils._generating.scoring_methods import forward_pass_logp
 
 model = None
 tokenizer = None
+init_error = None
 
 
 def setup_device(gpu_id: int) -> torch.device:
@@ -45,14 +46,14 @@ def _load_worker_model(model_class: type, model_source_path: str, model_source: 
     try:
         return model_class.from_pretrained(
             model_source_path,
-            torch_dtype=dtype,
+            dtype=dtype,
             attn_implementation="sdpa",
             **extra_kwargs,
         ).eval()
     except Exception:
         return model_class.from_pretrained(
             model_source_path,
-            torch_dtype=dtype,
+            dtype=dtype,
             **extra_kwargs,
         ).eval()
 
@@ -73,10 +74,7 @@ def init_worker(
     LOCAL_RANK`, which keeps runs reproducible while stopping every GPU from drawing the same
     samples.
     """
-    global model, tokenizer
-
-    tokenizer = init_tokenizer(pretrained_tokenizer_dir)
-    model_class = get_model_class(activate_conditionality)
+    global model, tokenizer, init_error
 
     # Determine dtype: prefer bfloat16, fall back to float16 if unsupported
     if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
@@ -86,9 +84,17 @@ def init_worker(
     else:
         dtype = torch.float32
 
-    model = _load_worker_model(model_class, model_ckpt_dir, model_source, dtype, config_overrides)
-    model.resize_token_embeddings(len(tokenizer))
-    
+    # Save the load error to prevent endless worker restarts.
+    try:
+        model = _load_worker_model(get_model_class(activate_conditionality), model_ckpt_dir, model_source, dtype, config_overrides)
+
+        # Older checkpoints keep their original vocabulary.
+        tokenizer = init_tokenizer(pretrained_tokenizer_dir, max_vocab_size=model.get_input_embeddings().num_embeddings)
+        model.resize_token_embeddings(len(tokenizer))
+    except Exception as e:
+        init_error = e
+        return
+
     # Deterministic seeding per worker
     gpu_id = int(os.environ.get("LOCAL_RANK", 0))
     worker_seed = base_seed + gpu_id
@@ -121,7 +127,9 @@ def generate_on_gpu(
     run.
     """
     global model, tokenizer
-    
+    if init_error is not None:
+        raise RuntimeError(f"Generation worker failed to load the model ({type(init_error).__name__}: {init_error})") from init_error
+
     device = setup_device(gpu_id)
     model = model.to(device)
     results = []

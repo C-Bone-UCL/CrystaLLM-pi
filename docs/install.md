@@ -2,11 +2,9 @@
 
 ## Prerequisites
 
-- Python 3.10+
-- PyTorch 2.1+
-- Conda for environment management
+- [uv](https://docs.astral.sh/uv/getting-started/installation/), which installs Python 3.12 if needed
 - Hugging Face and Weights & Biases accounts should be set up
-- (Optional but recommended) CUDA-compatible GPU
+- (Optional but recommended) NVIDIA GPU. Linux GPU installs need driver 560+ and use CUDA 12.6 wheels for x86 and aarch64
 
 
 ## Setup
@@ -16,26 +14,27 @@
 git clone https://github.com/C-Bone-UCL/CrystaLLM-pi.git
 cd CrystaLLM-pi
 
-# Create virtual environment
-conda create -n CrystaLLM-pi_env python=3.10
-conda activate CrystaLLM-pi_env
+# Create .venv and install CrystaLLM-pi and all its dependencies
+uv sync --extra all
 
-# Install CrystaLLM-pi and all its dependencies
-pip install -e ".[all]"
+# Activate the environment, or run commands with `uv run`
+source .venv/bin/activate
 ```
 
 ### Choosing what to install
 
-`[all]` installs everything. If you only need part of the toolkit, install just that part instead. It is much faster and avoids building DeepSpeed.
+`--extra all` installs everything. If you only need part of the toolkit, install just that part instead. Extras can be combined, for example `uv sync --extra train --extra metrics`.
 
 | Command | Gives you |
 |---|---|
-| `pip install -e .` | generating structures with released models |
-| `pip install -e ".[train]"` | + training and finetuning your own |
-| `pip install -e ".[api]"` | + the containerised HTTP service |
-| `pip install -e ".[metrics]"` | + VUN, stability and property scoring |
-| `pip install -e ".[notebooks]"` | + the tutorial notebooks |
-| `pip install -e ".[all]"` | everything above |
+| `uv sync` | generating structures with released models |
+| `uv sync --extra train` | + training and fine-tuning your own |
+| `uv sync --extra api` | + the containerised HTTP service |
+| `uv sync --extra metrics` | + VUN, stability and property scoring |
+| `uv sync --extra notebooks` | + the tutorial notebooks |
+| `uv sync --extra all` | everything above |
+
+To keep the environment outside the repository, set `UV_PROJECT_ENVIRONMENT=/path/to/venv` before running `uv sync`.
 
 ### API Keys Configuration
 

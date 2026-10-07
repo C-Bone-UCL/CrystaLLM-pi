@@ -35,8 +35,8 @@
   // Trainer Arguments
   //###################
   // Batching
-  "train_batch_size": 32,
-  "eval_batch_size": 32,
+  "train_batch_size": 64,
+  "eval_batch_size": 64,
   "gradient_accumulation_steps": 1,
   // Learning Rate and Optimizer
   "learning_rate": 1.0596703391605471e-06,
@@ -68,7 +68,6 @@
   "greater_is_better": false,
   "torch_compile": true,
   "fp16": true,
-  "deepspeed_config": "_config_files/deepspeed_default.json",
 
   // CodeCarbon Arguments
   //######################

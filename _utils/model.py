@@ -128,6 +128,7 @@ def _get_base_config(args: argparse.Namespace, tokenizer: "CustomCIFTokenizer") 
         bos_token_id=tokenizer.bos_token_id,
         eos_token_id=tokenizer.eos_token_id,
         pad_token_id=tokenizer.pad_token_id,
+        activation_function="gelu_pytorch_tanh",  # Fused equivalent of GPT-2's gelu_new.
     )
 
 

@@ -88,15 +88,16 @@ def check_cif(cif_str: str, check_bond_length: bool=True) -> bool:
 
 
 
-def init_tokenizer(pretrained_tokenizer_dir: str) -> CustomCIFTokenizer:
+def init_tokenizer(pretrained_tokenizer_dir: str, max_vocab_size: int | None=None) -> CustomCIFTokenizer:
     """Load the CIF tokenizer with the padding configuration required for generation.
 
     If the tokenizer has no pad token, the EOS token is used as the pad token for
-    batched generation.
+    batched generation. Use `max_vocab_size` to match an older checkpoint's vocabulary.
     """
     tokenizer = CustomCIFTokenizer.from_pretrained(
         pretrained_dir=pretrained_tokenizer_dir,
-        pad_token=TOKENIZER_PAD_TOKEN
+        pad_token=TOKENIZER_PAD_TOKEN,
+        max_vocab_size=max_vocab_size,
     )
     tokenizer.pad_token = tokenizer.pad_token or tokenizer.eos_token
     return tokenizer
@@ -117,9 +118,8 @@ def get_model_max_length(model_ckpt_dir: str, activate_conditionality: str | Non
         with open(config_path, "r") as f:
             config = json.load(f)
         n_positions = config.get("n_positions", DEFAULT_MAX_LENGTH)
-        if activate_conditionality == "Prefix":
-            # Prefix families extend wpe by n_prefix_tokens, so the text budget excludes them.
-            # PKV is deliberately NOT subtracted so legacy hub models generate identically.
+        if activate_conditionality in ("Prefix", "PKV"):
+            # Prefix tokens count towards the context limit.
             return max(n_positions - config.get("n_prefix_tokens", 0), 1)
         return n_positions
     except Exception:

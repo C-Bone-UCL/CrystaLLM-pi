@@ -135,6 +135,28 @@ class DataLoaderTests:
         # Should keep beginning of sequence
         assert batch["input_ids"][0, 0].item() == 1, "Should keep start of sequence"
     
+    def test_eval_collator_unpacked(self):
+        """With pack=False, each row holds one CIF. Right-padding is masked in attention and labels."""
+        from _dataloader import CustomCIFDataCollator
+        from _tokenizer import CustomCIFTokenizer
+
+        tokenizer = CustomCIFTokenizer.from_pretrained("HF-cif-tokenizer")
+        collator = CustomCIFDataCollator(tokenizer, context_length=256, pack=False)
+
+        # Different lengths and token IDs make accidental CIF mixing visible.
+        lengths = [50, 120, 80]
+        features = [
+            {"input_ids": [10 + i] * n, "fixed_mask": [1] * n, "attention_mask": [1] * n}
+            for i, n in enumerate(lengths)
+        ]
+        batch = collator(features)
+
+        assert batch["input_ids"].shape == (3, 120), "one row per CIF, padded to the longest"
+        for i, n in enumerate(lengths):
+            assert batch["input_ids"][i, :n].tolist() == [10 + i] * n, "a row must hold only its own CIF"
+            assert batch["attention_mask"][i].sum().item() == n
+            assert (batch["labels"][i, n:] == -100).all() and (batch["labels"][i, :n] == 10 + i).all()
+
     def test_load_data_unconditional(self):
         """Test load_data function in unconditional mode."""
         from _dataloader import load_data

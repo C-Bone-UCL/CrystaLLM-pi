@@ -12,6 +12,7 @@ import json
 
 INPUT_SPACE_GROUPS_FILE = "_utils/_tokenizer/spacegroups.txt"
 OUTPUT_VOCAB_FILE = "_utils/_tokenizer/vocabulary.json"
+LATE_SPACE_GROUPS = ["P6"]  # appended after the special tokens (P6_sg = 377)
 
 # generates the vocabulary for the tokenizer
 def generate_vocabulary():
@@ -75,7 +76,11 @@ def generate_vocabulary():
     with open(INPUT_SPACE_GROUPS_FILE, "r") as f:
         for line in f:
             space_groups.append(line.strip())
-    tokens.extend([sg+'_sg' for sg in space_groups])
+    tokens.extend([sg+'_sg' for sg in space_groups if sg not in LATE_SPACE_GROUPS])
+
+    # Special tokens, then space groups added after release, so earlier ids never move
+    tokens.extend(["<unk>", "<pad>", "<bos>", "<eos>", "[", "]", "<prop>"])
+    tokens.extend([sg+'_sg' for sg in LATE_SPACE_GROUPS])
 
     vocab = {token: i for i, token in enumerate(tokens)}
 

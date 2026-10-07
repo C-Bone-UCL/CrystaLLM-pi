@@ -16,12 +16,15 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import sys
 from functools import lru_cache
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from huggingface_hub import HfApi
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -59,6 +62,10 @@ DO_SAMPLE = True
 TOP_K = 15
 TOP_P = 0.95
 DEFAULT_Z_LIST = [1, 2, 3, 4, 6]
+SIDECAR_SAMPLING_KEYS = (
+    "do_sample", "temperature", "top_k", "top_p", "gen_max_length", "num_return_sequences",
+    "max_return_attempts", "target_valid_cifs", "scoring_mode", "screening_profile", "level",
+)
 
 
 @lru_cache(maxsize=1)
@@ -338,6 +345,28 @@ def write_outputs(df_final: pd.DataFrame, args: argparse.Namespace) -> None:
         print(f"\nProcess Complete\nSaved {len(df_final)} structures to: {args.output_parquet}")
 
 
+def write_run_metadata(args: argparse.Namespace) -> None:
+    """Write the model commit and sampling settings to a JSON file next to the outputs."""
+    # The Hub commit pins the exact weights, None for a local checkpoint or offline
+    try:
+        revision = HfApi().model_info(args.hf_model_path).sha
+    except Exception:
+        revision = None
+
+    meta = {
+        "model": args.hf_model_path,
+        "revision": revision,
+        "sampling": {k: getattr(args, k, None) for k in SIDECAR_SAMPLING_KEYS},
+        "seed": getattr(args, "seed", 1),  # generate_cifs falls back to 1, each GPU worker adds its id
+        "num_workers_gpu": args.num_workers_gpu,
+    }
+
+    # out.parquet gets out.json, a CIF directory gets <dir>.json beside it
+    path = Path(args.output_parquet or args.output_cif_dir.rstrip("/")).with_suffix(".json")
+    path.write_text(json.dumps(meta, indent=2))
+    print(f"Run metadata saved to: {path}")
+
+
 def main() -> None:
     """Parse arguments and run the generation pipeline."""
     parser = argparse.ArgumentParser()
@@ -438,6 +467,7 @@ def main() -> None:
     )
 
     write_outputs(df_final, args)
+    write_run_metadata(args)
 
 
 if __name__ == "__main__":

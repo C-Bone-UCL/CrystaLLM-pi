@@ -16,14 +16,17 @@ import os
 import sys
 from tqdm import tqdm
 from multiprocessing import Pool
-from functools import partial 
+from functools import partial
+from pymatgen.io.cif import CifWriter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from _utils import (
+    cif_parser,
     extract_space_group_symbol,
     replace_symmetry_operators,
     remove_atom_props_block
 )
+from _utils.validity import is_formula_consistent, is_space_group_consistent
 
 
 def validate_cif_numerics(cif: str) -> str:
@@ -55,7 +58,17 @@ def postprocess(cif: str) -> str:
     except Exception:
         # Skip space group processing if CIF is malformed
         pass
-        
+
+    # Rewrite the tolerant parse so default readers count atoms correctly.
+    # Only rewrite consistent CIFs, since new metadata could hide failures.
+    try:
+        if is_formula_consistent(cif) and is_space_group_consistent(cif):
+            structure = cif_parser(cif).parse_structures(primitive=False)[0]
+            cif = str(CifWriter(structure, symprec=0.1))
+
+    except Exception:
+        pass  # Unparseable CIFs remain unchanged and fail validation.
+
     # Post-clean formatting issues while preserving newlines
     # Replace multiple spaces with single space, but preserve newlines
     cif = re.sub(r'(?<=\S)[ \t]+(?=\S)', ' ', cif)

@@ -26,6 +26,8 @@ Input data should be a pandas DataFrame saved as Parquet file. To train a model 
 * `<Property Columns>`: Target properties (e.g., "Bandgap (eV)", "Density (g/cm^3)")
 * `condition_vector`: Pre-computed condition vectors (for XRD studies)
 
+> The scripts in `_utils/_datasets/` download and prepare Alex-MP-20, MP-20, LeMat-BulkUnique and stratified CHILI-100K with their splits. CHILI-100K needs about 70 GB of free space under `--raw_dir`.
+
 ### Step 2: Deduplication and Filtering (Optional)
 
 **Script:** `_utils/_preprocessing/deduplicate.py` - Removes duplicate structures and filters invalid entries based on chemical formula and space group, keeping the structure with lowest volume per formula unit.
@@ -121,7 +123,18 @@ python _utils/_preprocessing/save_dataset_to_hf.py \
 
 All training should be done via configuration files (`.jsonc` format). These files specify model architecture, hyperparameters, data paths, and training settings. See example configs in `_config_files/training/` and review [`_args.py`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/_args.py). for all available parameters.
 
-> The `Muon` optimiser is now available for training, see [this blog post](https://kellerjordan.github.io/posts/muon/) for details. Muon does not work with deepspeed. Leave the deepspeed configuration file out and it runs, multi-GPU training included. In our internal checks Muon sped up and stabilised training with no performance trade-off.
+> The `Muon` optimiser is available for training. See [this blog post](https://kellerjordan.github.io/posts/muon/) for details. In our internal checks, Muon made training faster and more stable without reducing model performance.
+
+**Training settings:**
+
+* `train_batch_size` is the number of training sequences per optimiser step across all GPUs and gradient accumulation steps. It must be divisible by the number of GPUs multiplied by `gradient_accumulation_steps`. `eval_batch_size` must be divisible by the number of GPUs.
+* Multi-GPU training requires `torchrun --nproc_per_node=N`. For single-GPU training with `python`, use `CUDA_VISIBLE_DEVICES` to select one GPU. Training no longer runs with DeepSpeed. Older configs containing `deepspeed_config` are rejected.
+* Set the training duration with `max_steps` or `num_train_epochs`. Set `eval_steps: 0.05` to evaluate and save every 5% of training. Set `early_stopping_patience: 0` to disable early stopping.
+* Restarting with the same `output_dir` resumes from its newest checkpoint, including the optimiser and scheduler state. Use a new output folder for fine-tuning.
+* `--bf16` enables bfloat16 mixed precision on supported GPUs. `--dataset_revision` selects a Hub dataset commit. The commit used is recorded in `training_args.json`.
+* `eval_loss` averages the per-token loss within each validation CIF, then averages across CIFs. It excludes the format penalty and does not depend on batch size. It is not directly comparable with losses from v2.0.0.
+* For W&B sweeps, `--muon_lr_factor` sets the Muon learning rate as a multiple of `learning_rate`. `--lr_scheduler_kwargs` accepts scheduler settings as a JSON object. Sweep runs save to `<output_dir>/<sweep id>/<run id>/`, keeping their checkpoints separate.
+* `HF_DATASETS_CACHE` sets the dataset cache folder, so several runs can share one cache. Without it, each run caches in a `.cache` folder next to its `output_dir`. `NUM_PROC_TOK` sets the number of tokenisation processes. The default is the CPU count, up to 16.
 
 <details markdown>
 <summary>Base model training CLI example</summary>

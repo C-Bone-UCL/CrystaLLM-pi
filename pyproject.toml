@@ -4,24 +4,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "crystallm-pi"
-version = "2.0.0"
+version = "2.1.0"
 description = "A Transformer-based model for property-guided crystal structure generation with containerized API"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 authors = [{ name = "Cyprien Bone", email = "cyprien.bone.24@ucl.ac.uk" }]
 
-# Floors, not exact pins: this is a library, and hard pins make it uninstallable alongside
-# anything else. requirements.txt keeps the exact versions we develop and test against.
 dependencies = [
-  "torch>=2.5.1",
-  "transformers>=4.48.0,<4.52",
-  "tokenizers>=0.21.0",
-  "datasets>=3.2.0",
-  "huggingface_hub>=0.26",
-  "pymatgen>=2025.1.9",
-  "numpy>=1.26.4,<2",
-  "pandas>=2.2.3",
+  "torch>=2.13",
+  "transformers>=4.57,<5",
+  "tokenizers>=0.22",
+  "datasets>=5.0.1",
+  "huggingface_hub>=0.36,<1.0",
+  "pymatgen>=2025.10.7,<2026",
+  "numpy>=2",
+  "pandas>=3",
   "pyarrow>=15",
   "scipy>=1.11",
   "matplotlib>=3.8",
@@ -32,16 +30,13 @@ dependencies = [
   "requests>=2.31",
 ]
 
-# `metrics` carries a direct git reference, which is legal for a source or GitHub install but
-# is rejected by PyPI. The documented install is clone-based and the package is not published
-# to PyPI, so this is deliberate. Publishing there later means vendoring or dropping BAWL.
 [project.optional-dependencies]
 train = [
-  "accelerate>=1.2.1",
-  "wandb>=0.25.0",
-  "deepspeed>=0.16.3",
-  "codecarbon>=2.8.2",
-  "muon-optimizer>=0.1.0",
+  "accelerate>=1.15",
+  "wandb>=0.30",
+  "codecarbon>=3.3",
+  "h5py>=3",
+  "muon-optimizer @ git+https://github.com/KellerJordan/Muon@857d1adc159e098212f828d927460782d3da59e9",
 ]
 api = [
   "fastapi>=0.115.5",
@@ -49,13 +44,14 @@ api = [
   "pydantic>=2",
 ]
 metrics = [
-  "mace-torch>=0.3.13",
-  "smact>=3.0.1",
-  "material-hasher @ git+https://github.com/lematerial/material-hasher.git",
+  "mace-torch>=0.3.16",
+  "smact>=4",
+  "material-hasher @ git+https://github.com/lematerial/material-hasher.git@b3b33e4f8a57e6bc788c0c9facd3e6b55c153505",
 ]
 notebooks = [
   "ipywidgets>=8.1.6",
   "jarvis-tools>=2024.10.30",
+  "ipykernel>=6",
 ]
 docs = [
   "mkdocs>=1.6",
@@ -93,3 +89,14 @@ include = ["_models*", "_utils*"]
 # CrystaLLM-pi can only generate when run from the repo root. See resolve_tokenizer_dir.
 "_utils" = ["model_registry.json", "HF-cif-tokenizer/*"]
 
+# CUDA 12.6 wheels: the PyPI default needs driver 580+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv]
+constraint-dependencies = ["torch==2.13.*"]

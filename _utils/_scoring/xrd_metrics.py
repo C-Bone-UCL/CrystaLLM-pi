@@ -73,8 +73,9 @@ def smact_validity(comp, count, use_pauling_test=True, include_alloys=True):
         
     for ox_states in itertools.product(*ox_combos):
         stoichs = [(c,) for c in count]
-        cn_e, cn_r = smact.neutral_ratios(
-            ox_states, stoichs=stoichs, threshold=threshold)
+        # SMACT 4+: ratios. SMACT 3: (bool, ratios).
+        ratios = smact.neutral_ratios(ox_states, stoichs=stoichs, threshold=threshold)
+        cn_e = bool(ratios)
         if cn_e:
             if use_pauling_test:
                 try:

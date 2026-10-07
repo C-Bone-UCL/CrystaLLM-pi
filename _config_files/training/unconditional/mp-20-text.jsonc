@@ -22,8 +22,8 @@
 
   // Trainer Arguments
   //###################
-  "train_batch_size": 32,
-  "eval_batch_size": 32,
+  "train_batch_size": 64,
+  "eval_batch_size": 64,
   "gradient_accumulation_steps": 1,
   "learning_rate": 0.002,
   "lr_scheduler_type": "cosine_with_min_lr",
@@ -56,7 +56,6 @@
   "data_seed": 1,
   "load_best_model_at_end": true,
   "torch_compile": true,
-  "deepspeed_config": "_config_files/deepspeed_default.json",
 
   // CodeCarbon
   "codecarbon": true,

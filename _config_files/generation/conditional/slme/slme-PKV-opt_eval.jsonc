@@ -1,11 +1,11 @@
 {
-  "activate_conditionality": "PKV",
+  "activate_conditionality": "Prefix",
   "gen_max_length": 1024,
   "do_sample": true,
   "top_k": 50,
   "top_p": 0.95,
   "temperature": 1.0,
-  "model_ckpt_dir": "model_ckpts/mpdb_slme/PKV-opt/checkpoint-6250",
+  "model_ckpt_dir": "model_ckpts/mpdb_slme/prefix-opt",
   "num_return_sequences": 5,
   "max_return_attempts": 20000,
   "target_valid_cifs": 0,

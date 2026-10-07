@@ -615,3 +615,53 @@ class ModelTests:
         
         assert outputs.loss is not None, "Model should compute loss when labels provided"
         assert outputs.loss.item() > 0, "Loss should be positive"
+
+    def test_generate_matches_teacher_forcing(self):
+        """Cached generation scores match a conditioned forward pass for every conditional model.
+
+        Compare scores because matching tokens can hide a lost condition.
+        """
+        from _models.PKV_model import PKVGPT, PKVGPT2Config
+        from _models.Prefix_model import PrefixGPT, PrefixGPT2Config
+        from _models.Slider_model import SliderGPT, SliderGPT2Config
+        from _models.Residual_model import ResidualGPT, ResidualGPT2Config
+
+        base = dict(vocab_size=100, n_positions=128, n_embd=64, n_layer=2, n_head=4)
+        prefix = dict(n_input_vector=2, n_prefix_tokens=4, n_hidden_cond=32)
+        slider = dict(slider_on=True, slider_n_variables=2, slider_n_hidden=32, slider_n_heads_sharing_slider=2)
+        families = {
+            "PKV": (PKVGPT, PKVGPT2Config(**base, **prefix)),
+            "Prefix": (PrefixGPT, PrefixGPT2Config(**base, **prefix)),
+            "Slider": (SliderGPT, SliderGPT2Config(**base, **slider)),
+            "Residual": (ResidualGPT, ResidualGPT2Config(**base, **slider)),
+        }
+
+        prompt = torch.tensor([[1, 2, 3, 4, 5]])
+        conditions = [torch.tensor([[0.2, 0.9]]), torch.tensor([[0.8, 0.1]])]
+
+        for name, (model_class, config) in families.items():
+            torch.manual_seed(0)
+            model = model_class(config).eval()
+
+            # Zero-initialised condition paths would hide a lost condition.
+            with torch.no_grad():
+                for p in model.parameters():
+                    p.normal_(0, 0.2)
+
+            step_scores = []
+            for cond in conditions:
+                with torch.no_grad():
+                    out = model.generate(
+                        input_ids=prompt, attention_mask=torch.ones_like(prompt), condition_values=cond,
+                        max_new_tokens=8, do_sample=False, output_scores=True, return_dict_in_generate=True,
+                        pad_token_id=0,
+                    )
+                    scores = torch.stack(out.scores, dim=1)[0]
+
+                    full = model(input_ids=out.sequences, attention_mask=torch.ones_like(out.sequences), condition_values=cond)
+                    reference = full.logits[0, prompt.shape[1] - 1:-1]
+
+                assert torch.allclose(scores, reference, atol=1e-4), f"{name}: generate() scores drift from teacher forcing by {(scores - reference).abs().max():.2e}"
+                step_scores.append(scores)
+
+            assert not torch.allclose(step_scores[0], step_scores[1], atol=1e-3), f"{name}: generate() ignores condition_values"

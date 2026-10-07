@@ -30,3 +30,5 @@ API_keys.jsonc
 **/.env.*
 /*.pem
 /*.key
+/.tmp/
+/.venv/

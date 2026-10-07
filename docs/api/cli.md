@@ -20,7 +20,10 @@ Training is configuration-driven. A JSONC file provides the base configuration a
 
 Prepare datasets through the preprocessing pipeline.
 
-::: _utils._preprocessing.cifs_zip_to_parquet
+::: _utils._datasets.mattergen
+::: _utils._datasets.lemat
+::: _utils._datasets.chili
+::: _utils._datasets.crystallm
 ::: _utils._preprocessing.deduplicate
 ::: _utils._preprocessing.cleaning
 ::: _utils._preprocessing.calculate_theor_xrd

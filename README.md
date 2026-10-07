@@ -80,12 +80,11 @@ Full documentation: **https://c-bone-ucl.github.io/CrystaLLM-pi/**, quick links:
 ```bash
 git clone https://github.com/C-Bone-UCL/CrystaLLM-pi.git
 cd CrystaLLM-pi
-conda create -n CrystaLLM-pi_env python=3.10
-conda activate CrystaLLM-pi_env
-pip install -e ".[all]"
+uv sync --extra all
+source .venv/bin/activate
 ```
 
-Lighter installs (generation only, training only, API only), prerequisites and API key configuration are on the [installation page](https://c-bone-ucl.github.io/CrystaLLM-pi/install/).
+See the [installation page](https://c-bone-ucl.github.io/CrystaLLM-pi/install/) for prerequisites, installing uv, lighter installs and API key setup.
 
 ## Quick Start
 

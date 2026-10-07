@@ -1,49 +1,33 @@
-# Stage 1: Build stage with Python slim
-FROM python:3.10-slim AS builder
+# Stage 1: Build environment
+FROM ghcr.io/astral-sh/uv:0.8-bookworm-slim AS builder
 
-# Set working directory
-WORKDIR /app
+ENV UV_PYTHON_INSTALL_DIR=/opt/python \
+    UV_PYTHON_PREFERENCE=only-managed \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir --ignore-installed --prefix=/install -r requirements.txt
-
-# Set PATH to include installed packages for subsequent pip commands
-ENV PATH="/install/bin:$PATH"
-ENV PYTHONPATH="/install/lib/python3.10/site-packages"
-
-# Copy application code
-COPY . .
-
-# Install the application package with every extra. material-hasher and muon-optimizer are
-# declared in pyproject.toml, so they no longer need their own pip commands here.
-RUN pip install --no-cache-dir --prefix=/install ".[all]"
-
-# Stage 2: Runtime stage with CUDA
-FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
-
-# Install Python 3.10
-RUN apt-get update && apt-get install -y \
-    python3.10 \
-    python3-pip \
-    python-is-python3 \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -s /usr/bin/python3.10 /usr/local/bin/python3.10
-
-# Set working directory
 WORKDIR /app
 
-# Copy Python packages from builder
-COPY --from=builder /install /usr/local
+COPY pyproject.toml uv.lock README.md LICENSE ./
+RUN uv sync --locked --extra all --no-install-project --python 3.12
 
-# Copy application code
+COPY . .
+RUN uv sync --locked --extra all --python 3.12
+
+# Stage 2: Runtime
+FROM nvidia/cuda:12.6.3-runtime-ubuntu24.04
+
+COPY --from=builder /opt/python /opt/python
+COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /app /app
+
+WORKDIR /app
 
 # Create directories for data and outputs
 RUN mkdir -p /app/data /app/outputs /tmp/.cache /tmp/triton-cache
@@ -51,9 +35,9 @@ RUN mkdir -p /app/data /app/outputs /tmp/.cache /tmp/triton-cache
 # Ensure docker entrypoint is executable
 RUN chmod +x /app/docker/entrypoint.sh
 
+ENV PATH=/opt/venv/bin:$PATH
 ENV MPLCONFIGDIR=/app
 ENV HF_HOME=/tmp/.cache
-ENV PYTHONPATH=/usr/local/lib/python3.10/site-packages
 ENV TRITON_CACHE_DIR=/tmp/triton-cache
 
 # Expose API port

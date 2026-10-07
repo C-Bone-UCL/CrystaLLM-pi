@@ -7,9 +7,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Models
+
+* **Conditional models on transformers 4.57**: PKV, Prefix, Slider and Residual now work with transformers 4.57. Released checkpoints load unchanged and reproduce their v2.0.0 logits and greedy generations. Sampling with a fixed seed gives different results with the new PyTorch version.
+* **`P6` space-group token**: added to the tokenizer. Existing checkpoints keep their original vocabulary for generation and fine-tuning.
+
+### Generation
+
+* **Run metadata**: `_load_and_generate.py` now saves the model, its Hub commit, sampling settings and seed in a JSON file alongside the output.
+* **Generation failures**: fixed a PKV crash when a sample reached the full context length, and a hang when a generation worker could not load its model.
+* **Fixed: run folders load their best checkpoint**: setting `model_ckpt_dir` or `pretrained_model_dir` to a training run folder now loads the best checkpoint recorded by the Trainer, or else the latest. Before, it loaded the earliest saved checkpoint.
+
+### Post-processing
+
+* **Rounded special positions**: generated CIFs are now read at site tolerance `1e-3`, preventing positions rounded to four decimals from being counted as duplicate atoms.
+
+### Training
+
+* **Breaking: global batch sizes and DDP**: `train_batch_size` and `eval_batch_size` now apply to the whole run. To migrate an older config, multiply its batch sizes by the number of GPUs used for training. Multi-GPU training now requires `torchrun` and no longer runs with DeepSpeed.
+* **bf16 training**: `--bf16` enables bfloat16 mixed precision.
+* **Automatic resume**: restarting with the same `output_dir` resumes from its newest checkpoint. Use a new output folder for fine-tuning. Muon checkpoints now also resume correctly on multiple GPUs.
+* **Evaluation on whole CIFs**: `eval_loss` now averages the per-token loss within each CIF, then averages across CIFs, without the format penalty. It no longer depends on batch size and is not directly comparable with earlier runs.
+* **Training controls**: `--num_train_epochs` sets the epoch count. `eval_steps: 0.05` evaluates and saves every 5% of training. `early_stopping_patience: 0` disables early stopping.
+
 ### Preprocessing
 
-* **More robust CIF cleaning**: cleaning now writes `-0.0000` as `0.0000`, and wraps fractional coordinates of `1.0000` to `0.0000`.
+* **Consistent CIF cleaning**: cleaning now writes full occupancies as `1.0`, writes `-0.0000` as `0.0000`, and wraps fractional coordinates of `1.0000` to `0.0000`.
+* **Dataset builders**: new scripts in `_utils/_datasets/` download and prepare MatterGen's Alex-MP-20 and MP-20, LeMat-BulkUnique with Alex-MP-20 validation materials excluded, and the stratified CHILI-100K split used for the XRD models.
+
+### Packaging
+
+* **Breaking: install with uv**: `uv sync --extra all` replaces `pip install -e ".[all]"`, and `uv.lock` replaces `requirements.txt`. CrystaLLM-pi now uses Python 3.12, PyTorch 2.13 and transformers 4.57 on x86 and aarch64. Linux GPU installs need NVIDIA driver 560+.
 
 
 ## [v2.0.0] - 2026-09-29

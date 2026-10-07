@@ -212,7 +212,7 @@ class PreprocessingEndpointTests(IntegrationMixin):
         })
         assert response.status_code == 200
         data = response.json()
-        assert "cifs_zip_to_parquet" in data["command"]
+        assert "_utils._datasets.crystallm" in data["command"]
         assert "--input_tarballs" in data["command"]
         assert "--output_parquet" in data["command"]
         assert "--database_name" in data["command"]
