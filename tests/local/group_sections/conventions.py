@@ -18,7 +18,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-SKIP_DIRS = {"build", "outputs", "data", "__pycache__", ".git", ".tmp", "wandb",
+SKIP_DIRS = {"build", "outputs", "data", "__pycache__", ".git", ".tmp", "wandb", ".venv",
              "model_ckpts", "crystallm_pi.egg-info", "site", "dist", "HF-databases"}
 
 
