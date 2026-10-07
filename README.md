@@ -90,13 +90,13 @@ See the [installation page](https://c-bone-ucl.github.io/CrystaLLM-pi/install/) 
 
 Use with pre-trained models from HuggingFace Hub for direct crystal structure generation. The `_load_and_generate.py` script handles downloading models and generating valid CIF structures with desired properties.
 
-> **Note**: Properties (Conditions, Spacegroups, XRD files, Z values) map strictly 1:1 to the reduced formulas provided in `--reduced_formula_list`.
+> **Note**: Properties (Conditions, Spacegroups, XRD files, Z values) map 1:1 to the reduced formulas provided in `--reduced_formula_list`.
 > 
 > **Outputs**: Outputs can either be saved as a dataframe in a `.parquet` using the `--output_parquet` flag, or as individual CIFs in a directory using the `--output_cif_dir` flag.
 
 **Recovery: known composition and space group, no property**
 
-Generate Ti2O4 (TiO2 with Z=2) in space group P4_2/mnm. The model samples up to 2 batches of 5 and keeps 5 valid structures.
+Generate Ti2O4 (TiO2 with Z=2) with space group P4_2/mnm. The model samples up to 2 batches of 5 and keeps 5 valid structures.
 
 ```bash
 python _load_and_generate.py \
@@ -113,7 +113,7 @@ python _load_and_generate.py \
 
 **Discovery: property target only**
 
-Generate structures with no composition given, asking the SLME model for a photovoltaic efficiency of 25%. The model chooses the elements, stoichiometry and space group, sampling up to 2 batches of 5 and keeping 5 valid structures.
+Generate structures with no composition given, asking the SLME model for a photovoltaic efficiency of 25%. The model chooses the elements, stoichiometry and space group,. It samples up to 2 batches of 5 until 5 valid structures are produced.
 
 ```bash
 python _load_and_generate.py \
@@ -130,7 +130,7 @@ To understand what each flag does and see more examples, see the documentation [
 
 ## Available Pre-trained Models
 
-Each released model exists because a paper study or tutorial produced it. This table keeps track of all available models in the zoo as they come out. 
+This table keeps track of all available models in the zoo as they come out. 
 
 | Model | Class | Conditioning | Origin |
 |---|---|---|---|
@@ -144,16 +144,16 @@ Each released model exists because a paper study or tutorial produced it. This t
 | `c-bone/CrystaLLM-pi_Mattergen-XRD` | Residual | XRD peak-picked | XRD recovery studies ([X_XRD_* notebooks](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/tree/main/notebooks) in the paper repo) |
 | `c-bone/CrystaLLM-pi_Chili100K-XRD` | Residual | XRD peak-picked | Model used in the paper's [CHILI-100K recovery study](https://github.com/C-Bone-UCL/CrystaLLM-pi-paper/blob/main/notebooks/X_XRD_chili100k.ipynb) in the paper repo |
 
-Model metadata (class, conditions, normalization) lives in [`_utils/model_registry.json`](_utils/model_registry.json). To generate with a model that is not in the table, you just pass a JSON file with the same schema via `--model_registry`. [`notebooks/T1_finetune_density_example.ipynb`](notebooks/T1_finetune_density_example.ipynb) walks through that full loop (finetune a density model, upload it, register it, generate with it).
+Model metadata (class, conditions, normalization) is in [`_utils/model_registry.json`](_utils/model_registry.json). To generate with a model that is not in the table, you just pass a JSON file with the same schema via `--model_registry`. [`notebooks/T1_finetune_density_example.ipynb`](notebooks/T1_finetune_density_example.ipynb) walks through that full loop (finetune a density model, upload it, register it, generate with it).
 
-The conditioning mechanism behind each class is described on the [models page](https://c-bone-ucl.github.io/CrystaLLM-pi/models/).
+The conditioning mechanism for each class is described on the [models page](https://c-bone-ucl.github.io/CrystaLLM-pi/models/).
 
 ## Tutorial Notebooks
 
 Four notebooks in [`notebooks/`](notebooks/) cover the maintained workflows end to end:
 
-* [`T1_finetune_density_example.ipynb`](notebooks/T1_finetune_density_example.ipynb): finetune a base model on your own property dataset, push it to the Hub, register it, and generate with it
-* [`T2_load_and_generate.ipynb`](notebooks/T2_load_and_generate.ipynb): generate structures with the released Hub models (courtesy of [Joley Lin](https://github.com/yhjollin/))
+* [`T1_finetune_density_example.ipynb`](notebooks/T1_finetune_density_example.ipynb): finetune a base model on your own property dataset, push it to the Hub, register it, and generate
+* [`T2_load_and_generate.ipynb`](notebooks/T2_load_and_generate.ipynb): generate structures with the released Hub models (from [Joley Lin](https://github.com/yhjollin/))
 * [`T3_API_density_example.ipynb`](notebooks/T3_API_density_example.ipynb): predict density for a composition through the containerised API
 * [`T4_SLME.ipynb`](notebooks/T4_SLME.ipynb): discover a material with a target photovoltaic efficiency
 
@@ -161,7 +161,7 @@ Customising the tokenizer is covered on the [tutorials page](https://c-bone-ucl.
 
 ## Citation
 
-Please cite the following when using this work: ["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299)
+Please cite the following when using this code: ["Discovery and recovery of crystalline materials with property-conditioned transformers"](https://arxiv.org/pdf/2511.21299)
 
 ```
 @misc{bone2026discoveryrecoverycrystallinematerials,
