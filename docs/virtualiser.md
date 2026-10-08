@@ -1,9 +1,8 @@
 # Virtual Crystal Generation (Post-processing)
 
-After generating ordered CIF structures, you can convert them to disordered virtual crystals using the [`virtualiser`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/_utils/_virtualiser/virtualiser.py) utility. This replaces specified element groups with fractional occupancies at shared sites and promotes the structure to its higher-symmetry parent with spglib. Useful for comparing against experimental diffraction data or estimating a disordered structure candidate. Each `virtual_pairs` entry lists two or more elements to merge onto one shared sublattice, for example `[Mo, Ta, W]` collapses an ordered ternary alloy cell into a single mixed-occupancy solid solution.
+After generating ordered CIF structures, you can convert them to disordered crystals using the [`virtualiser`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/_utils/_virtualiser/virtualiser.py) script. This replaces specified element groups with fractional occupancies at shared sites and promotes the structure to its higher-symmetry parent with spglib. Each `virtual_pairs` entry lists two or more elements to merge onto one shared sublattice.
 
-<details markdown>
-<summary>Example Usage and Config</summary>
+## Example Usage and Config
 
 **Config file (YAML):**
 
@@ -33,7 +32,3 @@ python _utils/_virtualiser/virtualiser.py \
     --config config.yaml \
     --out outputs/Mg3ZnO4_virtual.cif
 ```
-
-</details>
-
-<br>

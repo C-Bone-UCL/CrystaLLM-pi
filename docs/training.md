@@ -3,7 +3,7 @@
 !!! tip "Run it in a notebook"
     [`T1_finetune_density_example.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T1_finetune_density_example.ipynb) runs this pipeline end to end on a density dataset: prepare the data, finetune, push to the Hub, register, generate. [`T4_SLME.ipynb`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/notebooks/T4_SLME.ipynb) does the same for a photovoltaic efficiency target and screens the output.
 
-Complete pipeline for training your own models from data preprocessing to evaluation. All training and generation parameters and options are defined in [`_args.py`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/_args.py). Training & generating should be done via configuration files (`.jsonc` format) which specify all necessary parameters.
+On this page is the complete pipeline for training models. All parameters and options are defined in [`_args.py`](https://github.com/C-Bone-UCL/CrystaLLM-pi/blob/main/_args.py).
 
 ## Data Processing Pipeline
 
@@ -127,16 +127,14 @@ All training should be done via configuration files (`.jsonc` format). These fil
 
 > The `Muon` optimiser is available for training. See [this blog post](https://kellerjordan.github.io/posts/muon/) for details. In our internal checks, Muon made training faster and more stable without reducing model performance.
 
-**Training settings:**
+**Training behavior to be aware of:**
 
-* `train_batch_size` is the number of training sequences per optimiser step across all GPUs and gradient accumulation steps. It must be divisible by the number of GPUs multiplied by `gradient_accumulation_steps`. `eval_batch_size` must be divisible by the number of GPUs.
-* Multi-GPU training requires `torchrun --nproc_per_node=N`. For single-GPU training with `python`, use `CUDA_VISIBLE_DEVICES` to select one GPU. Training no longer runs with DeepSpeed. Older configs containing `deepspeed_config` are rejected.
-* Set the training duration with `max_steps` or `num_train_epochs`. Set `eval_steps: 0.05` to evaluate and save every 5% of training. Set `early_stopping_patience: 0` to disable early stopping.
-* Restarting with the same `output_dir` resumes from its newest checkpoint, including the optimiser and scheduler state. Use a new output folder for fine-tuning.
-* `--bf16` enables bfloat16 mixed precision on supported GPUs. `--dataset_revision` selects a Hub dataset commit. The commit used is recorded in `training_args.json`.
-* `eval_loss` averages the per-token loss within each validation CIF, then averages across CIFs. It excludes the format penalty and does not depend on batch size. It is not directly comparable with losses from v2.0.0.
-* For W&B sweeps, `--muon_lr_factor` sets the Muon learning rate as a multiple of `learning_rate`. `--lr_scheduler_kwargs` accepts scheduler settings as a JSON object. Sweep runs save to `<output_dir>/<sweep id>/<run id>/`, keeping their checkpoints separate.
-* `HF_DATASETS_CACHE` sets the dataset cache folder, so several runs can share one cache. Without it, each run caches in a `.cache` folder next to its `output_dir`. `NUM_PROC_TOK` sets the number of tokenisation processes. The default is the CPU count, up to 16.
+* `train_batch_size` is the global batch size. Each GPU processes `train_batch_size / (GPUs × gradient_accumulation_steps)` sequences per forward pass, so it needs to divide exactly. This way it's device and compute power agnostic.
+* Multi-GPU training requires `torchrun --nproc_per_node=N`. For single-GPU training with `python`, use `CUDA_VISIBLE_DEVICES` to select one GPU.
+* We can now restart a run if it crashed or stopped for example. If you specify the same `output_dir` in the config, training picks up where it left off including optimizer state.
+* `eval_loss` changed in `v2.1.0`, it now averages the per-token loss within each validation CIF, then averages across CIFs. (so CIFs not stacked like in training and we dont add the fixed format loss term)
+* `HF_DATASETS_CACHE` sets the dataset cache folder, so several runs can share one cache. If not set, you get a `.cache` folder next to `output_dir`. 
+* You can set the `NUM_PROC_TOK` environment variable to set the number of tokenisation processes. Default is the CPU count capped at 16.
 
 <details markdown>
 <summary>Base model training CLI example</summary>

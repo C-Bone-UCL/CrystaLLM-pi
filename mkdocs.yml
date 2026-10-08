@@ -91,7 +91,7 @@ nav:
   - Installation: install.md
   - Quickstart: quickstart.md
   - Models: models.md
-  - Training from scratch: training.md
+  - Train, generate & evaluate: training.md
   - Virtual crystals: virtualiser.md
   - API service: api-service.md
   - Tutorials: tutorials.md

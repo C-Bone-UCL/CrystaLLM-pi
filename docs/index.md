@@ -23,10 +23,10 @@ This repo includes the package, tutorials, documentation and a containerised API
 | Install the package | [Installation](install.md) | |
 | Generate with a released model | [Quickstart](quickstart.md) | [T2](tutorials.md) |
 | Understand the conditional families | [Models](models.md) | |
-| Finetune on your own property | [Training from scratch](training.md) | [T1](tutorials.md) |
+| Finetune on your own property | [Train, generate & evaluate](training.md) | [T1](tutorials.md) |
 | Recover a structure from XRD peaks | [Quickstart](quickstart.md) | |
 | Run it as an HTTP service | [API service](api-service.md) | [T3](tutorials.md) |
-| Screen for a target property | [Training from scratch](training.md) | [T4](tutorials.md) |
+| Screen for a target property | [Train, generate & evaluate](training.md) | [T4](tutorials.md) |
 | Look up a function | [API reference](api/cli.md) | |
 
 ## Reproducing the paper
