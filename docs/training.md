@@ -27,6 +27,8 @@ Input data should be a pandas DataFrame saved as Parquet file. To train a model 
 * `condition_vector`: Pre-computed condition vectors (for XRD studies)
 
 > The scripts in `_utils/_datasets/` download and prepare Alex-MP-20, MP-20, LeMat-BulkUnique and stratified CHILI-100K with their splits. CHILI-100K needs about 70 GB of free space under `--raw_dir`.
+>
+> The scripts write CIFs in the v2.1.0 format, so their output does not match the original Hub datasets (`c-bone/mp_20`, `c-bone/alex_mp_20`, `c-bone/lematerial_clean`) exactly. Most differences are symmetry settings and rounding from newer pymatgen and spglib versions, the structures are the same. The LeMat script also keeps every LeMat-BulkUnique structure, where `lematerial_clean` deduplicated using our deduplication script. The original datasets stay the defaults and work essentially the same but we'll start rolling out the datasets like this from now on.
 
 ### Step 2: Deduplication and Filtering (Optional)
 

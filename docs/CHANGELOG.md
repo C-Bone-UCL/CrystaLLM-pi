@@ -33,7 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Preprocessing
 
 * **Consistent CIF cleaning**: cleaning now writes full occupancies as `1.0`, writes `-0.0000` as `0.0000`, and wraps fractional coordinates of `1.0000` to `0.0000`.
-* **Dataset builders**: new scripts in `_utils/_datasets/` download and prepare MatterGen's Alex-MP-20 and MP-20, LeMat-BulkUnique with Alex-MP-20 validation materials excluded, and the stratified CHILI-100K split used for the XRD models.
+* **Dataset builders**: new scripts in `_utils/_datasets/` download and prepare MatterGen's Alex-MP-20 and MP-20, LeMat-BulkUnique with a seeded random 5% validation split, and the stratified CHILI-100K split used for the XRD models.
 
 ### Packaging
 
