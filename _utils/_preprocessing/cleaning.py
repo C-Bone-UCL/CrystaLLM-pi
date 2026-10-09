@@ -192,10 +192,10 @@ if __name__ == "__main__":
 
     processed_results = [res for sublist in chunked_results for res in sublist]
 
-    # One assignment, since per-cell writes copy the whole Arrow string column in pandas 3
-    if processed_results:
-        idxs, cif_strs = zip(*processed_results)
-        dataframe.loc[list(idxs), 'CIF'] = list(cif_strs)
+    # One column write, since per-cell writes copy the whole Arrow string column in pandas 3
+    # Rows that failed processing become NaN, so the filter below drops them
+    idxs, cif_strs = zip(*processed_results) if processed_results else ((), ())
+    dataframe['CIF'] = pd.Series(cif_strs, index=idxs, dtype="str").reindex(dataframe.index)
 
     print("Number of CIFs before filtering out bad ones: ", len(dataframe))
     dataframe = dataframe[dataframe['CIF'].str.startswith("data_", na=False)]
