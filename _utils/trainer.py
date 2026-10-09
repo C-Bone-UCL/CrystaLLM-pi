@@ -216,6 +216,10 @@ class LossTrack_EarlyStop_Callback(TrainerCallback):
 
     def on_save(self, args, state, control, **kwargs):
         """Saves training and validation losses to a JSON file."""
+        # Every rank calls this under DDP, and parallel writes to one file can interleave
+        if not state.is_world_process_zero:
+            return control
+
         output_dir = args.output_dir
         checkpoint_path = os.path.join(output_dir, f"checkpoint-{state.global_step}")
 

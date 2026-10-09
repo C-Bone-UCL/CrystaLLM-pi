@@ -80,7 +80,7 @@ Full documentation: **https://c-bone-ucl.github.io/CrystaLLM-pi/**, quick links:
 ```bash
 git clone https://github.com/C-Bone-UCL/CrystaLLM-pi.git
 cd CrystaLLM-pi
-uv sync --extra all
+uv sync --python 3.12 --extra all
 source .venv/bin/activate
 ```
 

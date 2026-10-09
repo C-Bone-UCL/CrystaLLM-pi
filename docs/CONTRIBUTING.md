@@ -21,7 +21,7 @@ If you have an idea for an enhancement, please submit an issue explaining your i
 To set up the project locally for development:
 
 1. Clone your fork of the repository.
-2. Install the package with all extras: `uv sync --extra all`. See the [installation page](install.md) for prerequisites.
+2. Install the package with all extras: `uv sync --python 3.12 --extra all`. See the [installation page](install.md) for prerequisites.
 3. Add your Credentials for Hugging-Face and WandB (may need to create accounts).
 4. Run the local tests to ensure your environment is configured correctly.
 
@@ -32,7 +32,7 @@ The [API reference](api/cli.md) pages define what counts as public. A symbol is 
 Building the docs site locally:
 
 ```bash
-uv sync --extra docs
+uv sync --python 3.12 --extra docs
 uv run mkdocs serve
 ```
 

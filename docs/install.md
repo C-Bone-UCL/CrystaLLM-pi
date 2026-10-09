@@ -15,7 +15,7 @@ git clone https://github.com/C-Bone-UCL/CrystaLLM-pi.git
 cd CrystaLLM-pi
 
 # Create .venv and install CrystaLLM-pi and all its dependencies
-uv sync --extra all
+uv sync --python 3.12 --extra all
 
 # Activate the environment, or run commands with `uv run`
 source .venv/bin/activate
