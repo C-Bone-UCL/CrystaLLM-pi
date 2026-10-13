@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "crystallm-pi"
-version = "2.1.0"
+version = "2.1.1"
 description = "A Transformer-based model for property-guided crystal structure generation with containerized API"
 readme = "README.md"
 license = { file = "LICENSE" }

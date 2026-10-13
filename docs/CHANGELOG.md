@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [v2.1.1] - 2026-10-13
+
+### Training
+
+* **Fixed: gradient accumulation**: with `--gradient_accumulation_steps` above 1, the training loss and gradients were multiplied by the number of accumulation steps, so there were issues with absolute loss values and how that interacts with gradients. thats fixed and eval loss was never affected.
+
+
 ## [v2.1.0] - 2026-10-07
 
 ### Models

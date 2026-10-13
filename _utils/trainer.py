@@ -37,6 +37,11 @@ class CIFFormattingTrainer(Trainer):
     ``data_``, ``loop_``, and ``cell_length_a``.
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # compute_loss returns a micro-batch mean, so Trainer must divide by the accumulation steps
+        self.model_accepts_loss_kwargs = False
+
     def get_eval_dataloader(self, eval_dataset=None):
         """Evaluate one CIF per row to prevent attention between structures."""
         packing_collator = self.data_collator
