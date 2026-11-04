@@ -185,3 +185,120 @@ class VirtualiserTests:
         CifWriter(refined, symprec=0.01).write_file(out_cif)
         assert os.path.exists(out_cif), "Output CIF file was not created"
         assert os.path.getsize(out_cif) > 0, "Output CIF file is empty"
+
+    # Tolerance scan and batch mode
+
+    def _make_distorted_rocksalt(self):
+        """Build an L1_2-ordered Mg3ZnO4 rock-salt cell with small fixed displacements.
+
+        Mimics a generated structure: the ideal cell is Pm-3m and virtualises to Fm-3m, but
+        displacements of up to ~0.03 Å keep it P1 at the default symprec of 0.003 Å.
+        """
+        import numpy as np
+        from pymatgen.core import Structure, Lattice
+
+        species = ["Zn", "Mg", "Mg", "Mg", "O", "O", "O", "O"]
+        ideal = np.array([[0, 0, 0], [0, .5, .5], [.5, 0, .5], [.5, .5, 0],
+                          [.5, 0, 0], [0, .5, 0], [0, 0, .5], [.5, .5, .5]])
+        shifts = np.array([[0.006, -0.004, 0.003], [-0.005, 0.002, 0.004], [0.003, 0.006, -0.002],
+                           [-0.004, -0.003, 0.005], [0.002, -0.006, -0.004], [0.005, 0.003, -0.006],
+                           [-0.003, 0.004, 0.002], [0.004, -0.002, -0.005]])
+        return Structure(Lattice.cubic(4.23), species, ideal + shifts)
+
+    def test_load_config_tolerance_lists(self):
+        """load_config accepts tolerance lists and rejects non-positive values."""
+        from _utils._virtualiser import load_config
+
+        cfg_path = os.path.join(self.temp_dir, "scan_cfg.yaml")
+        with open(cfg_path, "w") as f:
+            f.write("symprec: [0.003, 0.1]\nangle_tolerance: [0.5, 5]\nvirtual_pairs:\n  - [Mg, Zn]\n")
+        cfg = load_config(cfg_path)
+        assert cfg["symprec"] == [0.003, 0.1]
+        assert cfg["angle_tolerance"] == [0.5, 5]
+
+        bad_path = os.path.join(self.temp_dir, "bad_cfg.yaml")
+        with open(bad_path, "w") as f:
+            f.write("symprec: [0.003, -0.1]\nvirtual_pairs:\n  - [Mg, Zn]\n")
+        try:
+            load_config(bad_path)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("negative symprec should be rejected")
+
+    def test_promote_symmetry_scan(self):
+        """The scan finds the Fm-3m parent that a single tight tolerance misses.
+
+        At symprec 0.003 Å the distorted cell stays P1. Scanning up to 0.1 Å must return Fm-3m,
+        reached at the smallest tolerances that give it (0.1 Å, 0.5°), and record every pair tried.
+        """
+        from _utils._virtualiser import virtualise_structure, promote_symmetry_scan
+
+        virt = virtualise_structure(self._make_distorted_rocksalt(), [("Mg", "Zn")])
+
+        _, tight, _ = promote_symmetry_scan(virt, [0.003], [0.5])
+        assert tight["spacegroup_number"] < 225, "distorted cell should not be Fm-3m at 0.003 Å"
+
+        refined, info, scan = promote_symmetry_scan(virt, [0.1, 0.003, 0.01], [5.0, 0.5])
+        assert info["spacegroup_number"] == 225, "expected Fm-3m"
+        assert info["symprec"] == 0.1 and info["angle_tolerance"] == 0.5, "ties keep smallest tolerances"
+        assert len(scan) == 6, "one record per tolerance pair"
+        assert abs(refined.lattice.a - 4.23) < 0.05
+        occ = {str(el): amt for site in refined.sites for el, amt in site.species.items()
+               if str(el) in ("Mg", "Zn")}
+        assert abs(occ["Mg"] - 0.75) < 1e-6 and abs(occ["Zn"] - 0.25) < 1e-6
+
+    def test_cli_directory_mode(self):
+        """The CLI virtualises a directory of CIFs and writes a summary CSV."""
+        import csv
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parents[3]
+        in_dir = Path(self.temp_dir) / "virt_batch_in"
+        out_dir = Path(self.temp_dir) / "virt_batch_out"
+        in_dir.mkdir(exist_ok=True)
+        self._make_distorted_rocksalt().to(filename=str(in_dir / "distorted.cif"))
+        self._make_ordered_struct().to(filename=str(in_dir / "spinel_like.cif"))
+        cfg_path = in_dir.parent / "batch_cfg.yaml"
+        cfg_path.write_text("symprec: [0.003, 0.01, 0.1]\nangle_tolerance: 0.5\nvirtual_pairs:\n  - [Mg, Zn]\n")
+
+        result = subprocess.run(
+            [sys.executable, "-m", "_utils._virtualiser.virtualiser",
+             "--in", str(in_dir), "--config", str(cfg_path), "--out", str(out_dir)],
+            cwd=repo_root, capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+
+        with open(out_dir / "virtualise_summary.csv") as f:
+            rows = {Path(r["input"]).name: r for r in csv.DictReader(f)}
+        assert set(rows) == {"distorted.cif", "spinel_like.cif"}
+        assert rows["distorted.cif"]["spacegroup_symbol"] == "Fm-3m"
+        assert (out_dir / "distorted_virtual.cif").exists()
+        assert (out_dir / "spinel_like_virtual.cif").exists()
+
+    def test_cli_single_file_scalar_config(self):
+        """A scalar config on one CIF keeps the original single-file behaviour."""
+        import subprocess
+        import sys
+        from pathlib import Path
+        from pymatgen.core import Structure
+        from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
+
+        repo_root = Path(__file__).resolve().parents[3]
+        in_cif = Path(self.temp_dir) / "single_in.cif"
+        out_cif = Path(self.temp_dir) / "single_out.cif"
+        self._make_ordered_struct().to(filename=str(in_cif))
+        cfg_path = Path(self.temp_dir) / "single_cfg.yaml"
+        cfg_path.write_text("symprec: 0.01\nangle_tolerance: 0.5\nvirtual_pairs:\n  - [Mg, Zn]\n")
+
+        result = subprocess.run(
+            [sys.executable, "-m", "_utils._virtualiser.virtualiser",
+             "--in", str(in_cif), "--config", str(cfg_path), "--out", str(out_cif)],
+            cwd=repo_root, capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "Space group: R3m (No. 160)" in result.stdout
+        written = Structure.from_file(out_cif)
+        assert SpacegroupAnalyzer(written, symprec=0.01).get_space_group_number() == 160

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [Unreleased]
+
+### Post-processing
+
+* **Virtualiser tolerance scan**: `symprec` and `angle_tolerance` in the virtualiser config (and the `/virtualise` API request) can now be lists. Every combination is tried, and the highest-symmetry result is kept, at the smallest tolerances that reach it. Single values behave as before. New `promote_symmetry_scan()` exposes the scan from Python.
+* **Virtualiser batch mode**: `--in` accepts a directory of CIFs. Virtual crystals are written to the `--out` directory, with a `virtualise_summary.csv` of space group, tolerances and lattice parameters per structure.
+
+
 ## [v2.1.1] - 2026-10-13
 
 ### Training

@@ -27,8 +27,19 @@ class VirtualiseRequest(BaseModel):
             "Required when config_file is not provided."
         ),
     )
-    symprec: float = Field(0.003, description="Symmetry precision in Å (used when config_file is not provided).")
-    angle_tolerance: float = Field(0.5, description="Angle tolerance in degrees (used when config_file is not provided).")
+    symprec: float | list[float] = Field(
+        0.003,
+        description=(
+            "Symmetry precision in Å, or a list to scan; the highest-symmetry result is kept "
+            "(used when config_file is not provided)."
+        ),
+    )
+    angle_tolerance: float | list[float] = Field(
+        0.5,
+        description=(
+            "Angle tolerance in degrees, or a list to scan (used when config_file is not provided)."
+        ),
+    )
 
 
 def register_virtualiser_routes(

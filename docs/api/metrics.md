@@ -62,3 +62,4 @@ Convert ordered structures to disordered virtual crystals and promote them to hi
 ::: _utils._virtualiser.virtualiser
 ::: _utils._virtualiser.virtualiser.virtualise_structure
 ::: _utils._virtualiser.virtualiser.promote_symmetry
+::: _utils._virtualiser.virtualiser.promote_symmetry_scan
