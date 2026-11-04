@@ -194,6 +194,11 @@ def run_parquet_mode(args: argparse.Namespace, scoring_mode: str) -> pd.DataFram
     return _generate_and_score(df_prompts, args, scoring_mode)
 
 
+def _xrd_peak_pick_arg(args: argparse.Namespace) -> bool | None:
+    """Map --xrd_peak_pick (auto/on/off) to the parser's peak_pick argument; missing means auto."""
+    return {"auto": None, "on": True, "off": False}[getattr(args, "xrd_peak_pick", "auto") or "auto"]
+
+
 def _run_early_stop_search(args: argparse.Namespace, canonical_formulas: list, row_properties: list, xrd_format: str | None) -> pd.DataFrame:
     """Iterate DEFAULT_Z_LIST, dropping each formula after its first valid structure."""
     print(f"\nExecuting Early-Stopping Z_search over Z={DEFAULT_Z_LIST}")
@@ -206,7 +211,8 @@ def _run_early_stop_search(args: argparse.Namespace, canonical_formulas: list, r
         active_fs = [f for f, _ in active_rows]
         active_ps = [p for _, p in active_rows]
         print(f"\nSearching Z={z} for {len(active_rows)} formulas...")
-        specs = build_reduced_formula_specs(active_fs, [z] * len(active_rows), active_ps, xrd_format, args.xrd_wavelength)
+        specs = build_reduced_formula_specs(active_fs, [z] * len(active_rows), active_ps, xrd_format, args.xrd_wavelength,
+                                            _xrd_peak_pick_arg(args))
         df_prompts = generate_prompts_from_specs(specs, args)
         # Early stop implies scoring "none" (enforced by the dispatch condition).
         df_gen = _generate_and_score(df_prompts, args, "none")
@@ -239,7 +245,8 @@ def _run_batch_generation(args: argparse.Namespace, canonical_formulas: list, ro
         formulas, properties = canonical_formulas, row_properties
         z_values = z_list if z_list else [1] * len(canonical_formulas)
 
-    specs = build_reduced_formula_specs(formulas, z_values, properties, xrd_format, args.xrd_wavelength)
+    specs = build_reduced_formula_specs(formulas, z_values, properties, xrd_format, args.xrd_wavelength,
+                                        _xrd_peak_pick_arg(args))
     df_prompts = generate_prompts_from_specs(specs, args)
     df_gen = _generate_and_score(df_prompts, args, scoring_mode)
 
@@ -392,8 +399,10 @@ def main() -> None:
     parser.add_argument("--level", choices=["level_1", "level_2", "level_3", "level_4"], default="level_2")
     parser.add_argument("--spacegroups", help="Comma-separated spacegroups mapped to formulas")
 
-    parser.add_argument("--xrd_files", nargs='+', help="Raw XRD scan files (.csv, .xy, .dat, .txt) mapped to formulas")
+    parser.add_argument("--xrd_files", nargs='+', help="XRD files (.csv, .xy, .dat, .txt) mapped to formulas: picked peaks or continuous scans")
     parser.add_argument("--xrd_wavelength", type=float, default=None, help="Wavelength in Angstrom of the provided XRD data (default: CuKa1 1.54056, assumed with a warning)")
+    parser.add_argument("--xrd_peak_pick", choices=("auto", "on", "off"), default="auto",
+                        help="Pick peaks from continuous XRD scans: auto-detect profiles (default), always, or never")
 
     parser.add_argument("--temperature", type=float, default=1.0, help="Sampling temperature")
     parser.add_argument("--num_return_sequences", type=int, default=1, help="Sequences per sample")

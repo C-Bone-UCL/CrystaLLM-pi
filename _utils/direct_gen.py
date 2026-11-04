@@ -72,14 +72,20 @@ def is_xrd_model(model_path: str) -> bool:
     # Path substring kept only for overlay registry entries missing condition_format.
     return get_condition_format(model_path) in XRD_FORMATS or "xrd" in model_path.lower()
 
-def parse_xrd_file_to_condition_vector(file_path: str, wavelength: float = 1.54056) -> list[float]:
-    """Parse a raw powder scan into the legacy 40-value condition vector.
+def parse_xrd_file_to_condition_vector(
+    file_path: str,
+    wavelength: float = 1.54056,
+    peak_pick: bool | None = None,
+) -> list[float]:
+    """Parse an XRD file (picked peaks or a continuous scan) into the legacy 40-value condition vector.
 
-    Reads a two-column scan, converts 2theta to Q with `wavelength` (CuKα1 1.54056 Å by default),
-    picks the top peaks and formats them for the Slider-family XRD models.
+    Reads a two-column file, picks peaks if it is a continuous profile (``peak_pick=None``
+    auto-detects, ``True`` forces, ``False`` treats rows as peaks), converts 2theta to CuKα1 from
+    `wavelength` (1.54056 Å by default), keeps the top 20 peaks and formats them for the
+    Slider-family XRD models.
     """
     try:
-        processed_peaks = process_and_convert(file_path, xrd_wavelength=wavelength)
+        processed_peaks = process_and_convert(file_path, xrd_wavelength=wavelength, peak_pick=peak_pick)
     except Exception as err:
         raise ValueError(f"Failed to process XRD file '{file_path}': {err}") from err
 
@@ -207,14 +213,15 @@ def build_reduced_formula_specs(
     z_values: list[int],
     properties: list[dict],
     xrd_format: str | None = None,
-    xrd_wavelength: float | None = None
+    xrd_wavelength: float | None = None,
+    xrd_peak_pick: bool | None = None,
 ) -> list[dict]:
     """Build one prompt spec per formula row using strictly parallel lists.
 
     Each index i in formulas/z_values/properties corresponds to one output spec. properties[i] must
     be a dict with keys: xrd (file path or None), sg (str or None), cond (condition-vector string or
-    None). With an XRD format set, each spec's condition_vector comes from its raw scan file
-    instead: "xrd_top20" yields the legacy 40-value string.
+    None). With an XRD format set, each spec's condition_vector comes from its XRD file instead:
+    "xrd_top20" yields the legacy 40-value string, with `xrd_peak_pick` passed to the peak picker.
     """
     specs = []
     for prompt_order, (formula, z_val, prop) in enumerate(zip(formulas, z_values, properties), start=1):
@@ -224,7 +231,7 @@ def build_reduced_formula_specs(
         if xrd_source and xrd_format == "xrd_top20":
             legacy_wavelength = xrd_wavelength if xrd_wavelength is not None else 1.54056
             cond_str = ", ".join(
-                str(v) for v in parse_xrd_file_to_condition_vector(xrd_source, legacy_wavelength)
+                str(v) for v in parse_xrd_file_to_condition_vector(xrd_source, legacy_wavelength, xrd_peak_pick)
             )
 
         sg = prop.get("sg")

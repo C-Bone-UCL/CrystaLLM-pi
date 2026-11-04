@@ -195,6 +195,7 @@ class GenerationEndpointTests(IntegrationMixin):
         cmd = data["command"]
         assert "--xrd_files /app/tests/fixtures/test_rutile_raw.xy" in cmd
         assert "--xrd_wavelength 0.71073" in cmd
+        assert "--xrd_peak_pick" not in cmd, "default auto peak picking should not add a flag"
         
     def test_direct_generation_input_parquet_mode(self):
         if self._should_skip_integration(): return

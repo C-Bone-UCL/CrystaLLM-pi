@@ -136,3 +136,83 @@ class DataProcessingTests:
         with open(path) as handle:
             return [tuple(float(v) for v in line.split(",")) for line in handle.read().splitlines()[1:]]
 
+
+    # Peak picking from continuous XRD profiles, and the auto-detection that triggers it
+
+    def _synthetic_profile(self):
+        """Five Gaussian peaks on a sloping background with seeded noise, 10-90 deg at 0.02 deg."""
+        rng = np.random.default_rng(0)
+        x = np.arange(10.0, 90.0, 0.02)
+        centres = np.array([20.0, 31.5, 32.4, 47.0, 71.3])
+        heights = np.array([100.0, 60.0, 35.0, 20.0, 8.0])
+        sigma = 0.08
+        y = 30.0 - 0.2 * (x - 10.0)
+        for c, h in zip(centres, heights):
+            y += h * np.exp(-0.5 * ((x - c) / sigma) ** 2)
+        y += rng.normal(0.0, 0.5, size=x.size)
+        return x, y, centres, heights
+
+    def test_profile_detection(self):
+        """Continuous scans are detected; peak lists, including the committed fixtures, are not."""
+        from _utils._preprocessing.process_exp_xrd_inputs import is_continuous_profile, load_two_column_xrd
+
+        x, _, _, _ = self._synthetic_profile()
+        assert is_continuous_profile(x)
+        raw_scan, _ = load_two_column_xrd(str(FIXTURES / "Rutile-TiO2-unproc.txt"))
+        assert is_continuous_profile(raw_scan), "measured rutile scan should be detected as a profile"
+        for peak_list in ("test_rutile_raw.xy", "test_rutile_processed.csv"):
+            angles, _ = load_two_column_xrd(str(FIXTURES / peak_list))
+            assert not is_continuous_profile(angles), f"{peak_list} is a peak list, not a profile"
+        # Many peaks listed in ascending angle, but irregularly spaced, are still a peak list.
+        assert not is_continuous_profile(np.cumsum(np.random.default_rng(1).exponential(1.0, 80)) + 5)
+
+    def test_load_skips_header_lines(self):
+        """Non-numeric header lines (e.g. 'Wavelength = 1.54059') are skipped, not fatal."""
+        from _utils._preprocessing.process_exp_xrd_inputs import load_two_column_xrd
+
+        angles, intensities = load_two_column_xrd(str(FIXTURES / "Rutile-TiO2-unproc.txt"))
+        assert len(angles) == 8501 and len(intensities) == 8501
+        assert angles[0] == 5.0 and angles[-1] == 90.0
+
+    def test_pick_peaks_synthetic(self):
+        """Picking recovers known peaks, including a 0.9 deg doublet, on a sloping noisy background."""
+        from _utils._preprocessing.process_exp_xrd_inputs import pick_peaks
+
+        x, y, centres, heights = self._synthetic_profile()
+        angles, picked = pick_peaks(x, y)
+        assert len(angles) == len(centres), f"expected {len(centres)} peaks, got {np.round(angles, 2)}"
+        assert np.allclose(angles, centres, atol=0.03), f"positions {np.round(angles, 3)}"
+        rel = picked / picked.max() * 100
+        expected = heights / heights.max() * 100
+        assert np.allclose(rel, expected, atol=6.0), f"relative heights {np.round(rel, 1)}"
+
+    def test_pick_peaks_measured_rutile(self):
+        """On the measured rutile scan the strongest picked peaks are the main rutile reflections.
+
+        The scan sits about 0.1 deg below the reference list, hence the 0.2 deg tolerance.
+        """
+        from _utils._preprocessing.process_exp_xrd_inputs import process_and_convert
+
+        peaks = process_and_convert(str(FIXTURES / "Rutile-TiO2-unproc.txt"), xrd_wavelength=1.54059,
+                                    verbose=False)
+        angles = [a for a, _ in peaks]
+        assert abs(angles[0] - 27.447) < 0.2, "strongest peak should be rutile (110)"
+        for ref in (54.323, 36.086, 41.226, 56.642):
+            assert min(abs(a - ref) for a in angles[:6]) < 0.2, f"missing rutile peak near {ref}"
+        assert len(peaks) <= 20
+
+    def test_peak_pick_modes(self):
+        """Auto picks on a profile and leaves peak lists unchanged; off reproduces the old top-20 rows."""
+        from _utils._preprocessing.process_exp_xrd_inputs import process_and_convert
+
+        raw_scan = str(FIXTURES / "Rutile-TiO2-unproc.txt")
+        auto = process_and_convert(raw_scan, xrd_wavelength=1.54059, verbose=False)
+        off = process_and_convert(raw_scan, xrd_wavelength=1.54059, peak_pick=False, verbose=False)
+        # Without picking, the 20 highest rows all sit on the (110) peak, which is the bug this fixes.
+        assert max(a for a, _ in off) - min(a for a, _ in off) < 0.5
+        assert max(a for a, _ in auto) - min(a for a, _ in auto) > 20
+
+        peak_list = str(FIXTURES / "test_rutile_raw.xy")
+        assert process_and_convert(peak_list, verbose=False) == process_and_convert(
+            peak_list, peak_pick=False, verbose=False
+        ), "auto mode must not change a peak list"
