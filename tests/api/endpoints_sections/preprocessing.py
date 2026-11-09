@@ -172,6 +172,7 @@ class PreprocessingEndpointTests(IntegrationMixin):
         assert "process_exp_xrd_inputs" in data["command"]
         assert "--input_data" in data["command"]
         assert "--output_csv" in data["command"]
+        assert "--peak_pick auto" in data["command"]
 
     def test_xrd_preprocessing_missing_required_field(self):
         """Test XRD preprocessing rejects missing required output field."""

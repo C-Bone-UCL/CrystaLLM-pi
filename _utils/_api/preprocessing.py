@@ -51,6 +51,9 @@ class XRDPreprocessRequest(BaseModel):
     input_data: str = Field(..., description="Path to input XRD file (.csv, .xy, .dat, .txt)")
     output_csv: str = Field(..., description="Path to output CrystaLLM-formatted peak CSV")
     xrd_wavelength: float = Field(1.54056, description="Original wavelength (Angstrom)")
+    peak_pick: Literal["auto", "on", "off"] = Field(
+        "auto", description="Pick peaks from a continuous profile: auto-detect, always, or never"
+    )
 
 
 class CalcTheorXRDRequest(BaseModel):
@@ -155,6 +158,7 @@ def register_preprocessing_routes(
             "--input_data", request.input_data,
             "--xrd_wavelength", str(request.xrd_wavelength),
             "--output_csv", request.output_csv,
+            "--peak_pick", request.peak_pick,
         ]
 
         background_tasks.add_task(run_command, job_id, cmd, request.output_csv)

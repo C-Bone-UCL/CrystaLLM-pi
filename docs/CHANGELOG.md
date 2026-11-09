@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Generation
+
+* **Fixed: continuous XRD scans as `--xrd_files`**: the help text described these as raw scan files, but every row was treated as a picked peak, so a measured or digitised profile conditioned the model on its 20 highest points, all on the strongest peak. Continuous profiles are now detected and reduced to peaks (smoothing, background subtraction, `scipy.signal.find_peaks`); peak lists are unchanged. `--xrd_peak_pick auto|on|off` controls this, also in the `/generate/direct` and `/preprocessing/process-exp-xrd` API requests.
+* **XRD file headers**: non-numeric header and comment lines in XRD files are skipped instead of failing to load.
+* **Peak-picking options** in `process_exp_xrd_inputs.py`: `--peak_pick`, `--min_rel_height`, `--min_separation`, `--smoothing_fwhm`, `--background_window`.
+
 ### Post-processing
 
 * **Virtualiser tolerance scan**: `symprec` and `angle_tolerance` in the virtualiser config (and the `/virtualise` API request) can now be lists. Every combination is tried, and the highest-symmetry result is kept, at the smallest tolerances that reach it. Single values behave as before. New `promote_symmetry_scan()` exposes the scan from Python.

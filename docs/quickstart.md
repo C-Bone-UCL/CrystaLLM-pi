@@ -15,7 +15,7 @@ The script automatically:
 4. **Generates structures** using the appropriate conditional model architecture.
 5. **Validates & Ranks** outputs based on structural integrity and optional perplexity (`LOGP`) scoring.
 
-Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). XRD-conditioned models take scan files via `--xrd_files`: the `Mattergen-XRD` and `Chili100K-XRD` models use a top-20 pre-picked-peak pipeline and can also run without `--xrd_files` using missing conditioning values.
+Each model can be used by providing a list of reduced formulas (`--reduced_formula_list`) paired with either explicit stoichiometric scaling factors (`--z_list`) or an automated discovery sweep (`--search_zs`). XRD-conditioned models take XRD files via `--xrd_files`, either picked peaks or continuous scans (see [XRD input](#xrd-input) below): the `Mattergen-XRD` and `Chili100K-XRD` models condition on the 20 strongest peaks and can also run without `--xrd_files` using missing conditioning values.
 
 ## Generation Examples
 
@@ -127,6 +127,23 @@ python _load_and_generate.py \
 
 !!! tip
     Combine `--search_zs` with `--target_valid_cifs X` and it will loop through Z until it finds a valid CIF. If on top of that you add the `LOGP` scoring, it will generate for each Z. Across all the Zs that gave a valid CIF, it returns the model's single most confident prediction for the reduced formula.
+
+### XRD input
+
+`--xrd_files` takes two-column files (2θ, intensity; `.csv`, `.xy`, `.dat` or `.txt`, header lines are skipped). Set `--xrd_wavelength` to the wavelength of the data; angles are converted to Cu-Kα1.
+
+* **Picked peaks** (a short list of 2θ and intensity) are used as given.
+* **Continuous scans** (measured or digitised profiles: at least 50 points with an even step) are detected automatically and reduced to peaks: light smoothing, rolling-minimum background subtraction, then peaks of at least 2 % of the strongest, at least 0.2° apart. The run prints how many peaks were picked.
+* `--xrd_peak_pick on|off` forces or disables picking (default `auto`).
+
+Peak picking does not remove impurity phases or K-α2 components. To condition on one phase only, or to tune the picking, prepare a peak list first and check it:
+
+```bash
+python _utils/_preprocessing/process_exp_xrd_inputs.py \
+    --input_data scan.xy --xrd_wavelength 1.54056 \
+    --min_rel_height 0.02 --min_separation 0.2 --smoothing_fwhm 0.1 --background_window 2.0 \
+    --output_csv peaks.csv
+```
 
 **Perplexity Scoring (`--scoring_mode "LOGP"`)**
 
