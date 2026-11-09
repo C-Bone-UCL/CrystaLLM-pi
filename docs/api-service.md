@@ -158,7 +158,7 @@ curl -X POST "http://localhost:8000/virtualise" \
   }'
 ```
 
-`symprec` and `angle_tolerance` also accept lists, e.g. `"symprec": [0.003, 0.01, 0.1]`, to scan tolerances and keep the highest-symmetry result.
+`symprec` and `angle_tolerance` also accept lists, such as `"symprec": [0.003, 0.01, 0.1]`, to scan tolerances and keep the highest-symmetry result.
 
 **Virtualise a generated CIF (YAML config file)**
 

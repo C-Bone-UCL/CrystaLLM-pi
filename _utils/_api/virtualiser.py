@@ -30,15 +30,13 @@ class VirtualiseRequest(BaseModel):
     symprec: float | list[float] = Field(
         0.003,
         description=(
-            "Symmetry precision in Å, or a list to scan; the highest-symmetry result is kept "
-            "(used when config_file is not provided)."
+            "Symmetry precision in Angstrom, or a list to scan for the highest-symmetry result. "
+            "Used when config_file is not provided."
         ),
     )
     angle_tolerance: float | list[float] = Field(
         0.5,
-        description=(
-            "Angle tolerance in degrees, or a list to scan (used when config_file is not provided)."
-        ),
+        description="Angle tolerance in degrees, or a list to scan. Used when config_file is not provided.",
     )
 
 

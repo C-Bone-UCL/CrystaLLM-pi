@@ -35,7 +35,7 @@ python _utils/_virtualiser/virtualiser.py \
 
 ## Scanning symmetry tolerances
 
-Generated structures are often slightly distorted, so a single tight tolerance can miss the parent space group. `symprec` (Å) and `angle_tolerance` (degrees) can each be given as a list. Every combination is tried, and the highest-symmetry result is kept, using the smallest tolerances that reach it.
+Generated structures are often slightly distorted, so a single tight tolerance can miss the parent space group. `symprec` (in Angstrom) and `angle_tolerance` (in degrees) can each be a list. The virtualiser tries every combination and keeps the highest-symmetry result, at the smallest tolerances that reach it.
 
 ```yaml
 symprec: [0.003, 0.01, 0.03, 0.1, 0.2, 0.3]
@@ -44,11 +44,11 @@ virtual_pairs:
   - [Mg, Zn]
 ```
 
-For example, XRD-conditioned Mg3ZnO4 structures from `CrystaLLM-pi_Mattergen-XRD` include L1<sub>2</sub>-ordered Pm-3m cells (Z=1), which reach the Fm-3m rock-salt parent at `symprec` 0.003 Å, and slightly distorted I4/mmm cells (Z=2), which need 0.1 Å. Check the tolerance that was used: very coarse values can merge sites that are genuinely distinct.
+XRD-conditioned Mg3ZnO4 structures from `CrystaLLM-pi_Mattergen-XRD`, for example, include L1<sub>2</sub>-ordered Pm-3m cells at Z=1, which reach the Fm-3m rock-salt parent at `symprec` 0.003 Angstrom, and slightly distorted I4/mmm cells at Z=2, which need 0.1 Angstrom. Check which tolerance was kept, because very coarse values can merge sites that are genuinely distinct.
 
 ## Batch mode
 
-Pass a directory to `--in` to virtualise every `*.cif` in it. `--out` is then an output directory, and a `virtualise_summary.csv` listing the space group, tolerances used and lattice parameters of each structure is written there (or to `--summary`).
+Pass a directory to `--in` to virtualise every `*.cif` in it. `--out` is then an output directory, and the virtualiser writes a `virtualise_summary.csv` there, or to `--summary`, with the space group, kept tolerances and lattice parameters of each structure.
 
 ```bash
 python _utils/_virtualiser/virtualiser.py \
@@ -57,4 +57,4 @@ python _utils/_virtualiser/virtualiser.py \
     --out outputs_virtual/
 ```
 
-From Python, `promote_symmetry_scan(struct, symprecs, angle_tols)` returns the refined structure, the kept tolerances and space group, and a record for every tolerance pair tried.
+From Python, `promote_symmetry_scan(struct, symprecs, angle_tols)` returns the refined structure, the kept record and one record per tolerance pair tried.
