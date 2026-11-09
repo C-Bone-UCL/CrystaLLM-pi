@@ -13,6 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 * **XRD file headers**: non-numeric header and comment lines in XRD files are skipped instead of failing to load.
 * **Peak-picking options** in `process_exp_xrd_inputs.py`: `--peak_pick`, `--min_rel_height`, `--min_separation`, `--smoothing_fwhm`, `--background_window`.
 
+### Post-processing
+
+* **Virtualiser tolerance scan**: `symprec` and `angle_tolerance` in the virtualiser config (and the `/virtualise` API request) can now be lists. Every combination is tried, and the highest-symmetry result is kept, at the smallest tolerances that reach it. Single values behave as before. New `promote_symmetry_scan()` exposes the scan from Python.
+* **Virtualiser batch mode**: `--in` accepts a directory of CIFs. Virtual crystals are written to the `--out` directory, with a `virtualise_summary.csv` of space group, tolerances and lattice parameters per structure.
+
 
 ## [v2.1.1] - 2026-10-13
 

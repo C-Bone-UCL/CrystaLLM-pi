@@ -5,6 +5,7 @@ from .virtualiser import (
     compute_pair_fractions,
     virtualise_structure,
     promote_symmetry,
+    promote_symmetry_scan,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "compute_pair_fractions",
     "virtualise_structure",
     "promote_symmetry",
+    "promote_symmetry_scan",
 ]

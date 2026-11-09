@@ -284,6 +284,10 @@ def main():
         suite.run_test("virtualiser_promote_symmetry", virtualiser_tests.test_promote_symmetry)
         suite.run_test("virtualiser_load_config", virtualiser_tests.test_load_config)
         suite.run_test("virtualiser_full_pipeline_to_cif", virtualiser_tests.test_full_pipeline_to_cif)
+        suite.run_test("virtualiser_load_config_tolerance_lists", virtualiser_tests.test_load_config_tolerance_lists)
+        suite.run_test("virtualiser_promote_symmetry_scan", virtualiser_tests.test_promote_symmetry_scan)
+        suite.run_test("virtualiser_cli_directory_mode", virtualiser_tests.test_cli_directory_mode)
+        suite.run_test("virtualiser_cli_single_file_scalar_config", virtualiser_tests.test_cli_single_file_scalar_config)
 
         # Source convention tests
         print("\n📝 Source Convention Tests:")
